@@ -1,0 +1,313 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import franchises from '../../data/franchises.json';
+import seasons from '../../data/seasons.json';
+import bowlGames from '../../data/bowl_games.json';
+import { getEntry } from 'astro:content';
+
+export async function getStaticPaths() {
+  return franchises.map(f => ({ params: { abbr: f.abbr } }));
+}
+
+const { abbr } = Astro.params;
+const franchise = franchises.find(f => f.abbr === abbr);
+
+if (!franchise) {
+  return Astro.redirect('/franchises');
+}
+
+// Get franchise notes markdown from content collection
+const notesEntry = await getEntry('franchises', abbr.toLowerCase());
+let FranchiseContent: any = null;
+if (notesEntry) {
+  const rendered = await notesEntry.render();
+  FranchiseContent = rendered.Content;
+}
+
+// Championship history (account for MTL being SAR's predecessor)
+const isPredecessor = (abbr === 'SAR');
+const dynastyBowlAppearances = seasons.filter(s =>
+  s.dynasty_bowl.winner === abbr ||
+  s.dynasty_bowl.loser === abbr ||
+  (isPredecessor && (s.dynasty_bowl.winner === 'MTL' || s.dynasty_bowl.loser === 'MTL'))
+);
+
+const championships = dynastyBowlAppearances.filter(s =>
+  s.dynasty_bowl.winner === abbr || (isPredecessor && s.dynasty_bowl.winner === 'MTL')
+);
+
+// Conference championship history
+const confChamps = seasons.filter(s => {
+  const conf = franchise.conference === 'SCC' ? s.scc_champion : s.hcc_champion;
+  return conf === abbr || (isPredecessor && conf === 'MTL');
+});
+
+// Bowl game affiliations for this franchise
+const myBowlGames = bowlGames.filter(bg => bg.team_a === abbr || bg.team_b === abbr);
+
+// Helper to get opponent abbr for bowl
+function getBowlOpponent(bg: typeof bowlGames[0]) {
+  return bg.team_a === abbr ? bg.team_b : bg.team_a;
+}
+function getOpponentFranchise(oppAbbr: string) {
+  return franchises.find(f => f.abbr === oppAbbr);
+}
+
+// Seasonal record (placeholder for now - will be populated in v2 with Sleeper API)
+const seasonRows = seasons.map(s => {
+  const isConfChamp = s.scc_champion === abbr || s.hcc_champion === abbr ||
+    (isPredecessor && (s.scc_champion === 'MTL' || s.hcc_champion === 'MTL'));
+  const bowlWin = s.dynasty_bowl.winner === abbr || (isPredecessor && s.dynasty_bowl.winner === 'MTL');
+  const bowlLoss = s.dynasty_bowl.loser === abbr || (isPredecessor && s.dynasty_bowl.loser === 'MTL');
+  let playoffResult = '—';
+  if (bowlWin) playoffResult = `Won ${s.dynasty_bowl.label}`;
+  else if (bowlLoss) playoffResult = `Runner-Up, ${s.dynasty_bowl.label}`;
+  else if (isConfChamp) playoffResult = `${franchise.conference} Champion`;
+  return { year: s.year, isConfChamp, playoffResult };
+});
+
+// Rebrand history: build timeline label for current season name
+const hasRebrands = franchise.rebrands && franchise.rebrands.length > 0;
+const primaryColor = franchise.colors[0];
+const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
+---
+
+<Layout
+  title={franchise.name}
+  description={`Franchise profile for ${franchise.name} (${franchise.abbr}), owned by ${franchise.owner}. ${franchise.conference} — Sixth City Dynasty Football League.`}
+>
+
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+
+    <!-- Franchise hero band -->
+    <div style={`border-left: 4px solid ${primaryColor}; border-bottom: 1px solid var(--color-border); padding: 3rem 0 2.5rem 2rem; margin-top: 3rem;`}>
+      <a href="/franchises" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1.25rem;">
+        &#8592; All Franchises
+      </a>
+
+      <div style="display: flex; align-items: flex-start; gap: 2rem; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 260px;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+            <span style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted);">{franchise.abbr}</span>
+            <span class={`label-badge badge-${franchise.conference.toLowerCase()}`}>{franchise.conference}</span>
+            {championships.length > 0 && (
+              <span style="display: flex; align-items: center; gap: 3px;">
+                {Array.from({ length: championships.length }).map(() => (
+                  <span style="color: var(--color-gold); font-size: 0.85rem;">&#9670;</span>
+                ))}
+              </span>
+            )}
+          </div>
+          <h1 style={`font-family: var(--font-display); font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 700; line-height: 1.1; color: var(--color-text-primary); margin: 0;`}>
+            {franchise.name}
+          </h1>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, auto); gap: 2rem; flex-shrink: 0; align-self: center;">
+          <div>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Owner</p>
+            <p style="font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{franchise.owner}</p>
+          </div>
+          <div>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Founded</p>
+            <p style="font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{franchise.founded}</p>
+          </div>
+          <div>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Colors</p>
+            <div style="display: flex; gap: 5px; align-items: center; margin-top: 0.35rem;">
+              {franchise.colors.map(c => (
+                <span style={`display: inline-block; width: 16px; height: 16px; background-color: ${c}; border-radius: 50%;`} title={c}></span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 300px; gap: 3rem; margin-top: 3rem; align-items: start;">
+
+      <!-- Main column -->
+      <div>
+
+        <!-- Rebrand history -->
+        {hasRebrands && (
+          <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem 1.5rem; margin-bottom: 2rem;">
+            <p class="section-label" style="margin-bottom: 0.6rem;">Identity History</p>
+            <div style="display: flex; flex-direction: column; gap: 0.3rem;">
+              {franchise.rebrands
+                .filter((r, i, arr) => i === 0 || arr[i-1].name !== r.name)
+                .map((rebrand, i, arr) => {
+                  const nextChange = arr[i + 1];
+                  const endYear = nextChange ? nextChange.year - 1 : undefined;
+                  return (
+                    <div style="display: flex; align-items: baseline; gap: 0.75rem;">
+                      <span style="font-size: 0.75rem; color: var(--color-text-muted); min-width: 60px;">
+                        {rebrand.year}{endYear && endYear > rebrand.year ? `–${endYear}` : ''}
+                      </span>
+                      <span style="font-size: 0.875rem; color: var(--color-text-secondary);">{rebrand.name}</span>
+                    </div>
+                  );
+                })
+              }
+              <div style="display: flex; align-items: baseline; gap: 0.75rem; margin-top: 0.1rem; padding-top: 0.3rem; border-top: 1px solid var(--color-border);">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted); min-width: 60px;">
+                  {(() => {
+                    const lastRebrand = franchise.rebrands[franchise.rebrands.length - 1];
+                    if (!lastRebrand) return franchise.founded;
+                    // If franchise name differs from last rebrand name, figure out when it changed
+                    return lastRebrand.year + 1;
+                  })()}–
+                </span>
+                <span style="font-size: 0.875rem; font-weight: 600; color: var(--color-text-primary);">{franchise.name} <span style="font-weight: 400; color: var(--color-text-muted); font-size: 0.8rem;">(current)</span></span>
+              </div>
+            </div>
+            {abbr === 'SAR' && (
+              <p style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 0.75rem; line-height: 1.5; border-top: 1px solid var(--color-border); padding-top: 0.75rem;">
+                <em>Note: The 2021 SCC Championship won under the Montreal Generals (MTL) identity is part of this franchise's history.</em>
+              </p>
+            )}
+          </div>
+        )}
+
+        <!-- Season record -->
+        <div>
+          <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-primary);">Season Record</h2>
+          <div style="overflow-x: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Season</th>
+                  <th>W</th>
+                  <th>L</th>
+                  <th>Playoff Result</th>
+                </tr>
+              </thead>
+              <tbody>
+                {seasonRows.map(row => (
+                  <tr>
+                    <td style="font-weight: 600;">{row.year}</td>
+                    <td style="color: var(--color-text-muted);">—</td>
+                    <td style="color: var(--color-text-muted);">—</td>
+                    <td style={row.playoffResult.includes('Won') ? 'color: var(--color-gold); font-weight: 600;' : row.playoffResult === '—' ? 'color: var(--color-text-muted);' : 'color: var(--color-text-secondary);'}>
+                      {row.playoffResult}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.6rem;">Win-loss records will be populated in a future update.</p>
+        </div>
+
+        <!-- Franchise notes markdown -->
+        {FranchiseContent && (
+          <div style="margin-top: 2.5rem;">
+            <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin-bottom: 1.25rem; color: var(--color-text-primary);">Franchise Notes</h2>
+            <div style="font-size: 0.9rem; color: var(--color-text-secondary); line-height: 1.7;">
+              <FranchiseContent />
+            </div>
+          </div>
+        )}
+
+      </div>
+
+      <!-- Sidebar -->
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+
+        <!-- Championships -->
+        {dynastyBowlAppearances.length > 0 && (
+          <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
+            <p class="section-label">Dynasty Bowl History</p>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+              {dynastyBowlAppearances.map(s => {
+                const won = s.dynasty_bowl.winner === abbr || (isPredecessor && s.dynasty_bowl.winner === 'MTL');
+                const opp = won ? s.dynasty_bowl.loser : s.dynasty_bowl.winner;
+                const oppFranchise = getOpponentFranchise(opp === 'MTL' ? 'SAR' : opp);
+                return (
+                  <div style={`padding: 0.75rem; border-left: 3px solid ${won ? 'var(--color-gold)' : 'var(--color-border-light)'}; background-color: var(--color-surface-alt);`}>
+                    <p style={`font-size: 0.8rem; font-weight: 700; margin: 0 0 0.2rem; color: ${won ? 'var(--color-gold)' : 'var(--color-text-muted)'};`}>
+                      {won ? 'Champion' : 'Runner-Up'} · {s.year}
+                    </p>
+                    <p style="font-size: 0.8rem; color: var(--color-text-secondary); margin: 0;">{s.dynasty_bowl.label}</p>
+                    <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0.2rem 0 0;">
+                      vs. <a href={`/franchises/${oppFranchise?.abbr}`} style="color: var(--color-text-muted);">{opp === 'MTL' ? 'MTL (SAR)' : opp}</a>
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <!-- Conference Championships -->
+        {confChamps.length > 0 && (
+          <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
+            <p class="section-label">Conference Titles</p>
+            <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+              {confChamps.map(s => (
+                <span style="font-size: 0.8rem; font-weight: 600; padding: 0.2rem 0.6rem; background-color: var(--color-surface-alt); border: 1px solid var(--color-border-light); color: var(--color-text-secondary);">
+                  {s.year}
+                </span>
+              ))}
+            </div>
+            <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.5rem;">{franchise.conference} Championship</p>
+          </div>
+        )}
+
+        <!-- Bowl game affiliations -->
+        {myBowlGames.length > 0 && (
+          <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
+            <p class="section-label">2026 Bowl Games</p>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+              {myBowlGames.map(bg => {
+                const oppAbbr = getBowlOpponent(bg);
+                const opp = getOpponentFranchise(oppAbbr);
+                return (
+                  <a href={`/bowl-games/${bg.slug}`} style="text-decoration: none; display: block; padding: 0.75rem; background-color: var(--color-surface-alt); border: 1px solid var(--color-border); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='var(--color-border-light)'" onmouseout="this.style.borderColor='var(--color-border)'">
+                    <p style="font-family: var(--font-display); font-size: 0.9rem; font-weight: 600; color: var(--color-gold); margin: 0 0 0.2rem;">{bg.name}</p>
+                    <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0;">vs. <span style="color: var(--color-text-secondary);">{opp?.name ?? oppAbbr}</span></p>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <!-- Quick facts -->
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
+          <p class="section-label">Franchise Facts</p>
+          <dl style="display: flex; flex-direction: column; gap: 0.6rem;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Conference</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">
+                <span class={`label-badge badge-${franchise.conference.toLowerCase()}`}>{franchise.conference}</span>
+              </dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Championships</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{championships.length}</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Bowl Appearances</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{dynastyBowlAppearances.length}</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Conf. Titles</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{confChamps.length}</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Founded</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{franchise.founded}</dd>
+            </div>
+          </dl>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom spacer -->
+  <div style="height: 5rem;"></div>
+
+</Layout>

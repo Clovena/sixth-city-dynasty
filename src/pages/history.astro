@@ -1,0 +1,261 @@
+---
+import Layout from '../layouts/Layout.astro';
+import seasons from '../data/seasons.json';
+import franchises from '../data/franchises.json';
+
+// Build championship record per franchise (accounting for MTL -> SAR)
+const championshipMap: Record<string, { count: number; years: number[] }> = {};
+
+for (const season of seasons) {
+  const winner = season.dynasty_bowl.winner;
+  // MTL is SAR's predecessor; attribute to SAR
+  const key = winner === 'MTL' ? 'SAR' : winner;
+  if (!championshipMap[key]) championshipMap[key] = { count: 0, years: [] };
+  championshipMap[key].count++;
+  championshipMap[key].years.push(season.year);
+}
+
+// Sort franchises by championship count desc
+const rollOfHonor = franchises
+  .filter(f => championshipMap[f.abbr])
+  .map(f => ({ ...f, ...championshipMap[f.abbr] }))
+  .sort((a, b) => b.count - a.count);
+
+// HCC/SCC counts
+const hccWins = seasons.filter(s => {
+  const w = s.dynasty_bowl.winner;
+  const winnerFranchise = franchises.find(f => f.abbr === w || (w === 'MTL' && f.abbr === 'SAR'));
+  return winnerFranchise?.conference === 'HCC';
+}).length;
+const sccWins = seasons.length - hccWins;
+
+// Helper to get franchise name from abbr (with MTL alias)
+function getFranchise(abbr: string) {
+  if (abbr === 'MTL') return franchises.find(f => f.abbr === 'SAR');
+  return franchises.find(f => f.abbr === abbr);
+}
+function getDisplayName(abbr: string) {
+  if (abbr === 'MTL') return 'MTL (SAR)';
+  return abbr;
+}
+---
+
+<Layout title="League History" description="Season-by-season history, dynasty bowl results, and franchise records for the Sixth City Dynasty Football League.">
+
+  <div style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 0;">
+
+    <!-- Page header -->
+    <div style="padding-bottom: 2.5rem; border-bottom: 1px solid var(--color-border);">
+      <p class="section-label">League Archive</p>
+      <h1 class="page-title">History &amp; Records</h1>
+      <p class="page-subtitle" style="margin-top: 0.75rem;">
+        Five seasons. Four champions. One conference that keeps winning.
+        The complete record of the Sixth City Dynasty Football League, from inaugural kickoff to present.
+      </p>
+    </div>
+
+    <!-- Season-by-season table -->
+    <div style="margin-top: 3rem;">
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; color: var(--color-text-primary);">
+        Season Results
+      </h2>
+      <div style="overflow-x: auto;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Season</th>
+              <th>SCC Champion</th>
+              <th>HCC Champion</th>
+              <th>Dynasty Bowl</th>
+              <th>Champion</th>
+              <th>Runner-Up</th>
+            </tr>
+          </thead>
+          <tbody>
+            {seasons.slice().reverse().map(season => {
+              const sccFranchise = getFranchise(season.scc_champion);
+              const hccFranchise = getFranchise(season.hcc_champion);
+              const winnerFranchise = getFranchise(season.dynasty_bowl.winner);
+              const loserFranchise = getFranchise(season.dynasty_bowl.loser);
+              return (
+                <tr>
+                  <td style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-gold);">{season.year}</td>
+                  <td>
+                    <a href={`/franchises/${sccFranchise?.abbr}`} style="color: var(--color-text-primary);">
+                      {getDisplayName(season.scc_champion)}
+                    </a>
+                    <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{sccFranchise?.name}</span>
+                  </td>
+                  <td>
+                    <a href={`/franchises/${hccFranchise?.abbr}`} style="color: var(--color-text-primary);">
+                      {season.hcc_champion}
+                    </a>
+                    <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{hccFranchise?.name}</span>
+                  </td>
+                  <td style="font-size: 0.85rem; color: var(--color-text-secondary);">{season.dynasty_bowl.label}</td>
+                  <td class="winner-cell">
+                    <a href={`/franchises/${winnerFranchise?.abbr}`} style="color: var(--color-gold);">
+                      {getDisplayName(season.dynasty_bowl.winner)}
+                    </a>
+                    <span style="display: block; font-size: 0.75rem; font-weight: 400; color: var(--color-gold-dim);">{winnerFranchise?.name}</span>
+                  </td>
+                  <td>
+                    <a href={`/franchises/${loserFranchise?.abbr}`} style="color: var(--color-text-secondary);">
+                      {season.dynasty_bowl.loser}
+                    </a>
+                    <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{loserFranchise?.name}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Conference record -->
+    <div style="margin-top: 3rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background-color: var(--color-border);">
+      <div style="background-color: var(--color-surface); padding: 1.75rem; text-align: center;">
+        <p style="font-family: var(--font-body); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 0.5rem;">HCC Dynasty Bowls</p>
+        <p style="font-family: var(--font-display); font-size: 3rem; font-weight: 700; color: #d4906e; line-height: 1;">{hccWins}</p>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.25rem;">House of Commons Conference</p>
+      </div>
+      <div style="background-color: var(--color-surface); padding: 1.75rem; text-align: center;">
+        <p style="font-family: var(--font-body); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-muted); margin-bottom: 0.5rem;">SCC Dynasty Bowls</p>
+        <p style="font-family: var(--font-display); font-size: 3rem; font-weight: 700; color: #7eb8d8; line-height: 1;">{sccWins}</p>
+        <p style="font-size: 0.8rem; color: var(--color-text-muted); margin-top: 0.25rem;">Senatorial Canadian Conference</p>
+      </div>
+    </div>
+    <p style="font-size: 0.8rem; color: var(--color-text-muted); text-align: center; margin-top: 0.75rem;">
+      HCC leads the all-time Dynasty Bowl series {hccWins}–{sccWins}. TOR (2024) is the only SCC franchise to claim a championship.
+    </p>
+
+    <!-- Roll of Honor -->
+    <div class="section-rule">
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;">
+        Championship Roll of Honor
+      </h2>
+      <div style="border: 1px solid var(--color-border);">
+        {rollOfHonor.map((franchise, i) => (
+          <div style={`display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; ${i !== 0 ? 'border-top: 1px solid var(--color-border);' : ''} `}>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <span style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--color-border-light); min-width: 2rem;">{i + 1}</span>
+              <div>
+                <a href={`/franchises/${franchise.abbr}`} style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-text-primary);">
+                  {franchise.name}
+                </a>
+                <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{franchise.abbr} &bull; {franchise.owner} &bull; <span class={`label-badge badge-${franchise.conference.toLowerCase()}`}>{franchise.conference}</span></span>
+              </div>
+            </div>
+            <div style="text-align: right;">
+              <div style="display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end;">
+                {Array.from({ length: franchise.count }).map(() => (
+                  <span style="color: var(--color-gold); font-size: 1rem;">&#9670;</span>
+                ))}
+              </div>
+              <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.2rem;">
+                {franchise.years.join(', ')}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <!-- Playoff format notes -->
+    <div class="section-rule">
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">Playoff Format</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem;">
+          <p class="section-label">2021–2022</p>
+          <p style="font-size: 0.9rem; color: var(--color-text-secondary); line-height: 1.6;">
+            8 teams qualified — 4 per conference. Conference-bracket format with a cross-conference championship guaranteeing an SCC vs. HCC Dynasty Bowl matchup.
+          </p>
+        </div>
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem;">
+          <p class="section-label">2023–Present</p>
+          <p style="font-size: 0.9rem; color: var(--color-text-secondary); line-height: 1.6;">
+            7 playoff teams. Seeds 1 and 2 are reserved for the SCC and HCC conference champions. Seeds 3–7 are at-large by record. The 1-seed earns a first-round bye.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Season narratives -->
+    <div class="section-rule">
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;">Season by Season</h2>
+      <div style="display: flex; flex-direction: column; gap: 0; border: 1px solid var(--color-border);">
+        {seasons.slice().reverse().map((season, i) => (
+          <div style={`padding: 1.75rem; ${i !== 0 ? 'border-top: 1px solid var(--color-border);' : ''}`}>
+            <div style="display: flex; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+              <h3 style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--color-gold); margin: 0;">{season.year}</h3>
+              <span style="font-family: var(--font-body); font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); letter-spacing: 0.04em;">{season.dynasty_bowl.label}</span>
+              <span style="font-size: 0.8rem; color: var(--color-text-muted);">
+                Won by <strong style="color: var(--color-text-secondary);">{season.dynasty_bowl.winner === 'MTL' ? 'MTL (SAR)' : season.dynasty_bowl.winner}</strong>
+                {' '}over <strong style="color: var(--color-text-secondary);">{season.dynasty_bowl.loser}</strong>
+              </span>
+            </div>
+            <p style="font-size: 0.9rem; color: var(--color-text-secondary); line-height: 1.65; max-width: 72ch; margin: 0;">{season.notes}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <!-- Notable narratives -->
+    <div class="section-rule" style="margin-bottom: 5rem;">
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;">Notable Narratives</h2>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 1px; background-color: var(--color-border);">
+
+        <div style="background-color: var(--color-surface); padding: 1.5rem;">
+          <p class="section-label" style="color: var(--color-gold-dim);">The Dynasty</p>
+          <p style="font-family: var(--font-display); font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text-primary);">BKB — Bikini Bottom Stars</p>
+          <p style="font-size: 0.875rem; color: var(--color-text-secondary); line-height: 1.6; margin: 0;">
+            Jacob's franchise is the league's defining dynasty: 2 championships (2023, 2025), 3 conference titles in 5 seasons. No franchise has been more consistently dangerous.
+          </p>
+        </div>
+
+        <div style="background-color: var(--color-surface); padding: 1.5rem;">
+          <p class="section-label" style="color: var(--color-gold-dim);">The Rival</p>
+          <p style="font-family: var(--font-display); font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text-primary);">TOR — Toronto Hogs</p>
+          <p style="font-size: 0.875rem; color: var(--color-text-secondary); line-height: 1.6; margin: 0;">
+            Zac's squad is BKB's chief rival: 1 championship (2024), 2 consecutive SCC titles (2023–24), and a Dynasty Bowl loss to BKB in 2023. TOR remains the only SCC franchise to win the championship.
+          </p>
+        </div>
+
+        <div style="background-color: var(--color-surface); padding: 1.5rem;">
+          <p class="section-label" style="color: var(--color-gold-dim);">The Originator</p>
+          <p style="font-family: var(--font-display); font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text-primary);">CHC — Choccolocco Railfans</p>
+          <p style="font-size: 0.875rem; color: var(--color-text-secondary); line-height: 1.6; margin: 0;">
+            Sean won the inaugural Dynasty Bowl in 2021 but has not returned to the championship. The classic "where are they now" arc — a champion defined by a single historic moment.
+          </p>
+        </div>
+
+        <div style="background-color: var(--color-surface); padding: 1.5rem;">
+          <p class="section-label" style="color: var(--color-gold-dim);">The Founding-Era Champion</p>
+          <p style="font-family: var(--font-display); font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text-primary);">WPG — Winnipeg Wranglers</p>
+          <p style="font-size: 0.875rem; color: var(--color-text-secondary); line-height: 1.6; margin: 0;">
+            Ryan's franchise won Dynasty Bowl II, competing at the time under the founding-era "Winnipeg Wankers" identity. Their championship belongs to both names.
+          </p>
+        </div>
+
+        <div style="background-color: var(--color-surface); padding: 1.5rem;">
+          <p class="section-label" style="color: var(--color-gold-dim);">Most Identity Evolution</p>
+          <p style="font-family: var(--font-display); font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text-primary);">SAR — Sarnia SeaSnakes (née MTL)</p>
+          <p style="font-size: 0.875rem; color: var(--color-text-secondary); line-height: 1.6; margin: 0;">
+            From Montreal Generals to Sarnia SeaSnakes, this franchise carries the most identity evolution in the league — including a 2021 SCC title won under the MTL banner that belongs to SAR's franchise history.
+          </p>
+        </div>
+
+        <div style="background-color: var(--color-surface); padding: 1.5rem;">
+          <p class="section-label" style="color: var(--color-gold-dim);">The Breakthrough</p>
+          <p style="font-family: var(--font-display); font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--color-text-primary);">IQT — Iqaluit Trout</p>
+          <p style="font-size: 0.875rem; color: var(--color-text-secondary); line-height: 1.6; margin: 0;">
+            Bret's franchise made its first Dynasty Bowl appearance in 2024, falling to TOR. The franchise's ceiling is established; the second trip remains unfinished business.
+          </p>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</Layout>

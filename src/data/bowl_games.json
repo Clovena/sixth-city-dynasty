@@ -1,0 +1,65 @@
+[
+  {
+    "slug": "atom-bowl",
+    "name": "Atom Bowl",
+    "team_a": "BKB",
+    "team_b": "WPG",
+    "year_established": 2026,
+    "description": "A matchup steeped in atomic-age irony. The Bikini Bottom Stars take their name from the Bikini Atoll, site of the 1946 Operation Crossroads nuclear tests — the same event that gave the world the 'bikini' and gave pop culture its most recognizable fictional underwater metropolis. The Winnipeg Wranglers bring cold-country grit to a warm-water rivalry. The Atom Bowl references both the atoll's nuclear legacy and the elemental nature of this first-year pairing.",
+    "history": []
+  },
+  {
+    "slug": "cascade-cup",
+    "name": "Cascade Cup",
+    "team_a": "MIS",
+    "team_b": "LOW",
+    "year_established": 2026,
+    "description": "Geography and identity collide in the Cascade Cup. Mississauga and Hamilton — the Lower City — share a waterfall heritage and a second-city psychology. Both franchises exist in the shadow of larger neighbors, and both have channeled that chip-on-the-shoulder energy into competitive rosters. The Cup takes its name from the cascading falls common to their region and the cascading ambitions of two franchises still hunting their first championship.",
+    "history": []
+  },
+  {
+    "slug": "gateway-cup",
+    "name": "Gateway Cup",
+    "team_a": "TBY",
+    "team_b": "GLD",
+    "year_established": 2026,
+    "description": "Thunder Bay is the gateway to the Canadian northwest; Gold Coast is a gateway to sun, surf, and the Pacific rim. The Gateway Cup pairs two franchises from opposite ends of the geographic spectrum, united by their roles as regional representatives and their shared hunger for sustained success. TBY enters 2026 as reigning SCC champions; GLD is still searching for their first title.",
+    "history": []
+  },
+  {
+    "slug": "animation-altercation",
+    "name": "Animation Altercation",
+    "team_a": "SAR",
+    "team_b": "NNY",
+    "year_established": 2026,
+    "description": "Both franchises are rooted in animated fictional universes. Sarnia SeaSnakes carries the serpentine energy of classic animated villainy. New New York Benders take their identity directly from Futurama's 31st-century New York — home of Bender Bending Rodríguez. The name rhymes with Fox's legendary 'Animation Domination' Sunday block, which housed both franchises' spiritual ancestors. This is a rivalry of cartoons, references, and comedic menace.",
+    "history": []
+  },
+  {
+    "slug": "dominion-classic",
+    "name": "Dominion Classic",
+    "team_a": "TOR",
+    "team_b": "VAN",
+    "year_established": 2026,
+    "description": "The league's premier Canadian civic rivalry. Toronto and Vancouver — Canada's two largest cities, separated by 4,400 kilometers and a cultural fault line — meet annually in the Dominion Classic. The name invokes the historical Dominion of Canada, that vast stretch of territory that once connected two coasts under a single administrative identity. TOR is the reigning champion; VAN is the scrappy counterpuncher with a dynasty bowl appearance on their resume. This is the matchup the league was built for.",
+    "history": []
+  },
+  {
+    "slug": "atlantic-bowl",
+    "name": "Atlantic Bowl",
+    "team_a": "NFD",
+    "team_b": "PEI",
+    "year_established": 2024,
+    "description": "The Atlantic Bowl is the league's longest-running regional rivalry, matching Newfoundland and Prince Edward Island in an annual celebration of Atlantic Canadian identity. Both franchises represent provinces separated by the Cabot Strait — cold water, wind-swept coasts, and a stubborn regional pride. NFD has been a consistent SCC presence; PEI made their first Dynasty Bowl appearance in 2025 and is ascending. The Atlantic Bowl returns for another year of maritime bragging rights.",
+    "history": []
+  },
+  {
+    "slug": "blue-collar-classic",
+    "name": "Blue-Collar Classic",
+    "team_a": "IQT",
+    "team_b": "CHC",
+    "year_established": 2024,
+    "description": "Iqaluit and Choccolocco, Alabama are separated by thousands of miles but united by a working-class, lunch-pail ethos that defines both franchises. IQT grinds in the extreme north; CHC represents a small Alabama city with a proud industrial heritage and a railroad-obsessed fanbase. Both franchises have championship pedigree — CHC took Dynasty Bowl I, IQT reached the championship in 2024. The Blue-Collar Classic is a rivalry between two teams who earn everything the hard way.",
+    "history": []
+  }
+]

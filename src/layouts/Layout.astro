@@ -1,0 +1,85 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = "Official archive of the Sixth City Dynasty Fantasy Football League. Est. 2021." } = Astro.props;
+const pageTitle = title === 'SCDFL' ? title : `${title} — SCDFL`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{pageTitle}</title>
+  </head>
+  <body style="background-color: #0f0f0d; min-height: 100vh; display: flex; flex-direction: column;">
+
+    <header style="border-bottom: 1px solid var(--color-border); position: sticky; top: 0; z-index: 50; background-color: rgba(15,15,13,0.95); backdrop-filter: blur(8px);">
+      <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+        <div style="display: flex; align-items: center; justify-content: space-between; height: 60px;">
+
+          <a href="/" style="display: flex; flex-direction: column; gap: 0; color: var(--color-text-primary); text-decoration: none;">
+            <span style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; line-height: 1.1; letter-spacing: -0.01em;">Sixth City</span>
+            <span style="font-family: var(--font-body); font-size: 0.6rem; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: var(--color-gold-dim);">Dynasty Football League</span>
+          </a>
+
+          <nav>
+            <ul style="display: flex; align-items: center; gap: 0; list-style: none; margin: 0; padding: 0;">
+              <li>
+                <a href="/history"
+                   style="font-family: var(--font-body); font-size: 0.8rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-secondary); padding: 0.5rem 0.9rem; display: block; transition: color 0.15s ease;"
+                   onmouseover="this.style.color='var(--color-text-primary)'"
+                   onmouseout="this.style.color='var(--color-text-secondary)'">History</a>
+              </li>
+              <li>
+                <a href="/franchises"
+                   style="font-family: var(--font-body); font-size: 0.8rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-secondary); padding: 0.5rem 0.9rem; display: block; transition: color 0.15s ease;"
+                   onmouseover="this.style.color='var(--color-text-primary)'"
+                   onmouseout="this.style.color='var(--color-text-secondary)'">Franchises</a>
+              </li>
+              <li>
+                <a href="/bowl-games"
+                   style="font-family: var(--font-body); font-size: 0.8rem; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-secondary); padding: 0.5rem 0.9rem; display: block; transition: color 0.15s ease;"
+                   onmouseover="this.style.color='var(--color-text-primary)'"
+                   onmouseout="this.style.color='var(--color-text-secondary)'">Bowl Games</a>
+              </li>
+            </ul>
+          </nav>
+
+        </div>
+      </div>
+    </header>
+
+    <main style="flex: 1;">
+      <slot />
+    </main>
+
+    <footer style="border-top: 1px solid var(--color-border); margin-top: 6rem; padding: 2.5rem 0;">
+      <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <p style="font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; color: var(--color-text-secondary); margin: 0;">
+            Sixth City Dynasty Football League
+          </p>
+          <p style="font-family: var(--font-body); font-size: 0.75rem; color: var(--color-text-muted); margin: 0.2rem 0 0;">
+            Est. 2021 &bull; Commissioner: Zac &bull; Hosted on Sleeper
+          </p>
+        </div>
+        <nav>
+          <ul style="display: flex; gap: 1.5rem; list-style: none; margin: 0; padding: 0;">
+            <li><a href="/history" style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em;">History</a></li>
+            <li><a href="/franchises" style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em;">Franchises</a></li>
+            <li><a href="/bowl-games" style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em;">Bowl Games</a></li>
+          </ul>
+        </nav>
+      </div>
+    </footer>
+
+  </body>
+</html>

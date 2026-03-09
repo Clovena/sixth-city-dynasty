@@ -1,0 +1,131 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import franchises from '../../data/franchises.json';
+import seasons from '../../data/seasons.json';
+
+// Count championships per franchise (MTL -> SAR)
+const champCounts: Record<string, number> = {};
+for (const season of seasons) {
+  const w = season.dynasty_bowl.winner === 'MTL' ? 'SAR' : season.dynasty_bowl.winner;
+  champCounts[w] = (champCounts[w] || 0) + 1;
+}
+
+const sccFranchises = franchises.filter(f => f.conference === 'SCC');
+const hccFranchises = franchises.filter(f => f.conference === 'HCC');
+---
+
+<Layout title="Franchises" description="All 14 franchises of the Sixth City Dynasty Football League.">
+
+  <div style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 0;">
+
+    <!-- Page header -->
+    <div style="padding-bottom: 2.5rem; border-bottom: 1px solid var(--color-border);">
+      <p class="section-label">League Membership</p>
+      <h1 class="page-title">Franchises</h1>
+      <p class="page-subtitle" style="margin-top: 0.75rem;">
+        14 franchises across two conferences. Each one a distinct identity, built and owned by the people who matter.
+      </p>
+    </div>
+
+    <!-- Conference breakdown stats -->
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background-color: var(--color-border); margin-top: 2.5rem;">
+      <div style="background-color: var(--color-surface); padding: 1.5rem;">
+        <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #7eb8d8; margin-bottom: 0.25rem;">Senatorial Canadian Conference</p>
+        <p style="font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; color: var(--color-text-secondary); margin: 0;">
+          {sccFranchises.map(f => f.abbr).join(' · ')}
+        </p>
+        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.4rem;">1 Dynasty Bowl championship</p>
+      </div>
+      <div style="background-color: var(--color-surface); padding: 1.5rem;">
+        <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #d4906e; margin-bottom: 0.25rem;">House of Commons Conference</p>
+        <p style="font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; color: var(--color-text-secondary); margin: 0;">
+          {hccFranchises.map(f => f.abbr).join(' · ')}
+        </p>
+        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.4rem;">4 Dynasty Bowl championships</p>
+      </div>
+    </div>
+
+    <!-- SCC -->
+    <div style="margin-top: 3rem;">
+      <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+        <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin: 0; color: var(--color-text-primary);">Senatorial Canadian Conference</h2>
+        <span class="label-badge badge-scc">SCC</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1px; background-color: var(--color-border);">
+        {sccFranchises.map(franchise => {
+          const champs = champCounts[franchise.abbr] || 0;
+          const primaryColor = franchise.colors[0];
+          return (
+            <a href={`/franchises/${franchise.abbr}`} style="text-decoration: none; display: block;">
+              <div class="franchise-card" style={`border-left: 3px solid ${primaryColor};`}>
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 0.75rem;">
+                  <div>
+                    <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.3rem;">{franchise.abbr}</p>
+                    <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: var(--color-text-primary); margin: 0; line-height: 1.2;">{franchise.name}</h3>
+                  </div>
+                  {champs > 0 && (
+                    <div style="display: flex; gap: 2px; flex-shrink: 0; margin-left: 0.75rem; margin-top: 0.2rem;">
+                      {Array.from({ length: champs }).map(() => (
+                        <span style="color: var(--color-gold); font-size: 0.9rem;">&#9670;</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.75rem;">
+                  <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0;">{franchise.owner}</p>
+                  <div style="display: flex; gap: 4px;">
+                    {franchise.colors.map(color => (
+                      <span style={`display: inline-block; width: 12px; height: 12px; background-color: ${color}; border-radius: 50%;`}></span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+
+    <!-- HCC -->
+    <div style="margin-top: 3rem; margin-bottom: 5rem;">
+      <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+        <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin: 0; color: var(--color-text-primary);">House of Commons Conference</h2>
+        <span class="label-badge badge-hcc">HCC</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1px; background-color: var(--color-border);">
+        {hccFranchises.map(franchise => {
+          const champs = champCounts[franchise.abbr] || 0;
+          const primaryColor = franchise.colors[0];
+          return (
+            <a href={`/franchises/${franchise.abbr}`} style="text-decoration: none; display: block;">
+              <div class="franchise-card" style={`border-left: 3px solid ${primaryColor};`}>
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 0.75rem;">
+                  <div>
+                    <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.3rem;">{franchise.abbr}</p>
+                    <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: var(--color-text-primary); margin: 0; line-height: 1.2;">{franchise.name}</h3>
+                  </div>
+                  {champs > 0 && (
+                    <div style="display: flex; gap: 2px; flex-shrink: 0; margin-left: 0.75rem; margin-top: 0.2rem;">
+                      {Array.from({ length: champs }).map(() => (
+                        <span style="color: var(--color-gold); font-size: 0.9rem;">&#9670;</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.75rem;">
+                  <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0;">{franchise.owner}</p>
+                  <div style="display: flex; gap: 4px;">
+                    {franchise.colors.map(color => (
+                      <span style={`display: inline-block; width: 12px; height: 12px; background-color: ${color}; border-radius: 50%;`}></span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </a>
+          );
+        })}
+      </div>
+    </div>
+
+  </div>
+</Layout>

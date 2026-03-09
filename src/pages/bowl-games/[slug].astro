@@ -1,0 +1,170 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import bowlGames from '../../data/bowl_games.json';
+import franchises from '../../data/franchises.json';
+
+export async function getStaticPaths() {
+  return bowlGames.map(bg => ({ params: { slug: bg.slug } }));
+}
+
+const { slug } = Astro.params;
+const game = bowlGames.find(bg => bg.slug === slug);
+
+if (!game) {
+  return Astro.redirect('/bowl-games');
+}
+
+const teamA = franchises.find(f => f.abbr === game.team_a);
+const teamB = franchises.find(f => f.abbr === game.team_b);
+---
+
+<Layout
+  title={game.name}
+  description={`${game.name} — ${game.team_a} vs. ${game.team_b}. Bowl Game, Sixth City Dynasty Football League.`}
+>
+
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+
+    <!-- Header -->
+    <div style="border-bottom: 1px solid var(--color-border); padding: 3rem 0 2.5rem; margin-top: 3rem;">
+      <a href="/bowl-games" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1.25rem;">
+        &#8592; Bowl Games
+      </a>
+
+      <div style="display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+        <p class="section-label" style="margin-bottom: 0;">Bowl Game</p>
+        {game.year_established <= 2025 ? (
+          <span style="font-size: 0.72rem; color: var(--color-text-muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Est. {game.year_established}</span>
+        ) : (
+          <span style="font-size: 0.72rem; color: var(--color-gold-dim); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Inaugural 2026</span>
+        )}
+      </div>
+      <h1 class="page-title">{game.name}</h1>
+    </div>
+
+    <!-- Matchup card -->
+    <div style="margin-top: 2.5rem; background-color: var(--color-surface); border: 1px solid var(--color-border);">
+      <div style="display: grid; grid-template-columns: 1fr auto 1fr; align-items: stretch;">
+
+        <!-- Team A -->
+        <a href={`/franchises/${teamA?.abbr}`} style="text-decoration: none; padding: 2rem; display: block; border-right: 1px solid var(--color-border);" style={`border-left: 4px solid ${teamA?.colors[0]};`}>
+          <div style={`padding: 2rem; border-left: 4px solid ${teamA?.colors[0]};`}>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.4rem;">{teamA?.abbr} &bull; <span class={`label-badge badge-${teamA?.conference.toLowerCase()}`}>{teamA?.conference}</span></p>
+            <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.2;">{teamA?.name}</h2>
+            <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0;">Owner: {teamA?.owner}</p>
+            <div style="display: flex; gap: 5px; margin-top: 0.75rem;">
+              {teamA?.colors.map(c => (
+                <span style={`display: inline-block; width: 14px; height: 14px; background-color: ${c}; border-radius: 50%;`}></span>
+              ))}
+            </div>
+          </div>
+        </a>
+
+        <!-- VS divider -->
+        <div style="display: flex; align-items: center; justify-content: center; padding: 1.5rem; background-color: var(--color-surface-alt);">
+          <div style="text-align: center;">
+            <p style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--color-border-light); margin: 0; line-height: 1;">vs.</p>
+            <p style="font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0.25rem 0 0;">Annual</p>
+          </div>
+        </div>
+
+        <!-- Team B -->
+        <a href={`/franchises/${teamB?.abbr}`} style="text-decoration: none; display: block;">
+          <div style={`padding: 2rem; border-right: 4px solid ${teamB?.colors[0]};`}>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.4rem;">{teamB?.abbr} &bull; <span class={`label-badge badge-${teamB?.conference.toLowerCase()}`}>{teamB?.conference}</span></p>
+            <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.2;">{teamB?.name}</h2>
+            <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0;">Owner: {teamB?.owner}</p>
+            <div style="display: flex; gap: 5px; margin-top: 0.75rem;">
+              {teamB?.colors.map(c => (
+                <span style={`display: inline-block; width: 14px; height: 14px; background-color: ${c}; border-radius: 50%;`}></span>
+              ))}
+            </div>
+          </div>
+        </a>
+
+      </div>
+    </div>
+
+    <!-- Description -->
+    <div style="margin-top: 2.5rem; display: grid; grid-template-columns: 1fr 280px; gap: 2.5rem; align-items: start;">
+      <div>
+        <h2 style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-primary);">About This Matchup</h2>
+        <p style="font-size: 0.95rem; color: var(--color-text-secondary); line-height: 1.75; margin: 0;">
+          {game.description}
+        </p>
+
+        <!-- Historical results -->
+        <div style="margin-top: 2.5rem;">
+          <h2 style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-primary);">Historical Results</h2>
+          {game.history.length === 0 ? (
+            <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem; text-align: center;">
+              <p style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0;">
+                {game.year_established === 2026
+                  ? 'This Bowl Game debuts in 2026. No historical results yet.'
+                  : 'Historical results will be populated in a future update.'}
+              </p>
+            </div>
+          ) : (
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Season</th>
+                  <th>Winner</th>
+                  <th>Loser</th>
+                </tr>
+              </thead>
+              <tbody>
+                {game.history.map((result: any) => (
+                  <tr>
+                    <td style="font-weight: 600;">{result.year}</td>
+                    <td class="winner-cell">{result.winner}</td>
+                    <td style="color: var(--color-text-muted);">{result.loser}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      <!-- Sidebar info -->
+      <div style="display: flex; flex-direction: column; gap: 1rem;">
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
+          <p class="section-label">Game Details</p>
+          <dl style="display: flex; flex-direction: column; gap: 0.6rem;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Established</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{game.year_established}</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--color-border); padding-top: 0.6rem;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Type</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">Bowl Game</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--color-border); padding-top: 0.6rem;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Format</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">Annual</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
+          <p class="section-label">Franchises</p>
+          <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+            <a href={`/franchises/${teamA?.abbr}`} style="text-decoration: none; display: flex; align-items: center; justify-content: space-between; padding: 0.6rem; background-color: var(--color-surface-alt);">
+              <span style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary);">{teamA?.name}</span>
+              <span style="font-size: 0.72rem; font-weight: 700; color: var(--color-text-muted);">{teamA?.abbr}</span>
+            </a>
+            <a href={`/franchises/${teamB?.abbr}`} style="text-decoration: none; display: flex; align-items: center; justify-content: space-between; padding: 0.6rem; background-color: var(--color-surface-alt);">
+              <span style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary);">{teamB?.name}</span>
+              <span style="font-size: 0.72rem; font-weight: 700; color: var(--color-text-muted);">{teamB?.abbr}</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="height: 5rem;"></div>
+
+</Layout>

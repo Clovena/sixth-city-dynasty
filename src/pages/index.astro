@@ -1,17 +1,163 @@
 ---
+import Layout from '../layouts/Layout.astro';
+import seasons from '../data/seasons.json';
+import franchises from '../data/franchises.json';
 
+// Last 3 dynasty bowls, most recent first
+const recentBowls = seasons.slice().reverse().slice(0, 3);
+
+// Unique champions
+const champSet = new Set<string>();
+for (const s of seasons) {
+  const key = s.dynasty_bowl.winner === 'MTL' ? 'SAR' : s.dynasty_bowl.winner;
+  champSet.add(key);
+}
+const totalChampions = champSet.size;
+
+function getFranchise(abbr: string) {
+  if (abbr === 'MTL') return franchises.find(f => f.abbr === 'SAR');
+  return franchises.find(f => f.abbr === abbr);
+}
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
-</html>
+<Layout title="SCDFL" description="Sixth City Dynasty Fantasy Football League. 14 franchises, 5 seasons, 4 champions. Est. 2021.">
+
+  <!-- Hero -->
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+    <div style="padding: 5rem 0 4rem; border-bottom: 1px solid var(--color-border);">
+
+      <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: var(--color-gold-dim); margin-bottom: 1.25rem;">Est. 2021 &bull; Cleveland, Ohio</p>
+
+      <h1 style="font-family: var(--font-display); font-size: clamp(2.5rem, 7vw, 5rem); font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; color: var(--color-text-primary); margin: 0 0 1.5rem; max-width: 14ch;">
+        Sixth City Dynasty Football League
+      </h1>
+
+      <p style="font-size: 1.05rem; color: var(--color-text-secondary); line-height: 1.65; max-width: 58ch; margin: 0 0 2.5rem;">
+        A 14-team dynasty fantasy football league built by friends who attended college in Cleveland, Ohio. Named for the city's historic "Sixth City" designation. Entering our sixth season.
+      </p>
+
+      <!-- Quick stats row -->
+      <div style="display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--color-border); width: fit-content;">
+        {[
+          { label: 'Seasons Completed', value: '5' },
+          { label: 'Franchises', value: '14' },
+          { label: 'Champions', value: String(totalChampions) },
+          { label: 'Dynasty Bowls', value: String(seasons.length) },
+        ].map((stat, i) => (
+          <div style={`padding: 1.1rem 1.75rem; ${i !== 0 ? 'border-left: 1px solid var(--color-border);' : ''} background-color: var(--color-surface);`}>
+            <p style="font-family: var(--font-display); font-size: 2rem; font-weight: 700; color: var(--color-text-primary); line-height: 1; margin: 0;">{stat.value}</p>
+            <p style="font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); margin: 0.3rem 0 0;">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      <!-- Season status -->
+      <div style="margin-top: 2rem; display: inline-flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; background-color: var(--color-surface); border: 1px solid var(--color-border);">
+        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--color-gold); opacity: 0.6;"></span>
+        <span style="font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary); letter-spacing: 0.04em;">Season 6 begins fall 2026</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Recent Dynasty Bowls -->
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+    <div style="margin-top: 4rem;">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 1.75rem; flex-wrap: wrap; gap: 0.75rem;">
+        <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin: 0; color: var(--color-text-primary);">Recent Dynasty Bowls</h2>
+        <a href="/history" style="font-size: 0.8rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold-dim);">Full History &#8594;</a>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 1px; background-color: var(--color-border);">
+        {recentBowls.map(season => {
+          const winner = getFranchise(season.dynasty_bowl.winner);
+          const loser = getFranchise(season.dynasty_bowl.loser);
+          return (
+            <div style="background-color: var(--color-surface); padding: 1.5rem 1.75rem; display: grid; grid-template-columns: 80px 1fr 1fr; gap: 2rem; align-items: center;">
+
+              <div>
+                <p style="font-family: var(--font-display); font-size: 1.75rem; font-weight: 700; color: var(--color-gold); line-height: 1; margin: 0;">{season.year}</p>
+                <p style="font-size: 0.7rem; color: var(--color-text-muted); margin: 0.2rem 0 0;">{season.dynasty_bowl.label}</p>
+              </div>
+
+              <div style={`border-left: 3px solid ${winner?.colors[0]}; padding-left: 1.25rem;`}>
+                <p style="font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-gold-dim); margin: 0 0 0.2rem;">Champion</p>
+                <a href={`/franchises/${winner?.abbr}`} style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 700; color: var(--color-gold); text-decoration: none; line-height: 1.2; display: block;">
+                  {winner?.name}
+                </a>
+                <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0.2rem 0 0;">{winner?.abbr} &bull; {winner?.owner}</p>
+              </div>
+
+              <div style="padding-left: 1.25rem;">
+                <p style="font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Runner-Up</p>
+                <a href={`/franchises/${loser?.abbr}`} style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-text-secondary); text-decoration: none; line-height: 1.2; display: block;">
+                  {loser?.name}
+                </a>
+                <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0.2rem 0 0;">{loser?.abbr} &bull; {loser?.owner}</p>
+              </div>
+
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+
+  <!-- Section nav -->
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+    <div style="margin-top: 4rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background-color: var(--color-border); margin-bottom: 0;">
+
+      <a href="/history" style="text-decoration: none; display: block; background-color: var(--color-surface); padding: 2rem; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='var(--color-surface-alt)'" onmouseout="this.style.backgroundColor='var(--color-surface)'">
+        <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-gold-dim); margin: 0 0 0.5rem;">Archive</p>
+        <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.25;">History &amp; Records</h3>
+        <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 1rem;">Season results, the championship roll of honor, narrative recaps, and the full statistical record.</p>
+        <span style="font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold);">View History &#8594;</span>
+      </a>
+
+      <a href="/franchises" style="text-decoration: none; display: block; background-color: var(--color-surface); padding: 2rem; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='var(--color-surface-alt)'" onmouseout="this.style.backgroundColor='var(--color-surface)'">
+        <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-gold-dim); margin: 0 0 0.5rem;">Membership</p>
+        <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.25;">Franchises</h3>
+        <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 1rem;">All 14 franchises across the SCC and HCC. Ownership, history, colors, and individual franchise records.</p>
+        <span style="font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold);">View Franchises &#8594;</span>
+      </a>
+
+      <a href="/bowl-games" style="text-decoration: none; display: block; background-color: var(--color-surface); padding: 2rem; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='var(--color-surface-alt)'" onmouseout="this.style.backgroundColor='var(--color-surface)'">
+        <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-gold-dim); margin: 0 0 0.5rem;">Traditions</p>
+        <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.25;">Bowl Games</h3>
+        <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 1rem;">The 2026 bowl game slate, Rivalry Week, and the institutional pairings that define the regular season.</p>
+        <span style="font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold);">View Bowl Games &#8594;</span>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- About section -->
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+    <div style="margin-top: 4rem; padding: 3rem; background-color: var(--color-surface); border: 1px solid var(--color-border);">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: start;">
+        <div>
+          <p class="section-label">About the League</p>
+          <p style="font-size: 0.95rem; color: var(--color-text-secondary); line-height: 1.75; margin: 0;">
+            The Sixth City Dynasty Football League was founded in 2021 by a group of friends with roots in Cleveland, Ohio. The name pays tribute to Cleveland's historic nickname — "The Sixth City" — a designation earned in the early 20th century when Cleveland was among America's largest cities. The league runs on <strong style="color: var(--color-text-primary);">Sleeper</strong>, competes in two conferences (SCC and HCC), and crowns an annual champion in the Dynasty Bowl.
+          </p>
+        </div>
+        <div>
+          <p class="section-label">Conference Structure</p>
+          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            <div style="padding: 1rem; background-color: rgba(74,127,165,0.07); border: 1px solid rgba(74,127,165,0.2);">
+              <p style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7eb8d8; margin: 0 0 0.3rem;">Senatorial Canadian Conference (SCC)</p>
+              <p style="font-size: 0.82rem; color: var(--color-text-secondary); margin: 0;">TOR, NFD, TBY, NNY, SAR, VAN, GLD &mdash; 1 Dynasty Bowl title</p>
+            </div>
+            <div style="padding: 1rem; background-color: rgba(165,99,74,0.07); border: 1px solid rgba(165,99,74,0.2);">
+              <p style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #d4906e; margin: 0 0 0.3rem;">House of Commons Conference (HCC)</p>
+              <p style="font-size: 0.82rem; color: var(--color-text-secondary); margin: 0;">BKB, IQT, CHC, MIS, LOW, WPG, PEI &mdash; 4 Dynasty Bowl titles</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height: 6rem;"></div>
+
+</Layout>

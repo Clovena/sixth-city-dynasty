@@ -1,0 +1,179 @@
+[
+  {
+    "id": 1,
+    "abbr": "TOR",
+    "name": "Toronto Hogs",
+    "owner": "Zac",
+    "conference": "SCC",
+    "colors": ["#6B21A8", "#DC2626"],
+    "founded": 2021,
+    "rebrands": [],
+    "sleeper_id": "1"
+  },
+  {
+    "id": 2,
+    "abbr": "BKB",
+    "name": "Bikini Bottom Stars",
+    "owner": "Jacob",
+    "conference": "HCC",
+    "colors": ["#7DD3FC", "#84CC16", "#F9A8D4"],
+    "founded": 2021,
+    "rebrands": [],
+    "sleeper_id": "2"
+  },
+  {
+    "id": 3,
+    "abbr": "NFD",
+    "name": "Newfoundland Blowers",
+    "owner": "Brendan",
+    "conference": "SCC",
+    "colors": ["#7F1D1D", "#1E3A5F"],
+    "founded": 2021,
+    "rebrands": [],
+    "sleeper_id": "3"
+  },
+  {
+    "id": 4,
+    "abbr": "TBY",
+    "name": "Thunder Bay Mustangs",
+    "owner": "Steve",
+    "conference": "SCC",
+    "colors": ["#60A5FA", "#86EFAC"],
+    "founded": 2021,
+    "rebrands": [
+      { "year": 2021, "name": "Thunder Bay Sunshine" }
+    ],
+    "sleeper_id": "4"
+  },
+  {
+    "id": 5,
+    "abbr": "WPG",
+    "name": "Winnipeg Wranglers",
+    "owner": "Ryan",
+    "conference": "HCC",
+    "colors": ["#1D4ED8", "#FDE047"],
+    "founded": 2021,
+    "rebrands": [
+      { "year": 2021, "name": "Winnipeg Wankers" }
+    ],
+    "sleeper_id": "5"
+  },
+  {
+    "id": 6,
+    "abbr": "CHC",
+    "name": "Choccolocco Railfans",
+    "owner": "Sean",
+    "conference": "HCC",
+    "colors": ["#78350F", "#FDE047"],
+    "founded": 2021,
+    "rebrands": [],
+    "sleeper_id": "6"
+  },
+  {
+    "id": 7,
+    "abbr": "PEI",
+    "name": "Prince Edward Islanders",
+    "owner": "Jared",
+    "conference": "HCC",
+    "colors": ["#0D9488", "#FB923C"],
+    "founded": 2021,
+    "rebrands": [
+      { "year": 2021, "name": "Pokemon Omega Judge Judy" },
+      { "year": 2022, "name": "Pokemon Omega Judge Judy" },
+      { "year": 2023, "name": "Pokemon Omega Judge Judy" },
+      { "year": 2024, "name": "Pokemon Omega Judge Judy" }
+    ],
+    "sleeper_id": "7"
+  },
+  {
+    "id": 8,
+    "abbr": "IQT",
+    "name": "Iqaluit Trout",
+    "owner": "Bret",
+    "conference": "HCC",
+    "colors": ["#C026D3", "#7DD3FC"],
+    "founded": 2021,
+    "rebrands": [],
+    "sleeper_id": "8"
+  },
+  {
+    "id": 9,
+    "abbr": "NNY",
+    "name": "New New York Benders",
+    "owner": "Josh",
+    "conference": "SCC",
+    "colors": ["#6B7F9E", "#9CA3AF"],
+    "founded": 2021,
+    "rebrands": [
+      { "year": 2021, "name": "Saskatoon Squirrels" },
+      { "year": 2022, "name": "Saskatoon Squirrels" },
+      { "year": 2023, "name": "Saskatoon Squirrels" }
+    ],
+    "sleeper_id": "9"
+  },
+  {
+    "id": 10,
+    "abbr": "LOW",
+    "name": "Lower City Lasercats",
+    "owner": "Nathan",
+    "conference": "HCC",
+    "colors": ["#DC2626", "#F97316"],
+    "founded": 2021,
+    "rebrands": [
+      { "year": 2021, "name": "Calgary Cocks" },
+      { "year": 2022, "name": "Calgary Cocks" },
+      { "year": 2023, "name": "Calgary Cocks" }
+    ],
+    "sleeper_id": "10"
+  },
+  {
+    "id": 11,
+    "abbr": "SAR",
+    "name": "Sarnia SeaSnakes",
+    "owner": "Pat",
+    "conference": "SCC",
+    "colors": ["#7C3AED", "#166534"],
+    "founded": 2021,
+    "rebrands": [
+      { "year": 2021, "name": "Montreal Generals" },
+      { "year": 2022, "name": "Montreal Generals" }
+    ],
+    "predecessor_abbr": "MTL",
+    "sleeper_id": "11"
+  },
+  {
+    "id": 12,
+    "abbr": "MIS",
+    "name": "Mississauga Mastodons",
+    "owner": "Gibby",
+    "conference": "HCC",
+    "colors": ["#BAE6FD", "#78350F"],
+    "founded": 2021,
+    "rebrands": [],
+    "sleeper_id": "12"
+  },
+  {
+    "id": 13,
+    "abbr": "VAN",
+    "name": "Vancouver Mounties",
+    "owner": "Connor",
+    "conference": "SCC",
+    "colors": ["#1E3A5F", "#DC2626"],
+    "founded": 2021,
+    "rebrands": [],
+    "sleeper_id": "13"
+  },
+  {
+    "id": 14,
+    "abbr": "GLD",
+    "name": "Gold Coast Sharks",
+    "owner": "Logan",
+    "conference": "SCC",
+    "colors": ["#0D9488", "#D4B483", "#F9A8D4"],
+    "founded": 2021,
+    "rebrands": [
+      { "year": 2022, "name": "Unsolicited Dak Pics" }
+    ],
+    "sleeper_id": "14"
+  }
+]

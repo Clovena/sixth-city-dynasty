@@ -1,0 +1,15 @@
+[
+  {
+    "year": 2026,
+    "week": "Rivalry Week",
+    "pairings": [
+      { "team_a": "TOR", "team_b": "BKB", "notes": "The league's defining cross-conference rivalry — reigning champion vs. two-time champion" },
+      { "team_a": "VAN", "team_b": "WPG", "notes": "West Coast vs. Prairies" },
+      { "team_a": "CHC", "team_b": "SAR", "notes": "Dynasty Bowl I champion vs. the franchise with the most identity evolution" },
+      { "team_a": "NFD", "team_b": "PEI", "notes": "Atlantic Canada matchup" },
+      { "team_a": "TBY", "team_b": "MIS", "notes": "SCC champ vs. HCC midfield" },
+      { "team_a": "IQT", "team_b": "LOW", "notes": "HCC rivalry" },
+      { "team_a": "NNY", "team_b": "GLD", "notes": "SCC rivalry" }
+    ]
+  }
+]
