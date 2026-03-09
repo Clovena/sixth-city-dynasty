@@ -83,6 +83,7 @@
       { "year": 2023, "name": "Pokemon Omega Judge Judy" },
       { "year": 2024, "name": "Pokemon Omega Judge Judy" }
     ],
+    "predecessor_abbr": "PKO",
     "sleeper_id": "7"
   },
   {
@@ -109,6 +110,7 @@
       { "year": 2022, "name": "Saskatoon Squirrels" },
       { "year": 2023, "name": "Saskatoon Squirrels" }
     ],
+    "predecessor_abbr": "SSK",
     "sleeper_id": "9"
   },
   {
@@ -124,6 +126,7 @@
       { "year": 2022, "name": "Calgary Cocks" },
       { "year": 2023, "name": "Calgary Cocks" }
     ],
+    "predecessor_abbr": "CGY",
     "sleeper_id": "10"
   },
   {
@@ -174,6 +177,7 @@
     "rebrands": [
       { "year": 2022, "name": "Unsolicited Dak Pics" }
     ],
+    "predecessor_abbr": "DAK",
     "sleeper_id": "14"
   }
 ]
