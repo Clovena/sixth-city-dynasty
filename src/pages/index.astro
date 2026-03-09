@@ -14,6 +14,11 @@ for (const s of seasons) {
 }
 const totalChampions = champSet.size;
 
+const sccFranchises = franchises.filter(f => f.conference === 'SCC')
+                                .sort((a, b) => a.abbr > b.abbr ? 1 : -1);
+const hccFranchises = franchises.filter(f => f.conference === 'HCC')
+                                .sort((a, b) => a.abbr > b.abbr ? 1 : -1);
+
 function getFranchise(abbr: string) {
   if (abbr === 'MTL') return franchises.find(f => f.abbr === 'SAR');
   return franchises.find(f => f.abbr === abbr);
@@ -153,34 +158,6 @@ function getFranchise(abbr: string) {
         <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 1rem;">The 2026 bowl game slate, Rivalry Week, and the institutional pairings that define the regular season.</p>
         <span style="font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold);">View Bowl Games &#8594;</span>
       </a>
-
-    </div>
-  </div>
-
-  <!-- About section -->
-  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
-    <div style="margin-top: 4rem; padding: 3rem; background-color: var(--color-surface); border: 1px solid var(--color-border);">
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: start;">
-        <div>
-          <p class="section-label">About the League</p>
-          <p style="font-size: 0.95rem; color: var(--color-text-secondary); line-height: 1.75; margin: 0;">
-            The Sixth City Dynasty Football League was founded in 2021 by a group of friends with roots in Cleveland, Ohio. The name pays tribute to Cleveland's historic nickname — "The Sixth City" — a designation earned in the early 20th century when Cleveland was among America's largest cities. The league runs on <strong style="color: var(--color-text-primary);">Sleeper</strong>, competes in two conferences (SCC and HCC), and crowns an annual champion in the Dynasty Bowl.
-          </p>
-        </div>
-        <div>
-          <p class="section-label">Conference Structure</p>
-          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
-            <div style="padding: 1rem; background-color: rgba(74,127,165,0.07); border: 1px solid rgba(74,127,165,0.2);">
-              <p style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7eb8d8; margin: 0 0 0.3rem;">Senatorial Canadian Conference (SCC)</p>
-              <p style="font-size: 0.82rem; color: var(--color-text-secondary); margin: 0;">TOR, NFD, TBY, NNY, SAR, VAN, GLD &mdash; 1 Dynasty Bowl title</p>
-            </div>
-            <div style="padding: 1rem; background-color: rgba(165,99,74,0.07); border: 1px solid rgba(165,99,74,0.2);">
-              <p style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #d4906e; margin: 0 0 0.3rem;">House of Commons Conference (HCC)</p>
-              <p style="font-size: 0.82rem; color: var(--color-text-secondary); margin: 0;">BKB, IQT, CHC, MIS, LOW, WPG, PEI &mdash; 4 Dynasty Bowl titles</p>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
