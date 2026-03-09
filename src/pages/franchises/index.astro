@@ -24,8 +24,10 @@ for (const f of franchises) {
   }
 }
 
-const sccFranchises = franchises.filter(f => f.conference === 'SCC');
-const hccFranchises = franchises.filter(f => f.conference === 'HCC');
+const sccFranchises = franchises.filter(f => f.conference === 'SCC')
+                                .sort((a, b) => a.abbr > b.abbr ? 1 : -1);
+const hccFranchises = franchises.filter(f => f.conference === 'HCC')
+                                .sort((a, b) => a.abbr > b.abbr ? 1 : -1);
 ---
 
 <Layout title="Franchises" description="All 14 franchises of the Sixth City Dynasty Football League.">
