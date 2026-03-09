@@ -47,3 +47,62 @@ The site deploys automatically to Netlify on push to the main branch. Build conf
 - Bowl games: `src/data/bowl_games.json`
 - Rivalries: `src/data/rivalries.json`
 - Per-franchise notes: `src/content/franchises/[abbr].md`
+
+---
+
+## Architecture
+
+### How the site is built
+
+Astro is a static site generator — at build time (`npm run build`), it reads all the data and templates, renders every page to plain HTML, and drops it in `dist/`. The dev server (`npm run dev`) does this on the fly so changes show instantly. There's no server, no database — just files.
+
+### The data layer (`src/data/`)
+
+Everything flows from four JSON files. These are the single source of truth:
+
+| File | What it drives |
+|---|---|
+| `franchises.json` | Every franchise page, all index cards, name/color/owner lookups sitewide |
+| `seasons.json` | History page table, roll of honor, dynasty bowl results on home page |
+| `bowl_games.json` | Bowl games index, individual bowl game pages, bowl affiliations on franchise pages |
+| `rivalries.json` | Rivalry Week section (currently placeholder data) |
+
+When a page needs franchise info, it imports the JSON and does a `.find()` or `.filter()` in JavaScript at build time. Nothing is fetched at runtime.
+
+### Page → file map
+
+```
+URL                          File
+/                            src/pages/index.astro
+/history                     src/pages/history.astro
+/franchises                  src/pages/franchises/index.astro
+/franchises/TOR              src/pages/franchises/[abbr].astro  ← one file generates 14 pages
+/bowl-games                  src/pages/bowl-games/index.astro
+/bowl-games/atom-bowl        src/pages/bowl-games/[slug].astro  ← one file generates 7 pages
+```
+
+The files in `[brackets]` are dynamic routes. The `getStaticPaths()` function at the top of each tells Astro "build one page per franchise/bowl game." At build time these become 14 and 7 separate HTML files respectively.
+
+### Shared infrastructure
+
+**`src/layouts/Layout.astro`** — every page wraps itself in this. It provides the `<html>` shell, the sticky header with nav, and the footer. Pages just fill the `<slot />` in the middle.
+
+**`src/styles/global.css`** — imported by the Layout, so it applies everywhere. The `@theme` block at the top defines all the CSS custom properties (`--color-gold`, `--font-display`, etc.) that are referenced throughout as `var(--color-gold)`. The `@layer components` block defines reusable class names like `.franchise-card`, `.data-table`, `.label-badge`.
+
+### Franchise markdown notes
+
+`src/content/franchises/tor.md` (one per franchise, lowercase filenames) — these are loaded on individual franchise pages via Astro's content collection API (`getEntry('franchises', abbr.toLowerCase())`). They render as the "Franchise Notes" section. Everything else on the franchise page comes from JSON; this is the only part that's Markdown.
+
+`src/content.config.ts` — tells Astro that `src/content/franchises/` is a content collection so it can index and serve those files.
+
+### Team logos
+
+PNGs go in `public/images/logos/` named by abbreviation (`TOR.png`, `BKB.png`, etc.). The `public/` folder is served as-is — `public/images/logos/TOR.png` becomes `/images/logos/TOR.png` in the browser. Every `<img>` tag constructs its `src` as `/images/logos/${franchise.abbr}.png`. All logo images use `onerror="this.style.display='none'"` so a missing file is invisible rather than broken.
+
+### Tracing a bug
+
+If something looks wrong on a page, the path is:
+
+1. Identify the URL → find the corresponding file in the table above
+2. Check if the data feeding it looks right in the relevant JSON file
+3. Look for the specific HTML structure in the `.astro` file — all styling is inline `style=""` attributes, so what you see in devtools maps directly to what's in the file
