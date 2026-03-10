@@ -3,6 +3,7 @@ import Layout from '../../layouts/Layout.astro';
 import franchises from '../../data/franchises.json';
 import seasons from '../../data/seasons.json';
 import bowlGames from '../../data/bowl_games.json';
+import allResults from '../../data/results.json';
 import { getEntry, render } from 'astro:content';
 
 export async function getStaticPaths() {
@@ -58,19 +59,9 @@ function getOpponentFranchise(oppAbbr: string) {
   return franchises.find(f => f.abbr === oppAbbr);
 }
 
-// Seasonal record (placeholder for now - will be populated in v2 with Sleeper API)
-const seasonRows = seasons.map(s => {
-  const isConfChamp = allAbbrs.includes(
-    franchise.conference === 'SCC' ? s.scc_champion : s.hcc_champion
-  );
-  const bowlWin = allAbbrs.includes(s.dynasty_bowl.winner);
-  const bowlLoss = allAbbrs.includes(s.dynasty_bowl.loser);
-  let playoffResult = '—';
-  if (bowlWin) playoffResult = `Won ${s.dynasty_bowl.label}`;
-  else if (bowlLoss) playoffResult = `Runner-Up, ${s.dynasty_bowl.label}`;
-  else if (isConfChamp) playoffResult = `${franchise.conference} Champion`;
-  return { year: s.year, isConfChamp, playoffResult };
-});
+// Seasonal record from results.json
+const franchiseResults: Array<{year: number; wins: number; losses: number; points_for: number; points_against: number; playoff: boolean; finish: string}> =
+  (allResults as Record<string, any[]>)[abbr] ?? [];
 
 // Rebrand history: build timeline label for current season name
 const hasRebrands = franchise.rebrands && franchise.rebrands.length > 0;
@@ -225,22 +216,34 @@ const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
                   <th>Season</th>
                   <th>W</th>
                   <th>L</th>
-                  <th>Finish</th>
-                  <th>Playoff Result</th>
+                  <th style="text-align: right;">PF</th>
+                  <th style="text-align: right;">PA</th>
+                  <th>Result</th>
                 </tr>
               </thead>
               <tbody>
-                {seasonRows.map(row => (
+                {franchiseResults.map(row => {
+                  const isChamp = row.finish === 'Champion';
+                  const isRunnerUp = row.finish === 'Runner-up';
+                  const isPlayoff = row.playoff && !isChamp && !isRunnerUp;
+                  const resultStyle = isChamp
+                    ? 'color: var(--color-gold); font-weight: 600;'
+                    : isRunnerUp
+                    ? 'color: var(--color-text-secondary); font-weight: 600;'
+                    : isPlayoff
+                    ? 'color: var(--color-text-secondary);'
+                    : 'color: var(--color-text-muted);';
+                  return (
                   <tr>
                     <td style="font-weight: 600;">{row.year}</td>
-                    <td style="color: var(--color-text-muted);">—</td>
-                    <td style="color: var(--color-text-muted);">—</td>
-                    <td style="color: var(--color-text-muted);">—</td>
-                    <td style={row.playoffResult.includes('Won') ? 'color: var(--color-gold); font-weight: 600;' : row.playoffResult === '—' ? 'color: var(--color-text-muted);' : 'color: var(--color-text-secondary);'}>
-                      {row.playoffResult}
-                    </td>
+                    <td>{row.wins}</td>
+                    <td>{row.losses}</td>
+                    <td style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_for.toFixed(2)}</td>
+                    <td style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_against.toFixed(2)}</td>
+                    <td style={resultStyle}>{row.finish}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
