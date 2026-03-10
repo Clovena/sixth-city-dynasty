@@ -225,6 +225,7 @@ const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
                   <th>Season</th>
                   <th>W</th>
                   <th>L</th>
+                  <th>Finish</th>
                   <th>Playoff Result</th>
                 </tr>
               </thead>
@@ -232,6 +233,7 @@ const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
                 {seasonRows.map(row => (
                   <tr>
                     <td style="font-weight: 600;">{row.year}</td>
+                    <td style="color: var(--color-text-muted);">—</td>
                     <td style="color: var(--color-text-muted);">—</td>
                     <td style="color: var(--color-text-muted);">—</td>
                     <td style={row.playoffResult.includes('Won') ? 'color: var(--color-gold); font-weight: 600;' : row.playoffResult === '—' ? 'color: var(--color-text-muted);' : 'color: var(--color-text-secondary);'}>
@@ -242,7 +244,6 @@ const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
               </tbody>
             </table>
           </div>
-          <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.6rem;">Win-loss records will be populated in a future update.</p>
         </div>
       </div>
 
