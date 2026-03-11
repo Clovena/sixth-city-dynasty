@@ -1,15 +1,51 @@
 [
   {
-    "year": 2026,
-    "week": "Rivalry Week",
-    "pairings": [
-      { "team_a": "TOR", "team_b": "BKB", "notes": "The league's defining cross-conference rivalry — reigning champion vs. two-time champion" },
-      { "team_a": "VAN", "team_b": "WPG", "notes": "West Coast vs. Prairies" },
-      { "team_a": "CHC", "team_b": "SAR", "notes": "Dynasty Bowl I champion vs. the franchise with the most identity evolution" },
-      { "team_a": "NFD", "team_b": "PEI", "notes": "Atlantic Canada matchup" },
-      { "team_a": "TBY", "team_b": "MIS", "notes": "SCC champ vs. HCC midfield" },
-      { "team_a": "IQT", "team_b": "LOW", "notes": "HCC rivalry" },
-      { "team_a": "NNY", "team_b": "GLD", "notes": "SCC rivalry" }
-    ]
+    "slug": "iqt-pei",
+    "name": "Trout vs Islanders",
+    "team_a": "IQT",
+    "team_b": "PEI",
+    "description": "The crown jewel of Rivalry Week: the league philanthropists and the men who want them destroyed."
+  },
+  {
+    "slug": "van-wpg",
+    "name": "Mounties vs Wranglers",
+    "team_a": "VAN",
+    "team_b": "WPG",
+    "description": "No love lost between western Canada rivals, and no imminent signs of making up."
+  },
+  {
+    "slug": "chc-tor",
+    "name": "Railfans vs Hogs",
+    "team_a": "CHC",
+    "team_b": "TOR",
+    "description": "Ownership shared a graduate school campus, but never shared so much as a lunch."
+  },
+  {
+    "slug": "bkb-low",
+    "name": "Stars vs Lasercats",
+    "team_a": "BKB",
+    "team_b": "LOW",
+    "description": "The Lasercats' chance to prove they're more than just Bikini Bottom's farm system."
+  },
+  {
+    "slug": "mis-nny",
+    "name": "Mastodons vs Benders",
+    "team_a": "MIS",
+    "team_b": "NNY",
+    "description": "Between two tortured franchises, it's a war of attrition — and insulin."
+  },
+  {
+    "slug": "nfd-tby",
+    "name": "Blowers vs Mustangs",
+    "team_a": "NFD",
+    "team_b": "TBY",
+    "description": "Two SCC welterweights who are desparate for glory."
+  },
+  {
+    "slug": "gld-sar",
+    "name": "Sharks vs SeaSnakes",
+    "team_a": "GLD",
+    "team_b": "SAR",
+    "description": "Rivals on the gridiron, both in the AFC North and the SCC."
   }
 ]
