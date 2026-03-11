@@ -178,6 +178,7 @@
   .page-subheader {
     font-family: var(--font-body);
     font-size: 1rem;
+    text-align: justify;
     color: var(--color-text-secondary);
     line-height: 1.65;
   }
