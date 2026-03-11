@@ -15,12 +15,34 @@
   --color-text-secondary: #a09a8c;
   --color-text-muted: #6b6660;
 
-  --color-gold: #f2b22e;
   --color-gold-light: #ffca5c;
   --color-gold-dim: #b47e0f;
 
-  --color-scc: #4a7fa5;
-  --color-hcc: #e16a3b;
+  /* ROYGBIV Neon Noir Color Variables */
+  --color-red: #f22e3d;
+  --color-red-surface: #f22e3d33; /* alpha of 33 = 20% opacity*/
+  --color-red-glow: #f22e3d66; /* alpha of 66 = 40% opacity*/
+
+  --color-hcc: #e67e22;
+  --color-hcc-surface: #e67e2233;
+  --color-hcc-glow: #e67e2266;
+
+  --color-gold: #f2b22e;
+  --color-gold-surface: #f2b22e33;
+  --color-gold-glow: #f2b22e66;
+
+  --color-green: #27ae60;
+  --color-green-surface: #27ae6033;
+  --color-green-glow: #27ae6066;
+
+  --color-scc: #7eb8d8;
+  --color-scc-surface: #7eb8d833; 
+  --color-scc-glow: #7eb8d866;
+
+  --color-white: #e8e8f0;
+  --color-white-surface: #e8e8f033;
+  --color-white-glow: #e8e8f066;
+
 }
 
 @layer base {
