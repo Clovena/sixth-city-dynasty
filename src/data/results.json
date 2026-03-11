@@ -13,8 +13,8 @@
       "year": 2022,
       "wins": 3,
       "losses": 11,
-      "points_for": 2500.10,
-      "points_against": 2710.10,
+      "points_for": 2500.1,
+      "points_against": 2710.1,
       "playoff": false,
       "finish": "13th place"
     },
@@ -31,8 +31,8 @@
       "year": 2024,
       "wins": 9,
       "losses": 5,
-      "points_for": 2834.80,
-      "points_against": 2697.50,
+      "points_for": 2834.8,
+      "points_against": 2697.5,
       "playoff": true,
       "finish": "Champion"
     },
@@ -44,6 +44,15 @@
       "points_against": 2531.56,
       "playoff": false,
       "finish": "8th place"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "BKB": [
@@ -78,7 +87,7 @@
       "year": 2024,
       "wins": 11,
       "losses": 3,
-      "points_for": 3289.20,
+      "points_for": 3289.2,
       "points_against": 2618.68,
       "playoff": true,
       "finish": "First round"
@@ -91,6 +100,15 @@
       "points_against": 2726.56,
       "playoff": true,
       "finish": "Champion"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "NFD": [
@@ -107,7 +125,7 @@
       "year": 2022,
       "wins": 7,
       "losses": 7,
-      "points_for": 2726.90,
+      "points_for": 2726.9,
       "points_against": 2711.14,
       "playoff": true,
       "finish": "First round"
@@ -134,10 +152,19 @@
       "year": 2025,
       "wins": 7,
       "losses": 7,
-      "points_for": 2508.80,
+      "points_for": 2508.8,
       "points_against": 2506.66,
       "playoff": true,
       "finish": "Semifinals"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "TBY": [
@@ -145,7 +172,7 @@
       "year": 2021,
       "wins": 8,
       "losses": 6,
-      "points_for": 1928.80,
+      "points_for": 1928.8,
       "points_against": 1871.82,
       "playoff": true,
       "finish": "First round"
@@ -173,7 +200,7 @@
       "wins": 8,
       "losses": 6,
       "points_for": 2552.22,
-      "points_against": 2526.60,
+      "points_against": 2526.6,
       "playoff": true,
       "finish": "First round"
     },
@@ -185,6 +212,15 @@
       "points_against": 2701.94,
       "playoff": true,
       "finish": "Semifinals"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "WPG": [
@@ -192,7 +228,7 @@
       "year": 2021,
       "wins": 8,
       "losses": 6,
-      "points_for": 2157.50,
+      "points_for": 2157.5,
       "points_against": 2209.16,
       "playoff": true,
       "finish": "First round"
@@ -229,9 +265,18 @@
       "wins": 7,
       "losses": 7,
       "points_for": 2801.48,
-      "points_against": 2602.20,
+      "points_against": 2602.2,
       "playoff": true,
       "finish": "First round"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "CHC": [
@@ -248,7 +293,7 @@
       "year": 2022,
       "wins": 10,
       "losses": 4,
-      "points_for": 3037.70,
+      "points_for": 3037.7,
       "points_against": 2762.86,
       "playoff": true,
       "finish": "Semifinals"
@@ -267,7 +312,7 @@
       "wins": 4,
       "losses": 10,
       "points_for": 2299.82,
-      "points_against": 2748.70,
+      "points_against": 2748.7,
       "playoff": false,
       "finish": "12th place"
     },
@@ -279,6 +324,15 @@
       "points_against": 2702.82,
       "playoff": false,
       "finish": "12th place"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "PEI": [
@@ -286,7 +340,7 @@
       "year": 2021,
       "wins": 7,
       "losses": 7,
-      "points_for": 2029.80,
+      "points_for": 2029.8,
       "points_against": 1918.92,
       "playoff": true,
       "finish": "First round"
@@ -305,7 +359,7 @@
       "wins": 9,
       "losses": 5,
       "points_for": 2706.92,
-      "points_against": 2647.50,
+      "points_against": 2647.5,
       "playoff": true,
       "finish": "Semifinals"
     },
@@ -322,10 +376,19 @@
       "year": 2025,
       "wins": 9,
       "losses": 5,
-      "points_for": 2615.80,
+      "points_for": 2615.8,
       "points_against": 2653.06,
       "playoff": true,
       "finish": "Runner-up"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "IQT": [
@@ -333,7 +396,7 @@
       "year": 2021,
       "wins": 5,
       "losses": 9,
-      "points_for": 1705.10,
+      "points_for": 1705.1,
       "points_against": 1942.08,
       "playoff": false,
       "finish": "13th place"
@@ -373,6 +436,15 @@
       "points_against": 2531.26,
       "playoff": false,
       "finish": "11th place"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "NNY": [
@@ -389,7 +461,7 @@
       "year": 2022,
       "wins": 8,
       "losses": 6,
-      "points_for": 2808.80,
+      "points_for": 2808.8,
       "points_against": 2686.86,
       "playoff": true,
       "finish": "First round"
@@ -416,10 +488,19 @@
       "year": 2025,
       "wins": 3,
       "losses": 11,
-      "points_for": 2219.90,
+      "points_for": 2219.9,
       "points_against": 2699.26,
       "playoff": false,
       "finish": "14th place"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "LOW": [
@@ -467,6 +548,15 @@
       "points_against": 2505.26,
       "playoff": true,
       "finish": "First round"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "SAR": [
@@ -475,7 +565,7 @@
       "wins": 10,
       "losses": 4,
       "points_for": 2203.46,
-      "points_against": 1933.00,
+      "points_against": 1933,
       "playoff": true,
       "finish": "First round"
     },
@@ -502,7 +592,7 @@
       "wins": 6,
       "losses": 8,
       "points_for": 2705.44,
-      "points_against": 2710.50,
+      "points_against": 2710.5,
       "playoff": false,
       "finish": "8th place"
     },
@@ -514,6 +604,15 @@
       "points_against": 2439.82,
       "playoff": true,
       "finish": "First round"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "MIS": [
@@ -561,6 +660,15 @@
       "points_against": 2814.18,
       "playoff": false,
       "finish": "9th place"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "VAN": [
@@ -568,8 +676,8 @@
       "year": 2021,
       "wins": 10,
       "losses": 4,
-      "points_for": 2383.40,
-      "points_against": 1972.20,
+      "points_for": 2383.4,
+      "points_against": 1972.2,
       "playoff": true,
       "finish": "Runner-up"
     },
@@ -595,7 +703,7 @@
       "year": 2024,
       "wins": 2,
       "losses": 12,
-      "points_for": 2245.48,
+      "points_for": 2245.58,
       "points_against": 2704.08,
       "playoff": false,
       "finish": "13th place"
@@ -608,6 +716,15 @@
       "points_against": 2801.58,
       "playoff": false,
       "finish": "13th place"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ],
   "GLD": [
@@ -634,7 +751,7 @@
       "wins": 7,
       "losses": 7,
       "points_for": 2806.88,
-      "points_against": 2545.90,
+      "points_against": 2545.9,
       "playoff": false,
       "finish": "8th place"
     },
@@ -652,9 +769,18 @@
       "wins": 5,
       "losses": 9,
       "points_for": 2497.32,
-      "points_against": 2699.60,
+      "points_against": 2699.6,
       "playoff": false,
       "finish": "10th place"
+    },
+    {
+      "year": 2026,
+      "wins": 0,
+      "losses": 0,
+      "points_for": 0,
+      "points_against": null,
+      "playoff": "",
+      "finish": ""
     }
   ]
 }
