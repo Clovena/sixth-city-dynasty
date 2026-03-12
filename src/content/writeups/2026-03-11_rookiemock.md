@@ -4,7 +4,9 @@ date: 2026-03-11
 type: mock_draft
 ---
 
-Fourteen picks. Fourteen franchises positioning themselves for the future. Here's how Round 1 of the 2026 rookie draft could shake out based on current ADP, roster needs, and offseason buzz.
+The rookie draft looms large in Sixth City. Picks are on the move, the NFL Combine is history, and excitement is bubbling up more and more by the day. 
+<br><br>
+Let's take a look at how the first round of selections might shake out across this very interesting draft board.
 
 ---
 
@@ -12,7 +14,7 @@ Fourteen picks. Fourteen franchises positioning themselves for the future. Here'
 
 *Newfoundland Blowers via NNY*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim in eros elementum tristique. The Benders need every advantage they can get, and Jeanty is the consensus top pick in most formats. A true workhorse back with elite vision and contact balance.
+Newfoundland made a massive move up to the 1.01 and will presumably select first overall for the first time in Blowers history. They lack a true alpha WR after parting ways with AJ Brown, and while Jeremiyah Love will be extremely enticing here, it may be more prudent for the Newfies to build around a player like Carnell Tate and address their lackluster RB room midseason. 
 
 ---
 
@@ -20,39 +22,39 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim
 
 *Vancouver Mounties*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Duis cursus, mi quis viverra ornare, eros dolor interdum nulla, ut commodo diam libero vitae erat. Hunter's dual-threat ability translates cleanly to dynasty, and the Sharks take the best available receiver at number two.
+If Newfoundland does indeed proceed with a wideout first overall, Vancouver will be jumping for joy. Jeremiyah Love is an explosive runner whose game is well suited to the modern NFL, and while his landing spot is still far from certain, he should make an immediate impact. The Mounties are in desperate need of a lead back, and Love is a perfect fit here. 
 
 ---
 
-**1.03: Jonah Coleman, RB-WASH**
+**1.03: Makai Lemon, WR-USC**
 
 *Choccolocco Railfans*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean faucibus nibh et justo cursus id rutrum lorem imperdiet. An elite size-speed combo at receiver that the Mounties desperately need to inject life into their rebuild.
+The Railfans appear to be making a push to compete in 2026 after back-to-back years in the doldrums. They've made some strong additions so far this offseason, and they'll also enjoy a top-three pick in this draft. After Tate and Love, the class becomes much more uncertain, but Choccolocco is probably set in the backfield with Jacobs, Brown, and Hampton. Lemon would slot in as a strong second option behind the newly-acquired Egbuka. 
 
 ---
 
-**1.04: Makai Lemon, WR-USC**
+**1.04: Jonah Coleman, RB-WASH**
 
 *Iqaluit Trout*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Quisque id mi ut ligula tempus commodo. Nunc nec neque. Hampton is a bruising back with surprising explosiveness, exactly the kind of foundational piece the Railfans should be building around.
+Iqaluit probably has needs in multiple places, particularly as star players like Saquon and Kelce continue to age. But Alec Pierce is, according to the Colts, a top-six receiver in the NFL, so perhaps the Trout will rely on him to lead their WR room in 2026 and beyond. If that's the case, Jonah Coleman may be the pick to slot in as a RB2 this coming season and ideally a RB1 when Saquon finally hangs it up. 
 
 ---
 
-**1.05: Fernando Mendoza, QB-IU**
+**1.05: Jordyn Tyson, WR-ASU**
 
 *Gold Coast Sharks*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae. The Benders double up with a high-upside tight end who profiles as a future TE1 in the right system.
+Fernando Mendoza was a popular mock to Gold Coast until recently, when they traded Dak Prescott for Lamar Jackson. In addition, Daniel Jones's tenure in Indianapolis has been renewed for another year. Suddenly, the Sharks have two competent QBs in their lineup. They may, then, pivot to a position of greater need. Jordyn Tyson could become Gold Coast's primary receiver, ahead of the likes of Courtland Sutton and Parker Washington, so long as he becomes a viable NFL force. 
 
 ---
 
-**1.06: Jordyn Tyson, WR-ASU**
+**1.06: KC Concepcion, WR-TA&M**
 
 *Mississauga Mastodons*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque ut neque. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Burden has been one of the most productive college receivers of the past three seasons.
+Mississauga's lineup is starting to become quite stale, with guys like Gainwell, Njoku, and Keon Coleman shedding value in dynasty formats. The 6th overall pick is not going to be quite early enough to land them a bona fide difference maker, but conventional wisdom would have them entering this full-scale rebuild with a wide receiver. Concepcion, possibly the best WR available here, may be the blue-chip piece the Mastodons need to get back on track.
 
 ---
 
@@ -60,31 +62,31 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque ut neque. 
 
 *Sarnia SeaSnakes via TOR*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. In dui magna, posuere eget, vestibulum et, tempor auctor, justo. A high-floor receiver with polished route running and reliable hands: exactly the type the Mastodons need to plug in immediately.
+Fresh off the most successful season in Sarnia's history, the SeaSnakes will be looking for ways to further boost their potent offense and make another push towards a championship. They are certainly set at QB with Allen and Hurts; they are quite probably set at WR with London and Odunze; so making the luxury pick at RB makes sense enough here. Jadarian Price will have a chance to prove he can be a lead back in the NFL after working behind Jeremiyah Love at Notre Dame.
 
 ---
 
-**1.08: Emmett Johnson, RB-NEB**
+**1.08: Fernando Mendoza, QB-IU**
 
 *New New York Benders via WPG*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur pretium tincidunt lacus. Nulla gravida orci a odio. Sampson's burst and yards-after-contact make him an appealing volume back in PPR formats. The Sharks add depth to their backfield.
+Mendoza will not be the sexiest quarterback pick we've seen in Sixth City, but he fills a long-term vision that the Benders would be wise to adopt. They have their franchise QB in Pat Mahomes, and now they have a stopgap QB2 with Dak Prescott. Mendoza can sit, develop, and hopefully become a top-12 QB by the time New New York needs to replace the aging Prescott. It's certainly a gamble for a franchise floundering at the bottom of the league, but scared money don't make money. 
 
 ---
 
-**1.09: KC Concepcion, WR-TA&M**
+**1.09: Denzel Boston, WR-WASH**
 
 *Lower City Lasercats*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce fermentum. Nullam varius nulla at feugiat cursus. Nullam accumsan lorem in dui. A deep sleeper who shot up boards post-combine. The Blowers take a flier on upside here.
+It remains to be seen what Lower City ownership will do come draft night. In all likelihood, this pick will be traded for an aging veteran whom all teams have written off except the Lasercats. But if they do stick and pick, they're probably best suited to finding a young talent who can eventually take the place of Davante Adams, Terry McLaurin, and/or Jakobi Meyers, all of whom are flirting with - or well past - the 30-year-old age cliff. 
 
 ---
 
-**1.10: Denzel Boston, WR-WASH**
+**1.09: Emmett Johnson, RB-NEB**
 
 *Sarnia SeaSnakes*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras dapibus. Vivamus elementum semper nisi. Aenean vulputate eleifend tellus. NNY continues to accumulate talent at the skill positions. Mbakwe is a contested-catch specialist with elite athleticism.
+It's easy to envision Sarnia double-dipping at RB, as most of their shortcomings in 2025 stemmed from the ground game. Drafting another rookie runner alongside Price allows the SeaSnakes to hedge their bets; if one doesn't quite hit right away, the Eels have a backup option. And surely they won't BOTH be busts, right? 
 
 ---
 
@@ -92,7 +94,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Cras dapibus. Vivamus e
 
 *Lower City Lasercats via NFD*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean commodo ligula eget dolor. Aenean massa. Williams quietly produced in a run-heavy system: his ceiling in a pass-first offense could be enormous.
+In addition to an aging wide receiver room, Lower City is faced with an aging tight end room. Davis Allen is currently the youngest TE in Connecticut, and he's not likely to make a difference any time soon. Bringing in a talent like Kenyon Sadiq could immediately give the Lasercats a new level of pop at a premium position. 
 
 ---
 
@@ -100,7 +102,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Aenean commodo ligula e
 
 *Choccolocco Railfans via TBY*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec quam felis, ultricies nec, pellentesque eu, pretium quis, sem. Judkins arrives at Ohio State with considerable hype and backs it up with elite production and three-down capability.
+The Railfans' Trevor Lawrence turned in the best season of his career in 2025, cementing himself as the cornerstone QB in Alabama. However, that second QB slot is looking grim. Formerly held by Brock Purdy, Choccolocco now has the choice of Aaron Rodgers (old), Michael Penix (ACL), or JJ McCarthy (sucks). If nobody in that room can pan out behind T-Law, maybe CHC would be remiss not to take a flyer on the hometown kid on the Crimson Tide.
 
 ---
 
@@ -108,7 +110,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec quam felis, ultri
 
 *Choccolocco Railfans via PEI*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec pede justo, fringilla vel, aliquet nec, vulputate eget, arcu. Warren was one of the most versatile tight ends in college football last season. The Railfans land a potential top-five TE.
+Down here past the top 12, there's not a ton of immediate opportunity. But Choccolocco, having just picked a QB, has addressed all three major offensive positions between the draft and in the offseason. So why not round it out with perhaps the second-best tight end in the class.
 
 ---
 
@@ -116,4 +118,4 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec pede justo, fring
 
 *Newfoundland Blowers via BKB*
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nullam dictum felis eu pede mollis pretium. Integer tincidunt. The Hogs close out the first round with a physical back who fits their system perfectly: a strong runner with developing pass-catching ability.
+If Newfoundland picks Tate way back at the 1.01, they'll need to go hunting for a RB in the back of the first. Etienne and Dowdle may be serviceable in their new homes in 2026, but they probably aren't enough to go toe-to-toe with the likes of Bijan and Jeanty within the SCC. Who knows what Mike Washington will be in the NFL, but at least the Blowers can say they gave it a try. 
