@@ -82,7 +82,7 @@ It remains to be seen what Lower City ownership will do come draft night. In all
 
 ---
 
-**1.09: Emmett Johnson, RB-NEB**
+**1.10: Emmett Johnson, RB-NEB**
 
 *Sarnia SeaSnakes*
 
