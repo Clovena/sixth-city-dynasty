@@ -129,10 +129,10 @@ const rendered = await Promise.all(
 
   /* ─── Print page structure (injected by JS at print time) ─────────── */
 
-  /* Fixed 8.5×11 page — JS builds these before print, tears them down after */
+  /* Fixed 8.5×14 page — JS builds these before print, tears them down after */
   :global(.print-page) {
     width: 8.5in;
-    height: 11in;
+    height: 14in;
     padding: 0.5in;
     display: flex;
     flex-direction: column;
@@ -148,6 +148,7 @@ const rendered = await Promise.all(
     margin-bottom: 0.2in;
     flex-shrink: 0;
   }
+
   :global(.print-header p),
   :global(.print-header h2) {
     color: var(--color-text-primary) !important;
@@ -155,12 +156,21 @@ const rendered = await Promise.all(
     margin: 0 0 0.1in !important;
   }
 
+  :global(.print-header p) {
+    font-size: 18pt !important;
+  }
+
+  :global(.print-header h2) {
+    font-size: 32pt !important;
+  }
+
   /* Intro paragraph(s) on page 1 */
   :global(.print-intro) {
-    font-size: 13pt;
+    font-size: 18pt;
     line-height: 1.55;
     color: var(--color-text-primary);
     text-align: justify;
+    font-style: italic;
     margin-bottom: 0.15in;
     flex-shrink: 0;
   }
@@ -190,11 +200,11 @@ const rendered = await Promise.all(
     print-color-adjust: exact;
   }
   :global(.ranking-section .team-entry span) {
-    font-size: 26pt !important;
+    font-size: 32pt !important;
     color: var(--color-text-primary) !important;
   }
   :global(.ranking-section .team-entry p) {
-    font-size: 13pt !important;
+    font-size: 18pt !important;
     color: var(--color-text-primary) !important;
     margin: 0.05in 0 0 !important;
   }
@@ -202,8 +212,8 @@ const rendered = await Promise.all(
   /* Blurb paragraph expands to fill the section */
   :global(.ranking-section > p) {
     flex: 1;
-    font-size: 13pt;
-    line-height: 1.55;
+    font-size: 18pt;
+    line-height: 1.5;
     color: var(--color-text-primary);
     text-align: justify;
     margin: 0.1in 0 0 !important;
@@ -213,7 +223,7 @@ const rendered = await Promise.all(
   /* ─── @page and @media print ───────────────────────────────────────── */
 
   @page {
-    size: letter;
+    size: legal;
     margin: 0;
   }
 
@@ -260,7 +270,7 @@ const rendered = await Promise.all(
   }
 
   // ─── Print packer ────────────────────────────────────────────────────
-  // Builds explicit 8.5×11 .print-page divs before print and tears them down after. 
+  // Builds explicit 8.5×14 .print-page divs before print and tears them down after. 
   // Sections are distributed with flex:1 so each gets an equal share of the page height.
 
   const FIRST_PAGE_SECTIONS = 2;   // intro + 2 teams on p.1

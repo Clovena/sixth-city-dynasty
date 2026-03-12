@@ -50,7 +50,7 @@ Fernando Mendoza was a popular mock to Gold Coast until recently, when they trad
 
 ---
 
-**1.06: KC Concepcion, WR-TA&M**
+**1.06: KC Concepcion, WR-TAM**
 
 *Mississauga Mastodons*
 
@@ -62,7 +62,7 @@ Mississauga's lineup is starting to become quite stale, with guys like Gainwell,
 
 *Sarnia SeaSnakes via TOR*
 
-Fresh off the most successful season in Sarnia's history, the SeaSnakes will be looking for ways to further boost their potent offense and make another push towards a championship. They are certainly set at QB with Allen and Hurts; they are quite probably set at WR with London and Odunze; so making the luxury pick at RB makes sense enough here. Jadarian Price will have a chance to prove he can be a lead back in the NFL after working behind Jeremiyah Love at Notre Dame.
+Fresh off the most successful season in Sarnia's history, the SeaSnakes will be looking for ways to further boost their potent offense and make another push towards a championship. They are certainly set at QB with Allen and Hurts; they are quite probably set at WR with London and Odunze; so making the luxury pick at RB makes sense enough here. Jadarian Price will have a chance to prove he's a lead back in the NFL after working behind Jeremiyah Love.
 
 ---
 
