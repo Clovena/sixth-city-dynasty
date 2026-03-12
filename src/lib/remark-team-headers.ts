@@ -69,12 +69,12 @@ export function remarkTeamHeaders() {
 
       const { abbr, colors } = franchise;
       const color = colors[0];
-      const emIndent = '48px';
+      const emIndent = '60px';
 
       const html = [
         `<div class="team-entry" style="border-left: 3px solid ${color}; padding: 0.65rem 0 0.65rem 1.25rem; margin: 2.25rem 0 0.25rem;">`,
         `<div style="display: flex; align-items: center; gap: 0.75rem;">`,
-        `<img src="/images/logos/${abbr}.png" alt="" width="36" height="36"`,
+        `<img src="/images/logos/${abbr}.png" alt="" width="48" height="48"`,
         ` style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />`,
         `<span style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600;`,
         ` color: var(--color-text-primary); line-height: 1.2;">${strongText}</span>`,

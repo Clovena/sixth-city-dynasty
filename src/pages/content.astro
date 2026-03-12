@@ -87,42 +87,43 @@ const rendered = await Promise.all(
     max-width: 72ch;
   }
 
-  .writeup-content p {
+  .writeup-content :global(p) {
     margin: 0.75rem 0 1.5rem;
+    text-align: justify;
   }
 
-  .writeup-content strong {
+  .writeup-content :global(strong) {
     color: var(--color-text-primary);
     font-weight: 700;
   }
 
-  .writeup-content em {
+  .writeup-content :global(em) {
     color: var(--color-text-muted);
     font-style: italic;
   }
 
-  .writeup-content hr {
+  .writeup-content :global(hr) {
     border: none;
     border-top: 1px solid var(--color-border);
-    margin: 2rem 0;
+    margin: 1rem 0;
   }
 
-  .writeup-content h1,
-  .writeup-content h2,
-  .writeup-content h3 {
+  .writeup-content :global(h1),
+  .writeup-content :global(h2),
+  .writeup-content :global(h3) {
     font-family: var(--font-display);
     color: var(--color-text-primary);
     margin: 2rem 0 0.75rem;
     line-height: 1.2;
   }
 
-  .writeup-content ol,
-  .writeup-content ul {
+  .writeup-content :global(ol),
+  .writeup-content :global(ul) {
     padding-left: 1.5rem;
     margin: 0 0 1.25rem;
   }
 
-  .writeup-content li {
+  .writeup-content :global(li) {
     margin-bottom: 0.4rem;
   }
 </style>
