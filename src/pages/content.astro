@@ -18,10 +18,10 @@ const rendered = await Promise.all(
 
 <Layout title="Content" description="Power rankings, mock drafts, matchup previews, and more from the Sixth City Dynasty Football League.">
 
-  <div style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 6rem;">
+  <div class="content-container" style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 6rem;">
 
     <!-- Page header -->
-    <div style="padding-bottom: 2.5rem; border-bottom: 1px solid var(--color-border);">
+    <div class="no-print" style="padding-bottom: 2.5rem; border-bottom: 1px solid var(--color-border);">
       <p class="section-label">Editorial</p>
       <h1 class="page-title">Content</h1>
       <p class="page-subtitle" style="margin-top: 0.75rem;">
@@ -36,7 +36,7 @@ const rendered = await Promise.all(
 
         <!-- Dropdown selector -->
         {writeups.length > 1 && (
-          <div style="margin-bottom: 2.5rem;">
+          <div class="no-print" style="margin-bottom: 2.5rem;">
             <label for="writeup-select" style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-muted); display: block; margin-bottom: 0.5rem;">Select piece</label>
             <select
               id="writeup-select"
@@ -126,10 +126,128 @@ const rendered = await Promise.all(
   .writeup-content :global(li) {
     margin-bottom: 0.4rem;
   }
+
+  /* ─── Print page structure (injected by JS at print time) ─────────── */
+
+  /* Fixed 8.5×11 page — JS builds these before print, tears them down after */
+  :global(.print-page) {
+    width: 8.5in;
+    height: 11in;
+    padding: 0.6in 0.75in;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    page-break-after: always;
+  }
+  :global(.print-page:last-child) {
+    page-break-after: auto;
+  }
+
+  /* Title block on page 1 */
+  :global(.print-header) {
+    margin-bottom: 0.2in;
+    flex-shrink: 0;
+  }
+  :global(.print-header p),
+  :global(.print-header h2) {
+    color: var(--color-text-primary) !important;
+    text-align: left !important;
+    margin: 0 0 0.1in !important;
+  }
+
+  /* Intro paragraph(s) on page 1 */
+  :global(.print-intro) {
+    font-size: 14pt;
+    line-height: 1.55;
+    color: var(--color-text-primary);
+    text-align: justify;
+    margin-bottom: 0.15in;
+    flex-shrink: 0;
+  }
+
+  /* Content area: fills remaining page height, distributes sections evenly */
+  :global(.print-page-content) {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  /* Each ranking section gets an equal share of the page */
+  :global(.ranking-section) {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  /* Team entry header inside a ranking section */
+  :global(.ranking-section .team-entry) {
+    flex-shrink: 0;
+    margin: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  :global(.ranking-section .team-entry span) {
+    font-size: 24pt !important;
+    color: var(--color-text-primary) !important;
+  }
+  :global(.ranking-section .team-entry p) {
+    font-size: 16pt !important;
+    color: var(--color-text-primary) !important;
+    margin: 0.05in 0 0 !important;
+  }
+
+  /* Blurb paragraph expands to fill the section */
+  :global(.ranking-section > p) {
+    flex: 1;
+    font-size: 12pt;
+    line-height: 1.55;
+    color: var(--color-text-primary);
+    text-align: justify;
+    margin: 0.1in 0 0 !important;
+    overflow: hidden;
+  }
+
+  /* ─── @page and @media print ───────────────────────────────────────── */
+
+  @page {
+    size: letter;
+    margin: 0;
+  }
+
+  @media print {
+    :global(header),
+    :global(footer),
+    .no-print {
+      display: none !important;
+    }
+
+    :global(body) {
+      background-color: var(--color-bg) !important;
+    }
+
+    .content-container {
+      max-width: 100% !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+
+    /* Hide screen layout; print layout is injected by JS */
+    .writeup-content {
+      max-width: 100% !important;
+    }
+
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+  }
 </style>
 
-// Handles selection and hides all unselected content from page (still in DOM)
 <script>
+  // ─── Dropdown selector ───────────────────────────────────────────────
   const select = document.getElementById('writeup-select') as HTMLSelectElement | null;
   if (select) {
     select.addEventListener('change', () => {
@@ -140,4 +258,144 @@ const rendered = await Promise.all(
       if (target) target.style.display = '';
     });
   }
+
+  // ─── Print packer ────────────────────────────────────────────────────
+  // Builds explicit 8.5×11 .print-page divs before print and tears them down after. 
+  // Sections are distributed with flex:1 so each gets an equal share of the page height.
+
+  const FIRST_PAGE_SECTIONS = 2;   // intro + 2 teams on p.1
+  const SUBSEQUENT_SECTIONS = 3;   // 3 teams per subsequent page
+
+  interface PrintState {
+    writeupContent: HTMLElement;
+    originalHTML: string;
+    titleBlock: HTMLElement | null;
+  }
+  let printState: PrintState | null = null;
+
+  function buildPrintPages(): PrintState | null {
+    // Find the currently visible article
+    const article = (
+      document.querySelector('article[id^="writeup-"]:not([style*="display: none"])') ??
+      document.querySelector('article[id^="writeup-"]')
+    ) as HTMLElement | null;
+    if (!article) return null;
+
+    const writeupContent = article.querySelector('.writeup-content') as HTMLElement | null;
+    if (!writeupContent) return null;
+
+    const originalHTML = writeupContent.innerHTML;
+    const children = Array.from(writeupContent.children) as HTMLElement[];
+
+    // Collect intro nodes (everything before the first .team-entry, excluding HRs)
+    const introNodes: HTMLElement[] = [];
+    const sections: { header: HTMLElement; blurb: HTMLElement | null }[] = [];
+    let i = 0;
+
+    while (i < children.length && !children[i].classList.contains('team-entry')) {
+      if (children[i].tagName !== 'HR') introNodes.push(children[i]);
+      i++;
+    }
+
+    // Collect sections: each .team-entry + the paragraph that follows it
+    while (i < children.length) {
+      const child = children[i];
+      if (child.classList.contains('team-entry')) {
+        const blurb = (i + 1 < children.length && children[i + 1].tagName === 'P')
+          ? children[i + 1] : null;
+        sections.push({ header: child, blurb });
+        i += blurb ? 2 : 1;
+      } else {
+        i++; // skip HRs between sections
+      }
+    }
+
+    if (sections.length === 0) return null;
+
+    // Hide the original article title block — we clone it into page 1's print-header.
+    // Without this, it renders above the print pages and appears twice.
+    const titleBlock = article.querySelector('div:first-child') as HTMLElement | null;
+    if (titleBlock) titleBlock.style.display = 'none';
+
+    // Calculate page count
+    const remaining = Math.max(0, sections.length - FIRST_PAGE_SECTIONS);
+    const totalPages = 1 + Math.ceil(remaining / SUBSEQUENT_SECTIONS);
+
+    // Build the print DOM
+    const printRoot = document.createElement('div');
+    let sectionIdx = 0;
+
+    for (let p = 0; p < totalPages; p++) {
+      const page = document.createElement('div');
+      page.className = 'print-page';
+      // Inline the structural flex layout so it's guaranteed regardless of CSS cascade
+      page.style.display = 'flex';
+      page.style.flexDirection = 'column';
+
+      // Page 1: cloned title block + intro paragraphs
+      if (p === 0) {
+        if (titleBlock) {
+          const header = document.createElement('div');
+          header.className = 'print-header';
+          header.appendChild(titleBlock.cloneNode(true));
+          (header.querySelector('div') as HTMLElement | null)?.style.setProperty('display', 'block');
+          page.appendChild(header);
+        }
+        introNodes.forEach(n => {
+          const intro = n.cloneNode(true) as HTMLElement;
+          intro.className = 'print-intro';
+          page.appendChild(intro);
+        });
+      }
+
+      // Content area — flex:1 fills remaining page height; inline style guarantees it
+      const content = document.createElement('div');
+      content.className = 'print-page-content';
+      content.style.flex = '1';
+      content.style.display = 'flex';
+      content.style.flexDirection = 'column';
+      content.style.overflow = 'hidden';
+
+      const count = p === 0 ? FIRST_PAGE_SECTIONS : SUBSEQUENT_SECTIONS;
+
+      for (let s = 0; s < count && sectionIdx < sections.length; s++, sectionIdx++) {
+        const sec = document.createElement('section');
+        sec.className = 'ranking-section';
+        // Inline the flex properties so each section fills an equal share of the page
+        sec.style.flex = '1';
+        sec.style.display = 'flex';
+        sec.style.flexDirection = 'column';
+        sec.style.minHeight = '0';
+
+        sec.appendChild(sections[sectionIdx].header.cloneNode(true));
+
+        if (sections[sectionIdx].blurb) {
+          const blurb = sections[sectionIdx].blurb!.cloneNode(true) as HTMLElement;
+          // flex:1 expands the blurb to fill whatever space remains in the section
+          blurb.style.flex = '1';
+          blurb.style.overflow = 'hidden';
+          sec.appendChild(blurb);
+        }
+        content.appendChild(sec);
+      }
+
+      page.appendChild(content);
+      printRoot.appendChild(page);
+    }
+
+    writeupContent.innerHTML = '';
+    writeupContent.appendChild(printRoot);
+    return { writeupContent, originalHTML, titleBlock };
+  }
+
+  window.addEventListener('beforeprint', () => {
+    printState = buildPrintPages();
+  });
+
+  window.addEventListener('afterprint', () => {
+    if (!printState) return;
+    printState.writeupContent.innerHTML = printState.originalHTML;
+    if (printState.titleBlock) printState.titleBlock.style.display = '';
+    printState = null;
+  });
 </script>
