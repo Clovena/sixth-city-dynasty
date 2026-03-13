@@ -6,8 +6,12 @@
     "owner": "Zac",
     "conference": "SCC",
     "colors": ["#4f4471", "#ea332a", "#7a709b"],
-    "founded": 2021,
-    "rebrands": [],
+    "founded": 2023,
+    "rebrands": [
+      { "year": 2021, "name": "Toronto Hogs" },
+      { "year": 2022, "name": "Toronto Hogs" }
+    ],
+    "predecessor_abbr": "TOH",
     "sleeper_id": "1"
   },
   {
@@ -52,10 +56,11 @@
     "owner": "Ryan",
     "conference": "HCC",
     "colors": ["#f3d971", "#4262f9", "#1a018e"],
-    "founded": 2021,
+    "founded": 2022,
     "rebrands": [
       { "year": 2021, "name": "Winnipeg Wankers" }
     ],
+    "predecessor_abbr": "WNK",
     "sleeper_id": "5"
   },
   {
@@ -76,7 +81,7 @@
     "owner": "Jared",
     "conference": "HCC",
     "colors": ["#ff6d01", "#00d5d6", "#002288"],
-    "founded": 2021,
+    "founded": 2025,
     "rebrands": [
       { "year": 2021, "name": "Pokemon Omega Judge Judy" },
       { "year": 2022, "name": "Pokemon Omega Judge Judy" },
@@ -173,7 +178,7 @@
     "owner": "Logan",
     "conference": "SCC",
     "colors": ["#006d75", "#ef979e", "#e7cd78"],
-    "founded": 2021,
+    "founded": 2022,
     "rebrands": [
       { "year": 2021, "name": "Unsolicited Dak Pics" }
     ],

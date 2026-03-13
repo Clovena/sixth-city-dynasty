@@ -67,6 +67,10 @@ function getOpponentFranchise(oppAbbr: string) {
 const franchiseResults: Array<{year: number; wins: number; losses: number; points_for: number; points_against: number; playoff: boolean; finish: string}> =
   (allResults as Record<string, any[]>)[abbr] ?? [];
 
+// Adoption: founded != 2021 means a new owner took over this roster mid-league
+const isAdopted = franchise.founded !== 2021;
+const predecessorAbbr = ('predecessor_abbr' in franchise ? franchise.predecessor_abbr as string : null);
+
 // Rebrand history: build timeline label for current season name
 const hasRebrands = franchise.rebrands && franchise.rebrands.length > 0;
 const primaryColor = franchise.colors[0];
@@ -218,6 +222,7 @@ const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
               <thead>
                 <tr>
                   <th>Season</th>
+                  {isAdopted && <th></th>}
                   <th>W</th>
                   <th>L</th>
                   <th style="text-align: right;">PF</th>
@@ -240,6 +245,18 @@ const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
                   return (
                   <tr>
                     <td style="font-weight: 600;">{row.year}</td>
+                    {isAdopted && (
+                      <td style="padding: 0.25rem 0.5rem; text-align: center;">
+                        <img
+                          src={`/images/logos/${row.year >= franchise.founded ? abbr : predecessorAbbr}.png`}
+                          alt=""
+                          width="24"
+                          height="24"
+                          style="object-fit: contain; vertical-align: middle;"
+                          onerror="this.style.display='none'"
+                        />
+                      </td>
+                    )}
                     <td>{row.wins}</td>
                     <td>{row.losses}</td>
                     <td style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_for.toFixed(2)}</td>
