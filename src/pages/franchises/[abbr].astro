@@ -274,6 +274,35 @@ const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
       <!-- Sidebar -->
       <div style="display: flex; flex-direction: column; gap: 1.5rem;">
 
+        <!-- Quick facts -->
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
+          <p class="section-label">Franchise Facts</p>
+          <dl style="display: flex; flex-direction: column; gap: 0.6rem;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Conference</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">
+                <span class={`label-badge badge-${franchise.conference.toLowerCase()}`}>{franchise.conference}</span>
+              </dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Championships</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{championships.length}</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Bowl Appearances</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{dynastyBowlAppearances.length}</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Conf. Titles</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{confChamps.length}</dd>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Founded</dt>
+              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{franchise.founded}</dd>
+            </div>
+          </dl>
+        </div>
+
         <!-- Championships -->
         {dynastyBowlAppearances.length > 0 && (
           <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
@@ -350,35 +379,6 @@ const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
             </div>
           </div>
         )}
-
-        <!-- Quick facts -->
-        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
-          <p class="section-label">Franchise Facts</p>
-          <dl style="display: flex; flex-direction: column; gap: 0.6rem;">
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Conference</dt>
-              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">
-                <span class={`label-badge badge-${franchise.conference.toLowerCase()}`}>{franchise.conference}</span>
-              </dd>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Championships</dt>
-              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{championships.length}</dd>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Bowl Appearances</dt>
-              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{dynastyBowlAppearances.length}</dd>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Conf. Titles</dt>
-              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{confChamps.length}</dd>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Founded</dt>
-              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{franchise.founded}</dd>
-            </div>
-          </dl>
-        </div>
 
       </div>
     </div>
