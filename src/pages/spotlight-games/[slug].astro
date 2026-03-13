@@ -1,14 +1,14 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import bowlGames from '../../data/bowl_games.json';
+import spotlightGames from '../../data/spotlight_games.json';
 import franchises from '../../data/franchises.json';
 
 export async function getStaticPaths() {
-  return bowlGames.map(bg => ({ params: { slug: bg.slug } }));
+  return spotlightGames.map(sg => ({ params: { slug: sg.slug } }));
 }
 
 const { slug } = Astro.params;
-const game = bowlGames.find(bg => bg.slug === slug);
+const game = spotlightGames.find(sg => sg.slug === slug);
 
 if (!game) {
   return Astro.redirect('/bowl-games');

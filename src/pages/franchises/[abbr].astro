@@ -2,7 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import franchises from '../../data/franchises.json';
 import seasons from '../../data/seasons.json';
-import bowlGames from '../../data/bowl_games.json';
+import spotlightGames from '../../data/spotlight_games.json';
 import allResults from '../../data/results.json';
 import { getEntry, render } from 'astro:content';
 
@@ -49,11 +49,15 @@ const confChamps = seasons.filter(s => {
 const confColor = franchise.conference === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
 
 // Bowl game affiliations for this franchise
-const myBowlGames = bowlGames.filter(bg => bg.team_a === abbr || bg.team_b === abbr);
+const myBowlGames = spotlightGames.filter(bg => bg.type === "bowl-game" && (bg.team_a === abbr || bg.team_b === abbr));
+const myRivalryGames = spotlightGames.filter(rg => rg.type === "rivalry" && (rg.team_a === abbr || rg.team_b === abbr));
 
 // Helper to get opponent abbr for bowl
-function getBowlOpponent(bg: typeof bowlGames[0]) {
+function getBowlOpponent(bg: typeof spotlightGames[0]) {
   return bg.team_a === abbr ? bg.team_b : bg.team_a;
+}
+function getRivalryOpponent(rg: typeof spotlightGames[0]) {
+  return rg.team_a === abbr ? rg.team_b : rg.team_a;
 }
 function getOpponentFranchise(oppAbbr: string) {
   return franchises.find(f => f.abbr === oppAbbr);
@@ -304,7 +308,25 @@ const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
                 return (
                   <a href={`/bowl-games/${bg.slug}`} style="text-decoration: none; display: block; padding: 0.75rem; background-color: var(--color-surface-alt); border: 1px solid var(--color-border); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='var(--color-border-light)'" onmouseout="this.style.borderColor='var(--color-border)'">
                     <p style="font-family: var(--font-display); font-size: 0.9rem; font-weight: 600; color: var(--color-gold); margin: 0 0 0.2rem;">{bg.name}</p>
-                    <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0;">vs. <span style="color: var(--color-text-secondary);">{opp?.name ?? oppAbbr}</span></p>
+                    <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0;">vs <span style="color: var(--color-text-secondary);">{opp?.name ?? oppAbbr}</span></p>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <!-- Rivalry game affiliations -->
+        {myRivalryGames.length > 0 && (
+          <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
+            <p class="section-label">2026 Rivalry Week</p>
+            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+              {myRivalryGames.map(rg => {
+                const oppAbbr = getRivalryOpponent(rg);
+                const opp = getOpponentFranchise(oppAbbr);
+                return (
+                  <a href={`/bowl-games/${rg.slug}`} style="text-decoration: none; display: block; padding: 0.75rem; background-color: var(--color-surface-alt); border: 1px solid var(--color-border); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='var(--color-border-light)'" onmouseout="this.style.borderColor='var(--color-border)'">
+                    <p style="font-family: var(--font-display); font-size: 0.9rem; font-weight: 600; color: var(--color-gold); margin: 0 0 0.2rem;">vs {opp?.name ?? oppAbbr}</p>
                   </a>
                 );
               })}

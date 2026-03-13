@@ -1,21 +1,23 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import bowlGames from '../../data/bowl_games.json';
-import rivalryGames from '../../data/rivalries.json';
+import spotlightGames from '../../data/spotlight_games.json';
 import franchises from '../../data/franchises.json';
+
+const bowlGames = spotlightGames.filter(bg => bg.type === "bowl-game");
+const rivalryGames = spotlightGames.filter(rg => rg.type === "rivalry");
 
 function getFranchise(abbr: string) {
   return franchises.find(f => f.abbr === abbr);
 }
 ---
 
-<Layout title="Bowl Games" description="The 2026 Bowl Game slate and Rivalry Week for the Sixth City Dynasty Football League.">
+<Layout title="Spotlight Games" description="The 2026 Bowl Game slate and Rivalry Week for the Sixth City Dynasty Football League.">
 
   <div style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 0;">
 
     <!-- Page header -->
     <div style="padding-bottom: 2.5rem; border-bottom: 1px solid var(--color-border);">
-      <p class="section-label">Annual Traditions</p>
+      <p class="section-label">Spotlight Games</p>
       <h1 class="page-title">Bowl Games &amp; Rivalry Week</h1>
       <p class="page-subheader" style="margin-top: 0.75rem;">
         Institutional pairings that give the regular season shape and stakes. 
@@ -54,7 +56,7 @@ function getFranchise(abbr: string) {
           const teamA = getFranchise(game.team_a);
           const teamB = getFranchise(game.team_b);
           return (
-            <a href={`/bowl-games/${game.slug}`} style="text-decoration: none; display: block;">
+            <a href={`/spotlight-games/${game.slug}`} style="text-decoration: none; display: block;">
               <div class="bowl-card" style="display: grid; grid-template-columns: 1fr auto; gap: 2rem; align-items: center;">
                 <div>
                   <div style="display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
@@ -106,17 +108,11 @@ function getFranchise(abbr: string) {
           const teamA = getFranchise(game.team_a);
           const teamB = getFranchise(game.team_b);
           return (
-            <a href={`/bowl-games/${game.slug}`} style="text-decoration: none; display: block;">
+            <a href={`/spotlight-games/${game.slug}`} style="text-decoration: none; display: block;">
               <div class="bowl-card" style="display: grid; grid-template-columns: 1fr auto; gap: 2rem; align-items: center;">
                 <div>
                   <div style="display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
                     <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-gold); margin: 0;">{game.name}</h3>
-                    {game.year_established <= 2025 && (
-                      <span style="font-size: 0.72rem; color: var(--color-text-muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Est. {game.year_established} · Recurring</span>
-                    )}
-                    {game.year_established === 2026 && (
-                      <span style="font-size: 0.72rem; color: var(--color-gold-dim); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Inaugural 2026</span>
-                    )}
                   </div>
                   <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.55; margin: 0; max-width: 65ch;">
                     {game.description.split('.')[0] + '.'}

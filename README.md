@@ -44,8 +44,7 @@ The site deploys automatically to Netlify on push to the main branch. Build conf
 
 - Franchise data: `src/data/franchises.json`
 - Season history: `src/data/seasons.json`
-- Bowl games: `src/data/bowl_games.json`
-- Rivalries: `src/data/rivalries.json`
+- Spotlight games (Bowl Games & Rivalries): `src/data/spotlight_games.json`
 - Per-franchise notes: `src/content/franchises/[abbr].md`
 
 ---
@@ -64,8 +63,7 @@ Everything flows from four JSON files. These are the single source of truth:
 |---|---|
 | `franchises.json` | Every franchise page, all index cards, name/color/owner lookups sitewide |
 | `seasons.json` | History page table, roll of honor, dynasty bowl results on home page |
-| `bowl_games.json` | Bowl games index, individual bowl game pages, bowl affiliations on franchise pages |
-| `rivalries.json` | Rivalry Week section (currently placeholder data) |
+| `spotlight_games.json` | Spotlight games index, individual game pages, affiliations on franchise pages |
 
 When a page needs franchise info, it imports the JSON and does a `.find()` or `.filter()` in JavaScript at build time. Nothing is fetched at runtime.
 
@@ -77,8 +75,8 @@ URL                          File
 /history                     src/pages/history.astro
 /franchises                  src/pages/franchises/index.astro
 /franchises/TOR              src/pages/franchises/[abbr].astro  ← one file generates 14 pages
-/bowl-games                  src/pages/bowl-games/index.astro
-/bowl-games/atom-bowl        src/pages/bowl-games/[slug].astro  ← one file generates 7 pages
+/spotlight-games             src/pages/spotlight-games/index.astro
+/spotlight-games/atom-bowl   src/pages/spotlight-games/[slug].astro  ← one file generates 7 pages
 ```
 
 The files in `[brackets]` are dynamic routes. The `getStaticPaths()` function at the top of each tells Astro "build one page per franchise/bowl game." At build time these become 14 and 7 separate HTML files respectively.

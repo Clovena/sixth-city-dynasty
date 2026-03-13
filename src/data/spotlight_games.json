@@ -2,6 +2,7 @@
   {
     "slug": "atlantic-bowl",
     "name": "Atlantic Bowl",
+    "type": "bowl-game",
     "team_a": "NFD",
     "team_b": "PEI",
     "year_established": 2024,
@@ -11,6 +12,7 @@
   {
     "slug": "blue-collar-classic",
     "name": "Blue-Collar Classic",
+    "type": "bowl-game",
     "team_a": "CHC",
     "team_b": "IQT",
     "year_established": 2024,
@@ -20,6 +22,7 @@
   {
     "slug": "animation-altercation",
     "name": "Animation Altercation",
+    "type": "bowl-game",
     "team_a": "NNY",
     "team_b": "SAR",
     "year_established": 2026,
@@ -29,6 +32,7 @@
   {
     "slug": "atom-bowl",
     "name": "Atom Bowl",
+    "type": "bowl-game",
     "team_a": "BKB",
     "team_b": "WPG",
     "year_established": 2026,
@@ -38,6 +42,7 @@
   {
     "slug": "cascade-cup",
     "name": "Cascade Cup",
+    "type": "bowl-game",
     "team_a": "LOW",
     "team_b": "MIS",
     "year_established": 2026,
@@ -47,6 +52,7 @@
   {
     "slug": "dominion-classic",
     "name": "Dominion Classic",
+    "type": "bowl-game",
     "team_a": "TOR",
     "team_b": "VAN",
     "year_established": 2026,
@@ -56,10 +62,81 @@
   {
     "slug": "gateway-cup",
     "name": "Gateway Cup",
+    "type": "bowl-game",
     "team_a": "GLD",
     "team_b": "TBY",
     "year_established": 2026,
     "description": "Two franchises from opposite ends of the world. Thunder Bay is the gateway to the Canadian northwest; Gold Coast is the gateway to the Great Barrier Reef. The Gateway Cup highlights the Sharks and Mustangs as regional representatives for fanbases otherwise untethered to the rest of the league, and as organizations hungry for sustained success after years of heartbreak.",
+    "history": []
+  },
+  {
+    "slug": "iqt-pei",
+    "name": "Trout vs Islanders",
+    "type": "rivalry",
+    "team_a": "IQT",
+    "team_b": "PEI",
+    "year_established": 2025,
+    "description": "The crown jewel of Rivalry Week: the league philanthropists and the men who want them destroyed.",
+    "history": []
+  },
+  {
+    "slug": "van-wpg",
+    "name": "Mounties vs Wranglers",
+    "type": "rivalry",
+    "team_a": "VAN",
+    "team_b": "WPG",
+    "year_established": 2023,
+    "description": "No love lost between western Canada rivals, and no imminent signs of making up.",
+    "history": []
+  },
+  {
+    "slug": "chc-tor",
+    "name": "Railfans vs Hogs",
+    "type": "rivalry",
+    "team_a": "CHC",
+    "team_b": "TOR",
+    "year_established": 2026,
+    "description": "Ownership shared a graduate school campus, but never shared so much as a lunch.",
+    "history": []
+  },
+  {
+    "slug": "bkb-low",
+    "name": "Stars vs Lasercats",
+    "type": "rivalry",
+    "team_a": "BKB",
+    "team_b": "LOW",
+    "year_established": 2026,
+    "description": "The Lasercats' chance to prove they're more than just Bikini Bottom's farm system.",
+    "history": []
+  },
+  {
+    "slug": "mis-nny",
+    "name": "Mastodons vs Benders",
+    "type": "rivalry",
+    "team_a": "MIS",
+    "team_b": "NNY",
+    "year_established": 2026,
+    "description": "Between two tortured franchises, it's a war of attrition — and insulin.",
+    "history": []
+  },
+  {
+    "slug": "nfd-tby",
+    "name": "Blowers vs Mustangs",
+    "type": "rivalry",
+    "team_a": "NFD",
+    "team_b": "TBY",
+    "year_established": 2023,
+    "description": "Two SCC welterweights who are desparate for glory.",
+    "history": []
+  },
+  {
+    "slug": "gld-sar",
+    "name": "Sharks vs SeaSnakes",
+    "type": "rivalry",
+    "team_a": "GLD",
+    "team_b": "SAR",
+    "year_established": 2025,
+    "description": "Rivals on the gridiron, both in the AFC North and the SCC.",
     "history": []
   }
 ]
