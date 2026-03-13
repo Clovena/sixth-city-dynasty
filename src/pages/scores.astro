@@ -27,9 +27,22 @@ for (const [path, mod] of Object.entries(matchupGlob)) {
 }
 
 // ── Franchise lookup: roster_id (= f.id) → { name, abbr } ──────────────────
-const franchiseMap: Record<number, { name: string; abbr: string }> = {};
+type FranchiseEntry = {
+  name: string;
+  abbr: string;
+  founded: number;
+  predecessorAbbr: string | null;
+  rebrands: Array<{ year: number; name: string }>;
+};
+const franchiseMap: Record<number, FranchiseEntry> = {};
 for (const f of franchisesJson) {
-  franchiseMap[f.id] = { name: f.name, abbr: f.abbr };
+  franchiseMap[f.id] = {
+    name: f.name,
+    abbr: f.abbr,
+    founded: f.founded,
+    predecessorAbbr: ('predecessor_abbr' in f ? (f as any).predecessor_abbr : null) ?? null,
+    rebrands: (f.rebrands ?? []) as Array<{ year: number; name: string }>,
+  };
 }
 
 // ── Determine default season (latest year with data) ────────────────────────
@@ -224,8 +237,8 @@ const defaultWeekNum = Math.max(
 
       html += `
         <div class="matchup-card">
-          ${teamRow(fA, scoreA, aWins, bWins)}
-          ${teamRow(fB, scoreB, bWins, aWins)}
+          ${teamRow(fA, scoreA, aWins, bWins, year)}
+          ${teamRow(fB, scoreB, bWins, aWins, year)}
         </div>`;
     }
     html += '</div>';
@@ -233,15 +246,25 @@ const defaultWeekNum = Math.max(
     grid.innerHTML = html;
   }
 
-  function teamRow(franchise, score, isWinner, isLoser) {
+  function teamRow(franchise, score, isWinner, isLoser, year) {
     const cls = isWinner ? 'winner' : isLoser ? 'loser' : 'tied';
+
+    // Adopted teams (founded != 2021) use predecessor identity in pre-adoption seasons
+    let name = franchise.name;
+    let logoAbbr = franchise.abbr;
+    if (franchise.founded !== 2021 && year < franchise.founded) {
+      const rebrand = franchise.rebrands.find(r => r.year === year);
+      if (rebrand) name = rebrand.name;
+      if (franchise.predecessorAbbr) logoAbbr = franchise.predecessorAbbr;
+    }
+
     return `
       <div class="team-row ${cls}">
         <img class="team-logo"
-             src="/images/logos/${franchise.abbr}.png"
-             alt="${franchise.name}"
+             src="/images/logos/${logoAbbr}.png"
+             alt="${name}"
              onerror="this.style.display='none'" />
-        <span class="team-name">${franchise.name}</span>
+        <span class="team-name">${name}</span>
         <span class="team-score">${score.toFixed(2)}</span>
       </div>`;
   }
