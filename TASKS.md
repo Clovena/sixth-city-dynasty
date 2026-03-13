@@ -8,6 +8,8 @@
 - Cleanup
   - Align order of top and bottom nav bars
   - home/index.html still says Bowl Games on <a> block
+- Mobile display optimization
+- Color refactoring to surface and glow
 
 ## Dev
 - Bugfix Netlify deployment
