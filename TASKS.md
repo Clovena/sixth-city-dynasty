@@ -10,6 +10,7 @@
   - home/index.html still says Bowl Games on <a> block
 - Mobile display optimization
 - Color refactoring to surface and glow
+- Game recaps for select matchups
 
 ## Dev
 - Bugfix Netlify deployment
