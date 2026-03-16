@@ -75,6 +75,12 @@ const predecessorAbbr = ('predecessor_abbr' in franchise ? franchise.predecessor
 const hasRebrands = franchise.rebrands && franchise.rebrands.length > 0;
 const primaryColor = franchise.colors[0];
 const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
+
+// Season record totals
+const totalWins = franchiseResults.reduce((sum, r) => sum + r.wins, 0);
+const totalLosses = franchiseResults.reduce((sum, r) => sum + r.losses, 0);
+const totalPF = franchiseResults.reduce((sum, r) => sum + r.points_for, 0);
+const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
 ---
 
 <Layout
@@ -265,6 +271,17 @@ const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
                   </tr>
                   );
                 })}
+                {franchiseResults.length > 0 && (
+                  <tr style={`background-color: ${primaryColor}33; border-left: 4px solid ${primaryColor};`}>
+                    <td style="font-weight: 700;">Total</td>
+                    {isAdopted && <td></td>}
+                    <td style="font-weight: 700;">{totalWins}</td>
+                    <td style="font-weight: 700;">{totalLosses}</td>
+                    <td style="text-align: right; font-variant-numeric: tabular-nums; font-weight: 700;">{totalPF.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td style="text-align: right; font-variant-numeric: tabular-nums; font-weight: 700;">{totalPA.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td></td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
