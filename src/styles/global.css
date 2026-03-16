@@ -79,9 +79,7 @@
 
 @layer components {
   .section-rule {
-    border-top: 1px solid var(--color-border);
     margin-top: 3rem;
-    padding-top: 3rem;
   }
 
   .label-badge {
