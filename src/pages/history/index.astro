@@ -72,9 +72,10 @@ function getDisplayName(abbr: string) {
 
     <!-- Season-by-season table -->
     <div style="margin-top: 3rem;">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; color: var(--color-text-primary);">
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: var(--color-text-primary);">
         Season Results
       </h2>
+      <p class="page-whisper" style="margin-bottom: 1.5rem;">Click on a season's row for more detail.</p>
       <div style="overflow-x: auto;">
         <table class="data-table">
           <thead>
@@ -205,26 +206,6 @@ function getDisplayName(abbr: string) {
             Playoff field contracted to 7 teams. Seeds 1 and 2 are reserved for the SCC and HCC conference champions. The 1-seed earns a first-round bye. Seeds 3 through 7 are at-large by record.
           </p>
         </div>
-      </div>
-    </div>
-
-    <!-- Season narratives -->
-    <div class="section-rule">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;">Season by Season</h2>
-      <div style="display: flex; flex-direction: column; gap: 0; border: 1px solid var(--color-border);">
-        {seasons.slice().reverse().map((season, i) => (
-          <div style={`padding: 1.75rem; ${i !== 0 ? 'border-top: 1px solid var(--color-border);' : ''}`}>
-            <div style="display: flex; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
-              <h3 style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--color-gold); margin: 0;">{season.year}</h3>
-              <span style="font-family: var(--font-body); font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); letter-spacing: 0.04em;">{season.dynasty_bowl.label}</span>
-              <span style="font-size: 0.8rem; color: var(--color-text-muted);">
-                Won by <strong style="color: var(--color-text-secondary);">{season.dynasty_bowl.winner === 'MTL' ? 'MTL (SAR)' : season.dynasty_bowl.winner}</strong>
-                {' '}over <strong style="color: var(--color-text-secondary);">{season.dynasty_bowl.loser}</strong>
-              </span>
-            </div>
-            <p style="font-size: 0.9rem; color: var(--color-text-secondary); line-height: 1.65; max-width: 72ch; margin: 0;">{season.notes}</p>
-          </div>
-        ))}
       </div>
     </div>
   </div>

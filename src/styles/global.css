@@ -185,6 +185,11 @@
       max-width: 60ch;
   }
 
+  .page-whisper {
+    color: var(--color-text-secondary);
+    font-style: italic;
+  }
+
   .bowl-card {
     background-color: var(--color-surface);
     border: 1px solid var(--color-border);
