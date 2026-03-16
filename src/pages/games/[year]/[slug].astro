@@ -3,6 +3,7 @@ import { getCollection, render } from 'astro:content';
 import Layout from '../../../layouts/Layout.astro';
 import franchisesJson from '../../../data/franchises.json';
 import { mapStartersToSlots } from '../../../lib/lineup';
+import playerIdMap from '../../../data/player-id-map.json';
 
 // ── Static paths — self-contained, no module-scope variable access ────────────
 export async function getStaticPaths() {
@@ -135,6 +136,11 @@ const pageTitle = recap ? recap.data.title : `${effA.name} vs ${effB.name}`;
 // Lineups
 const lineupA = mapStartersToSlots(entryA?.starters ?? [], entryA?.starters_points ?? [], year, week);
 const lineupB = mapStartersToSlots(entryB?.starters ?? [], entryB?.starters_points ?? [], year, week);
+
+// Player metadata helpers
+const pMap = playerIdMap as Record<string, { espn_id: string; full_name: string; position: string }>;
+function playerName(id: string) { return pMap[id]?.full_name || id; }
+function espnHeadshotUrl(id: string) { const espnId = pMap[id]?.espn_id; return espnId ? `https://a.espncdn.com/i/headshots/nfl/players/full/${espnId}.png` : null; }
 ---
 
 <Layout title={pageTitle} description={`Week ${week}, ${year} — ${effA.name} vs ${effB.name}`}>
@@ -200,8 +206,12 @@ const lineupB = mapStartersToSlots(entryB?.starters ?? [], entryB?.starters_poin
                 style={`--slot-surface: var(--color-${slotA.colorVar}-surface); --slot-glow: var(--color-${slotA.colorVar}-glow);`}
               >
                 <span class="lineup-pos">{slotA.position}</span>
-                <span class="lineup-thumb"></span>
-                <span class="lineup-name">{slotA.playerId}</span>
+                <span class="lineup-thumb">
+                  {espnHeadshotUrl(slotA.playerId)
+                    ? <img src={espnHeadshotUrl(slotA.playerId)!} alt={playerName(slotA.playerId)} width="28" height="28" loading="lazy" decoding="async" onerror="this.src='/images/player-placeholder.png';this.onerror=null;" />
+                    : null}
+                </span>
+                <span class="lineup-name">{playerName(slotA.playerId)}</span>
                 <span class="lineup-score">{slotA.points.toFixed(2)}</span>
               </div>
               <div
@@ -209,8 +219,12 @@ const lineupB = mapStartersToSlots(entryB?.starters ?? [], entryB?.starters_poin
                 style={`--slot-surface: var(--color-${slotB.colorVar}-surface); --slot-glow: var(--color-${slotB.colorVar}-glow);`}
               >
                 <span class="lineup-pos">{slotB.position}</span>
-                <span class="lineup-thumb"></span>
-                <span class="lineup-name">{slotB.playerId}</span>
+                <span class="lineup-thumb">
+                  {espnHeadshotUrl(slotB.playerId)
+                    ? <img src={espnHeadshotUrl(slotB.playerId)!} alt={playerName(slotB.playerId)} width="28" height="28" loading="lazy" decoding="async" onerror="this.src='/images/player-placeholder.png';this.onerror=null;" />
+                    : null}
+                </span>
+                <span class="lineup-name">{playerName(slotB.playerId)}</span>
                 <span class="lineup-score">{slotB.points.toFixed(2)}</span>
               </div>
             </>
@@ -354,9 +368,16 @@ const lineupB = mapStartersToSlots(entryB?.starters ?? [], entryB?.starters_poin
   .lineup-thumb {
     width: 28px;
     height: 28px;
-    background: white;
-    border-radius: 2px;
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .lineup-thumb img {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
   }
 
   .lineup-name {
