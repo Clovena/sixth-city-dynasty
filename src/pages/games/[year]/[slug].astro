@@ -138,7 +138,7 @@ const lineupA = mapStartersToSlots(entryA?.starters ?? [], entryA?.starters_poin
 const lineupB = mapStartersToSlots(entryB?.starters ?? [], entryB?.starters_points ?? [], year, week);
 
 // Player metadata helpers
-const pMap = playerIdMap as Record<string, { espn_id: string; full_name: string; position: string }>;
+const pMap = playerIdMap as Record<string, { espn_id?: string; full_name: string; position: string }>;
 function playerName(id: string) { return pMap[id]?.full_name || id; }
 function espnHeadshotUrl(id: string) { const espnId = pMap[id]?.espn_id; return espnId ? `https://a.espncdn.com/i/headshots/nfl/players/full/${espnId}.png` : null; }
 ---

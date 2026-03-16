@@ -133,17 +133,18 @@ saveResults(allResults);
 if (process.argv.includes('--players')) {
   console.log('\nFetching player ID map from Sleeper (this may take a moment)...');
   const raw = await getPlayers();
-  const map: Record<string, { espn_id: string; full_name: string; position: string }> = {};
+  const map: Record<string, { espn_id?: string; full_name: string; position: string }> = {};
   for (const [playerId, player] of Object.entries(raw)) {
-    if (!player.espn_id) continue;
+    if (!player.full_name) continue;
     map[playerId] = {
-      espn_id: String(player.espn_id),
-      full_name: player.full_name ?? '',
+      ...(player.espn_id ? { espn_id: String(player.espn_id) } : {}),
+      full_name: player.full_name,
       position: player.position ?? '',
     };
   }
+  const withEspn = Object.values(map).filter(p => p.espn_id).length;
   writeFileSync(join(DATA_DIR, 'player-id-map.json'), JSON.stringify(map, null, 2));
-  console.log(`✓ Wrote src/data/player-id-map.json (${Object.keys(map).length} players with ESPN IDs)`);
+  console.log(`✓ Wrote src/data/player-id-map.json (${Object.keys(map).length} players; ${withEspn} with ESPN IDs)`);
 }
 
 console.log('\nDone.');
