@@ -2,6 +2,7 @@
 import { getCollection, render } from 'astro:content';
 import Layout from '../../../layouts/Layout.astro';
 import franchisesJson from '../../../data/franchises.json';
+import { ROSTER_SLOTS } from '../../../lib/roster-slots';
 
 // ── Static paths — self-contained, no module-scope variable access ────────────
 export async function getStaticPaths() {
@@ -167,6 +168,52 @@ const pageTitle = recap ? recap.data.title : `${effA.name} vs ${effB.name}`;
 
     </div>
 
+    <!-- Starting Lineups -->
+    <div style="margin-top: 2rem;">
+      <p class="section-label">Starting Lineups</p>
+      <div class="lineup-grid">
+
+        <!-- Column headers -->
+        <div class="lineup-col-header lineup-col-header-a">
+          <img src={`/images/logos/${effA.logoAbbr}.png`} alt="" width="22" height="22"
+               style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+          <span>{effA.name}</span>
+        </div>
+        <div class="lineup-col-header lineup-col-header-b">
+          <span>{effB.name}</span>
+          <img src={`/images/logos/${effB.logoAbbr}.png`} alt="" width="22" height="22"
+               style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+        </div>
+
+        <!-- Roster rows -->
+        {ROSTER_SLOTS.map((slot) => (
+          <>
+            <div
+              class="lineup-row lineup-row-a"
+              style={`--slot-surface: var(--color-${slot.colorVar}-surface); --slot-glow: var(--color-${slot.colorVar}-glow);`}
+              data-defensive={slot.isDefensive ? 'true' : undefined}
+            >
+              <span class="lineup-pos">{slot.position}</span>
+              <span class="lineup-thumb"></span>
+              <span class="lineup-name">Lorem Ipsum</span>
+              <span class="lineup-score">12.42</span>
+            </div>
+            <div
+              class="lineup-row lineup-row-b"
+              style={`--slot-surface: var(--color-${slot.colorVar}-surface); --slot-glow: var(--color-${slot.colorVar}-glow);`}
+              data-defensive={slot.isDefensive ? 'true' : undefined}
+            >
+              <span class="lineup-pos">{slot.position}</span>
+              <span class="lineup-thumb"></span>
+              <span class="lineup-name">Lorem Ipsum</span>
+              <span class="lineup-score">12.42</span>
+            </div>
+          </>
+        ))}
+
+      </div>
+    </div>
+
     <!-- Recap (only rendered when a file exists) -->
     {recap && (
       <div style="margin-top: 3.5rem;">
@@ -234,6 +281,108 @@ const pageTitle = recap ? recap.data.title : `${effA.name} vs ${effB.name}`;
   .game-score.winner {
     color: var(--color-gold);
   }
+
+  /* ── Starting Lineups ──────────────────────────────────────────────────── */
+
+  .lineup-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  .lineup-col-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.875rem;
+    background: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+
+  .lineup-col-header-a {
+    border-right: 1px solid var(--color-border);
+  }
+
+  .lineup-col-header-b {
+    justify-content: flex-end;
+  }
+
+  .lineup-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.3rem 0.75rem;
+    background: var(--slot-surface);
+    border-bottom: 1px solid var(--slot-glow);
+  }
+
+  .lineup-row-a {
+    border-right: 1px solid var(--color-border);
+  }
+
+  .lineup-row-b {
+    flex-direction: row-reverse;
+  }
+
+  .lineup-pos {
+    font-family: var(--font-body);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--slot-glow);
+    border: 1px solid var(--slot-glow);
+    padding: 0.15rem 0.3rem;
+    border-radius: 2px;
+    flex-shrink: 0;
+    min-width: 2.6rem;
+    text-align: center;
+  }
+
+  .lineup-thumb {
+    width: 28px;
+    height: 28px;
+    background: white;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .lineup-name {
+    flex: 1;
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    color: var(--color-text-primary);
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .lineup-row-b .lineup-name {
+    text-align: right;
+  }
+
+  .lineup-score {
+    font-family: var(--font-body);
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    flex-shrink: 0;
+    min-width: 2.75rem;
+    text-align: right;
+  }
+
+  .lineup-row-b .lineup-score {
+    text-align: left;
+  }
+
+  /* ── Recap ──────────────────────────────────────────────────────────────── */
 
   .recap-body :global(p) {
     font-family: var(--font-body);
