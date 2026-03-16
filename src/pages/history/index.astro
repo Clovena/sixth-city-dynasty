@@ -1,7 +1,7 @@
 ---
-import Layout from '../layouts/Layout.astro';
-import seasons from '../data/seasons.json';
-import franchises from '../data/franchises.json';
+import Layout from '../../layouts/Layout.astro';
+import seasons from '../../data/seasons.json';
+import franchises from '../../data/franchises.json';
 
 // Build championship record per franchise (accounting for MTL -> SAR)
 const championshipMap: Record<string, { count: number; years: number[] }> = {};
@@ -53,11 +53,11 @@ function getDisplayName(abbr: string) {
         branch off of a standard redraft league with origins in the Sigma
         Phi Epsilon Ohio Zeta chapter. Rooted in Cleveland, Sixth City is
         host to members throughout the state of Ohio.
-      <br><br>        
+      <br><br>
         Sixth City celebrates continuity and creativity. Franchises carry
         their own legacies from year to year, and they carry the glory and
         ignominy that comes with those legacies. Bowl Games and Rivalry Weeks
-        are designed to spotlight both the dynamics between members of the 
+        are designed to spotlight both the dynamics between members of the
         league and the fictional threads that bind franchises historically
         and geographically. Members concoct experimental formats like 2v2
         Tag-Team and One-vs-Everyone matchups. History is preserved and
@@ -72,9 +72,10 @@ function getDisplayName(abbr: string) {
 
     <!-- Season-by-season table -->
     <div style="margin-top: 3rem;">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem; color: var(--color-text-primary);">
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: var(--color-text-primary);">
         Season Results
       </h2>
+      <p class="page-whisper" style="margin-bottom: 1.5rem;">Click on a season's row for more detail.</p>
       <div style="overflow-x: auto;">
         <table class="data-table">
           <thead>
@@ -94,31 +95,35 @@ function getDisplayName(abbr: string) {
               const winnerFranchise = getFranchise(season.dynasty_bowl.winner);
               const loserFranchise = getFranchise(season.dynasty_bowl.loser);
               return (
-                <tr>
+                <tr
+                  onclick={`window.location='/history/${season.year}'`}
+                  style="cursor: pointer;"
+                  class="history-row"
+                >
                   <td style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-gold);">{season.year}</td>
                   <td>
-                    <a href={`/franchises/${sccFranchise?.abbr}`} style="color: var(--color-text-primary);">
+                    <span style="color: var(--color-text-primary);">
                       {getDisplayName(season.scc_champion)}
-                    </a>
+                    </span>
                     <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{sccFranchise?.name}</span>
                   </td>
                   <td>
-                    <a href={`/franchises/${hccFranchise?.abbr}`} style="color: var(--color-text-primary);">
+                    <span style="color: var(--color-text-primary);">
                       {season.hcc_champion}
-                    </a>
+                    </span>
                     <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{hccFranchise?.name}</span>
                   </td>
                   <td style="font-size: 0.85rem; color: var(--color-text-secondary);">{season.dynasty_bowl.label}</td>
                   <td class="winner-cell">
-                    <a href={`/franchises/${winnerFranchise?.abbr}`} style="color: var(--color-gold);">
+                    <span style="color: var(--color-gold);">
                       {getDisplayName(season.dynasty_bowl.winner)}
-                    </a>
+                    </span>
                     <span style="display: block; font-size: 0.75rem; font-weight: 400; color: var(--color-gold-dim);">{winnerFranchise?.name}</span>
                   </td>
                   <td>
-                    <a href={`/franchises/${loserFranchise?.abbr}`} style="color: var(--color-text-secondary);">
+                    <span style="color: var(--color-text-secondary);">
                       {season.dynasty_bowl.loser}
-                    </a>
+                    </span>
                     <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{loserFranchise?.name}</span>
                   </td>
                 </tr>
@@ -203,25 +208,11 @@ function getDisplayName(abbr: string) {
         </div>
       </div>
     </div>
-
-    <!-- Season narratives -->
-    <div class="section-rule">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;">Season by Season</h2>
-      <div style="display: flex; flex-direction: column; gap: 0; border: 1px solid var(--color-border);">
-        {seasons.slice().reverse().map((season, i) => (
-          <div style={`padding: 1.75rem; ${i !== 0 ? 'border-top: 1px solid var(--color-border);' : ''}`}>
-            <div style="display: flex; align-items: baseline; gap: 1rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
-              <h3 style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 700; color: var(--color-gold); margin: 0;">{season.year}</h3>
-              <span style="font-family: var(--font-body); font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); letter-spacing: 0.04em;">{season.dynasty_bowl.label}</span>
-              <span style="font-size: 0.8rem; color: var(--color-text-muted);">
-                Won by <strong style="color: var(--color-text-secondary);">{season.dynasty_bowl.winner === 'MTL' ? 'MTL (SAR)' : season.dynasty_bowl.winner}</strong>
-                {' '}over <strong style="color: var(--color-text-secondary);">{season.dynasty_bowl.loser}</strong>
-              </span>
-            </div>
-            <p style="font-size: 0.9rem; color: var(--color-text-secondary); line-height: 1.65; max-width: 72ch; margin: 0;">{season.notes}</p>
-          </div>
-        ))}
-      </div>
-    </div>
   </div>
 </Layout>
+
+<style>
+  .history-row:hover td {
+    background-color: color-mix(in srgb, var(--color-gold) 5%, transparent);
+  }
+</style>

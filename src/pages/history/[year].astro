@@ -1,0 +1,717 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import seasons from '../../data/seasons.json';
+import franchises from '../../data/franchises.json';
+import results from '../../data/results.json';
+import { getEntry, render } from 'astro:content';
+
+export function getStaticPaths() {
+  return seasons.map(s => ({ params: { year: String(s.year) } }));
+}
+
+const { year } = Astro.params;
+const yearNum = parseInt(year);
+const season = seasons.find(s => s.year === yearNum)!;
+
+// ── Franchise helpers ───────────────────────────────────────────────────────
+
+function getEffectiveAbbr(franchise: typeof franchises[0], yr: number): string {
+  if (franchise.founded !== 2021 && yr < franchise.founded) {
+    return franchise.predecessor_abbr ?? franchise.abbr;
+  }
+  return franchise.abbr;
+}
+
+function getEffectiveName(franchise: typeof franchises[0], yr: number): string {
+  if (franchise.founded !== 2021 && yr < franchise.founded) {
+    const rebrand = franchise.rebrands?.find(r => r.year === yr);
+    return rebrand?.name ?? franchise.name;
+  }
+  return franchise.name;
+}
+
+// ── Standings ───────────────────────────────────────────────────────────────
+
+const FINISH_ORDER: Record<string, number> = {
+  'Champion': 1,
+  'Runner-up': 2,
+  'Semifinals': 3,
+  'First round': 4,
+};
+
+function finishSortKey(finish: string): number {
+  if (FINISH_ORDER[finish] !== undefined) return FINISH_ORDER[finish];
+  const m = finish.match(/^(\d+)/);
+  return m ? 100 + parseInt(m[1]) : 999;
+}
+
+type StandingsRow = {
+  abbr: string;
+  effectiveAbbr: string;
+  name: string;
+  effectiveName: string;
+  conference: string;
+  wins: number;
+  losses: number;
+  points_for: number;
+  points_against: number;
+  playoff: boolean;
+  finish: string;
+  seed: number;
+  roster_id: number;
+};
+
+const resultsTyped = results as Record<string, Array<{
+  year: number;
+  wins: number;
+  losses: number;
+  points_for: number;
+  points_against: number;
+  playoff: boolean | string;
+  finish: string;
+  seed: number;
+}>>;
+
+const allRows: StandingsRow[] = [];
+
+for (const franchise of franchises) {
+  const s = resultsTyped[franchise.abbr]?.find(r => r.year === yearNum);
+  if (!s) continue;
+  if (s.wins === 0 && s.losses === 0 && !s.finish) continue;
+
+  allRows.push({
+    abbr: franchise.abbr,
+    effectiveAbbr: getEffectiveAbbr(franchise, yearNum),
+    name: franchise.name,
+    effectiveName: getEffectiveName(franchise, yearNum),
+    conference: franchise.conference,
+    wins: s.wins,
+    losses: s.losses,
+    points_for: s.points_for,
+    points_against: s.points_against,
+    playoff: Boolean(s.playoff),
+    finish: s.finish,
+    seed: s.seed ?? 0,
+    roster_id: franchise.id,
+  });
+}
+
+function sortStandings(rows: StandingsRow[]): StandingsRow[] {
+  return [...rows].sort((a, b) => {
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    if (a.playoff !== b.playoff) return a.playoff ? -1 : 1;
+    const fa = finishSortKey(a.finish);
+    const fb = finishSortKey(b.finish);
+    if (fa !== fb) return fa - fb;
+    return b.points_for - a.points_for;
+  });
+}
+
+const sccRows = sortStandings(allRows.filter(r => r.conference === 'SCC'));
+const hccRows = sortStandings(allRows.filter(r => r.conference === 'HCC'));
+
+// ── Playoff bracket ─────────────────────────────────────────────────────────
+
+const is8Team = season.playoff_format.includes('8-team');
+const teamCount = is8Team ? 8 : 7;
+
+const playoffTeams = allRows.filter(r => r.seed > 0);
+
+function getByConfSeed(conf: string, seed: number): StandingsRow | null {
+  return playoffTeams.find(r => r.conference === conf && r.seed === seed) ?? null;
+}
+function getBySeed(seed: number): StandingsRow | null {
+  return playoffTeams.find(r => r.seed === seed) ?? null;
+}
+
+// Week 15 first-round matchup data
+const matchupFiles = import.meta.glob<{ default: Record<string, any[]> }>('../../data/raw/*-matchups.json');
+const matchupMod = await matchupFiles[`../../data/raw/${yearNum}-matchups.json`]?.();
+const week15: any[] = (matchupMod?.default ?? {})['15'] ?? [];
+
+// Group week 15 by matchup_id
+const matchupById = new Map<number, { roster_id: number; score: number }[]>();
+for (const entry of week15) {
+  if (entry.matchup_id == null) continue;
+  const score = (entry.custom_points ?? entry.points) || 0;
+  const list = matchupById.get(entry.matchup_id) ?? [];
+  list.push({ roster_id: entry.roster_id, score });
+  matchupById.set(entry.matchup_id, list);
+}
+
+// Return winner of a matchup between two teams; if b is null, a gets a bye
+function getMatchupWinner(a: StandingsRow | null, b: StandingsRow | null): StandingsRow | null {
+  if (!a) return null;
+  if (!b) return a; // bye
+  for (const entries of matchupById.values()) {
+    const ea = entries.find(e => e.roster_id === a.roster_id);
+    const eb = entries.find(e => e.roster_id === b.roster_id);
+    if (ea && eb) return ea.score > eb.score ? a : b;
+  }
+  return null;
+}
+
+// Bracket matchups: each is [topSlot, bottomSlot]
+// 8-team: SCC on left (1v4 top, 2v3 bottom), HCC on right (1v4 top, 2v3 bottom)
+// 7-team: left = [seed1(bye), null] + [seed4, seed5], right = [seed2, seed7] + [seed3, seed6]
+let leftTop:    [StandingsRow | null, StandingsRow | null];
+let leftBottom: [StandingsRow | null, StandingsRow | null];
+let rightTop:   [StandingsRow | null, StandingsRow | null];
+let rightBottom:[StandingsRow | null, StandingsRow | null];
+
+if (is8Team) {
+  leftTop    = [getByConfSeed('SCC', 1), getByConfSeed('SCC', 4)];
+  leftBottom = [getByConfSeed('SCC', 2), getByConfSeed('SCC', 3)];
+  rightTop   = [getByConfSeed('HCC', 1), getByConfSeed('HCC', 4)];
+  rightBottom= [getByConfSeed('HCC', 2), getByConfSeed('HCC', 3)];
+} else {
+  leftTop    = [getBySeed(1), null]; // seed 1 has a bye
+  leftBottom = [getBySeed(4), getBySeed(5)];
+  rightTop   = [getBySeed(2), getBySeed(7)];
+  rightBottom= [getBySeed(3), getBySeed(6)];
+}
+
+// Semi-slot winners derived from week 15 matchup data
+const leftSemiTop    = getMatchupWinner(leftTop[0], leftTop[1]);
+const leftSemiBottom = getMatchupWinner(leftBottom[0], leftBottom[1]);
+const rightSemiTop   = getMatchupWinner(rightTop[0], rightTop[1]);
+const rightSemiBottom= getMatchupWinner(rightBottom[0], rightBottom[1]);
+
+const champion = allRows.find(r => r.finish === 'Champion');
+const runnerUp = allRows.find(r => r.finish === 'Runner-up');
+
+// ── Season summary markdown ──────────────────────────────────────────────────
+
+const seasonEntry = await getEntry('seasons', year);
+const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { Content: null };
+---
+
+<Layout
+  title={`${yearNum} Season`}
+  description={`${yearNum} SCDFL season recap: standings, playoff bracket, and ${season.dynasty_bowl.label} results.`}
+>
+  <div style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 0;">
+
+    <!-- Breadcrumb -->
+    <nav style="margin-bottom: 2rem; font-size: 0.8rem; color: var(--color-text-muted);">
+      <a href="/history" style="color: var(--color-text-muted);">History</a>
+      <span style="margin: 0 0.5rem;">/</span>
+      <span style="color: var(--color-text-primary);">{yearNum}</span>
+    </nav>
+
+    <!-- Page header -->
+    <div>
+      <p class="section-label">Season Archive</p>
+      <h1 class="page-title">{yearNum} Season</h1>
+      <p style="font-size: 0.9rem; color: var(--color-text-muted); margin-top: 0.5rem;">
+        {season.dynasty_bowl.label} &bull;
+        Won by <strong style="color: var(--color-text-primary);">{season.dynasty_bowl.winner === 'MTL' ? 'MTL (SAR)' : season.dynasty_bowl.winner}</strong>
+        {' '}over <strong style="color: var(--color-text-primary);">{season.dynasty_bowl.loser}</strong>
+      </p>
+    </div>
+
+    <!-- Season summary -->
+    {SeasonSummary ? 
+    <div class="section-rule">
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">Season Summary</h2>
+      <div class="season-summary" style="max-width: 72ch; font-size: 0.95rem; color: var(--color-text-secondary); line-height: 1.7;">
+        <SeasonSummary />
+      </div>
+    </div> : <div></div>}
+
+    <!-- Conference standings -->
+    <div class="section-rule">
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;">Final Standings</h2>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+
+        <!-- SCC -->
+        <div>
+          <h3 style="font-family: var(--font-body); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-scc); margin-bottom: 0.75rem;">Senatorial Canadian Conference</h3>
+          <table class="data-table" style="width: 100%;">
+            <thead>
+              <tr>
+                <th style="text-align: left;">Team</th>
+                <th>W</th>
+                <th>L</th>
+                <th>PF</th>
+                <th style="text-align: right;">Finish</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sccRows.map(row => (
+                <tr>
+                  <td style="text-align: left;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <img src={`/images/logos/${row.effectiveAbbr}.png`} alt="" width="20" height="20"
+                        style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+                      <a href={`/franchises/${row.abbr}`}
+                        style={`font-size: 0.85rem; ${row.playoff ? 'color: var(--color-text-primary); font-weight: 600;' : 'color: var(--color-text-muted);'}`}>
+                        {row.effectiveAbbr}
+                      </a>
+                    </div>
+                  </td>
+                  <td style="text-align: center;">{row.wins}</td>
+                  <td style="text-align: center;">{row.losses}</td>
+                  <td style="text-align: center; font-size: 0.8rem;">{row.points_for.toFixed(1)}</td>
+                  <td style="text-align: right;">
+                    <span style={`font-size: 0.75rem; ${row.finish === 'Champion' ? 'color: var(--color-gold); font-weight: 700;' : row.finish === 'Runner-up' ? 'color: var(--color-text-primary);' : row.playoff ? 'color: var(--color-text-secondary);' : 'color: var(--color-text-muted);'}`}>
+                      {row.finish}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- HCC -->
+        <div>
+          <h3 style="font-family: var(--font-body); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-hcc); margin-bottom: 0.75rem;">House of Commons Conference</h3>
+          <table class="data-table" style="width: 100%;">
+            <thead>
+              <tr>
+                <th style="text-align: left;">Team</th>
+                <th>W</th>
+                <th>L</th>
+                <th>PF</th>
+                <th style="text-align: right;">Finish</th>
+              </tr>
+            </thead>
+            <tbody>
+              {hccRows.map(row => (
+                <tr>
+                  <td style="text-align: left;">
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                      <img src={`/images/logos/${row.effectiveAbbr}.png`} alt="" width="20" height="20"
+                        style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+                      <a href={`/franchises/${row.abbr}`}
+                        style={`font-size: 0.85rem; ${row.playoff ? 'color: var(--color-text-primary); font-weight: 600;' : 'color: var(--color-text-muted);'}`}>
+                        {row.effectiveAbbr}
+                      </a>
+                    </div>
+                  </td>
+                  <td style="text-align: center;">{row.wins}</td>
+                  <td style="text-align: center;">{row.losses}</td>
+                  <td style="text-align: center; font-size: 0.8rem;">{row.points_for.toFixed(1)}</td>
+                  <td style="text-align: right;">
+                    <span style={`font-size: 0.75rem; ${row.finish === 'Champion' ? 'color: var(--color-gold); font-weight: 700;' : row.finish === 'Runner-up' ? 'color: var(--color-text-primary);' : row.playoff ? 'color: var(--color-text-secondary);' : 'color: var(--color-text-muted);'}`}>
+                      {row.finish}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+      <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.75rem;">Bold = playoff qualifier. Sorted by wins, then playoff status, then finish, then points scored.</p>
+    </div>
+
+    <!-- Playoff bracket -->
+    <div class="section-rule">
+      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem;">Playoff Bracket</h2>
+      <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2rem;">
+        {teamCount}-team field &bull; {is8Team ? 'SCC left · HCC right' : '1-seed has first-round bye'}
+      </p>
+
+      <div class="bracket-wrap">
+
+        <!-- LEFT SIDE: round1 → semis → center -->
+        <div class="bracket-side bracket-left">
+
+          <!-- Round 1 (left) -->
+          <div class="bracket-round">
+            <!-- Top matchup -->
+            <div class="bracket-matchup">
+              <div class={`bracket-slot top${!is8Team && leftTop[1] === null ? ' bye-slot' : ''}`}>
+                {leftTop[0] && (
+                  <>
+                    <img src={`/images/logos/${leftTop[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{leftTop[0].seed}</span>
+                    <span class="slot-name">{leftTop[0].effectiveAbbr}</span>
+                    {!is8Team && leftTop[1] === null && <span class="bye-label">BYE</span>}
+                  </>
+                )}
+              </div>
+              {leftTop[1] !== null && (
+                <>
+                  <div class="bracket-connector-v"></div>
+                  <div class="bracket-slot bottom">
+                    {leftTop[1] && (
+                      <>
+                        <img src={`/images/logos/${leftTop[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{leftTop[1].seed}</span>
+                        <span class="slot-name">{leftTop[1].effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <!-- Bottom matchup -->
+            <div class="bracket-matchup">
+              <div class="bracket-slot top">
+                {leftBottom[0] && (
+                  <>
+                    <img src={`/images/logos/${leftBottom[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{leftBottom[0].seed}</span>
+                    <span class="slot-name">{leftBottom[0].effectiveAbbr}</span>
+                  </>
+                )}
+              </div>
+              <div class="bracket-connector-v"></div>
+              <div class="bracket-slot bottom">
+                {leftBottom[1] && (
+                  <>
+                    <img src={`/images/logos/${leftBottom[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{leftBottom[1].seed}</span>
+                    <span class="slot-name">{leftBottom[1].effectiveAbbr}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <!-- Semis (left) -->
+          <div class="bracket-round bracket-round-semis">
+            <div class="bracket-matchup">
+              <div class="bracket-slot semi-slot top">
+                {leftSemiTop && (
+                  <>
+                    <img src={`/images/logos/${leftSemiTop.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{leftSemiTop.seed}</span>
+                    <span class="slot-name">{leftSemiTop.effectiveAbbr}</span>
+                  </>
+                )}
+              </div>
+              <div class="bracket-connector-v"></div>
+              <div class="bracket-slot semi-slot bottom">
+                {leftSemiBottom && (
+                  <>
+                    <img src={`/images/logos/${leftSemiBottom.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{leftSemiBottom.seed}</span>
+                    <span class="slot-name">{leftSemiBottom.effectiveAbbr}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+        </div><!-- end bracket-left -->
+
+        <!-- CENTER / FINAL -->
+        <div class="bracket-center">
+          <div class="bracket-final-label">
+            <p class="section-label" style="text-align: center; margin-bottom: 0.5rem;">{season.dynasty_bowl.label}</p>
+          </div>
+          <div class="bracket-final-slot">
+            {champion && (
+              <div class="final-team champion-team">
+                <img src={`/images/logos/${champion.effectiveAbbr}.png`} alt="" width="32" height="32" onerror="this.style.display='none'" />
+                <span class="final-seed">{champion.seed}</span>
+                <span class="final-name">{champion.effectiveAbbr}</span>
+              </div>
+            )}
+            <div class="final-defeated">defeated</div>
+            {runnerUp && (
+              <div class="final-team">
+                <img src={`/images/logos/${runnerUp.effectiveAbbr}.png`} alt="" width="32" height="32" onerror="this.style.display='none'" />
+                <span class="final-seed">{runnerUp.seed}</span>
+                <span class="final-name">{runnerUp.effectiveAbbr}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <!-- RIGHT SIDE: semis → round1 (DOM order matches display order with flex-direction: row) -->
+        <div class="bracket-side bracket-right">
+
+          <!-- Semis (right) -->
+          <div class="bracket-round bracket-round-semis">
+            <div class="bracket-matchup">
+              <div class="bracket-slot semi-slot top">
+                {rightSemiTop && (
+                  <>
+                    <img src={`/images/logos/${rightSemiTop.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{rightSemiTop.seed}</span>
+                    <span class="slot-name">{rightSemiTop.effectiveAbbr}</span>
+                  </>
+                )}
+              </div>
+              <div class="bracket-connector-v"></div>
+              <div class="bracket-slot semi-slot bottom">
+                {rightSemiBottom && (
+                  <>
+                    <img src={`/images/logos/${rightSemiBottom.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{rightSemiBottom.seed}</span>
+                    <span class="slot-name">{rightSemiBottom.effectiveAbbr}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <!-- Round 1 (right) -->
+          <div class="bracket-round">
+            <!-- Top matchup -->
+            <div class="bracket-matchup">
+              <div class="bracket-slot top">
+                {rightTop[0] && (
+                  <>
+                    <img src={`/images/logos/${rightTop[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{rightTop[0].seed}</span>
+                    <span class="slot-name">{rightTop[0].effectiveAbbr}</span>
+                  </>
+                )}
+              </div>
+              <div class="bracket-connector-v"></div>
+              <div class="bracket-slot bottom">
+                {rightTop[1] && (
+                  <>
+                    <img src={`/images/logos/${rightTop[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{rightTop[1].seed}</span>
+                    <span class="slot-name">{rightTop[1].effectiveAbbr}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <!-- Bottom matchup -->
+            <div class="bracket-matchup">
+              <div class="bracket-slot top">
+                {rightBottom[0] && (
+                  <>
+                    <img src={`/images/logos/${rightBottom[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{rightBottom[0].seed}</span>
+                    <span class="slot-name">{rightBottom[0].effectiveAbbr}</span>
+                  </>
+                )}
+              </div>
+              <div class="bracket-connector-v"></div>
+              <div class="bracket-slot bottom">
+                {rightBottom[1] && (
+                  <>
+                    <img src={`/images/logos/${rightBottom[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                    <span class="slot-seed">{rightBottom[1].seed}</span>
+                    <span class="slot-name">{rightBottom[1].effectiveAbbr}</span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+        </div><!-- end bracket-right -->
+
+      </div><!-- end bracket-wrap -->
+    </div>
+
+  </div>
+</Layout>
+
+<style>
+  /* ── Season summary ──────────────────────────────── */
+  .season-summary :global(p) {
+    margin-bottom: 1rem;
+  }
+  .season-summary :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  /* ── Bracket layout ──────────────────────────────── */
+  .bracket-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding-bottom: 1rem;
+  }
+
+  .bracket-side {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .bracket-left {
+    flex-direction: row;
+  }
+
+  /* Right side: DOM order is [semis, round1]; flex-direction row displays
+     them left-to-right so semis is near center and round1 is at the far right. */
+  .bracket-right {
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  /* Each round column stretches to fill its half of the bracket side */
+  .bracket-round {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .bracket-round-semis {
+    flex: 1;
+    padding: 0.5rem;
+  }
+
+  .bracket-matchup {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    position: relative;
+  }
+
+  /* Connector line between two slots in a matchup */
+  .bracket-connector-v {
+    width: 100%;
+    height: 2px;
+    background-color: var(--color-border);
+    margin: 0;
+    position: relative;
+  }
+
+  /* Vertical bar on the right side for left-bracket slots */
+  .bracket-connector-v::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: -1.25rem;
+    border-right: 2px solid var(--color-border);
+    height: 2.5rem;
+  }
+
+  /* Vertical bar on the left side for right-bracket slots */
+  .bracket-right .bracket-connector-v::after {
+    left: -1px;
+    right: auto;
+    border-right: none;
+    border-left: 2px solid var(--color-border);
+  }
+
+  /* Individual team slot */
+  .bracket-slot {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.6rem;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    min-width: 110px;
+    height: 2.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+  }
+
+  .bracket-right .bracket-slot {
+    flex-direction: row-reverse;
+    text-align: right;
+  }
+
+  .bracket-slot img {
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .slot-seed {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    min-width: 14px;
+    text-align: center;
+  }
+
+  .slot-name {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  /* Semi-round slots have a solid border when populated, dashed when empty */
+  .semi-slot {
+    min-width: 90px;
+  }
+
+  .semi-slot:not(:has(img)) {
+    background-color: color-mix(in srgb, var(--color-surface) 60%, transparent);
+    border-style: dashed;
+    color: var(--color-text-muted);
+  }
+
+  .bye-slot {
+    border-color: var(--color-gold-dim);
+  }
+
+  .bye-label {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--color-gold-dim);
+    margin-left: auto;
+  }
+
+  /* ── Final / Championship ─────────────────────── */
+  .bracket-center {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 1rem;
+  }
+
+  .bracket-final-label {
+    margin-bottom: 0.75rem;
+  }
+
+  .bracket-final-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    border: 1px solid var(--color-gold-glow);
+    background-color: var(--color-gold-surface);
+    padding: 1rem 1.25rem;
+    min-width: 130px;
+  }
+
+  .final-team {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    width: 100%;
+  }
+
+  .final-team img {
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .final-seed {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--color-gold-dim);
+    min-width: 14px;
+  }
+
+  .final-name {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--color-gold);
+  }
+
+  .final-defeated {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    padding: 0.15rem 0;
+  }
+</style>

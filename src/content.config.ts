@@ -25,4 +25,8 @@ const recaps = defineCollection({
   }),
 });
 
-export const collections = { franchises, writeups, recaps };
+const seasons = defineCollection({
+  loader: glob({ pattern: '*.md', base: './src/content/seasons' }),
+});
+
+export const collections = { franchises, writeups, recaps, seasons };
