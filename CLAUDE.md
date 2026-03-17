@@ -202,11 +202,3 @@ All matchup data is embedded at build time as a JSON blob via `define:vars`. Cli
 ## `getStaticPaths` Rule
 
 Astro's `getStaticPaths` runs in an isolated scope — module-level variables are NOT accessible inside it. All data loading (`import.meta.glob`, imports) must be re-initialized inside the function body. Vite deduplicates actual file reads at build time so there is no performance cost.
-
----
-
-## v2 Roadmap
-
-- Replace `src/data/raw/` JSON files with live Sleeper API calls at build time
-- Add roster/lineup data to game recap pages
-- Pages themselves will not need structural changes — only data sources change
