@@ -6,6 +6,7 @@
 - Blurbs for Bowl Games in Content page
 - Rookie drafts on season recap pages
 - Color refactoring to surface and glow
+- Player profile pages, a la pro-football-reference?
 - More data from Sleeper API
   - Drafts
   - Transactions
