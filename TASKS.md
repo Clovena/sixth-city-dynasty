@@ -11,13 +11,13 @@
   - Drafts
   - Transactions
 - Cleanup
-  - Align order of top and bottom nav bars
   - home/index.html still says Bowl Games on <a> block
   - Rivalry game slugs say Bowl Game
   - Align accolade symbols on franchises/index
   - Indent owner name to align with franchsie name on franchises/index
   - Season recap brackets on mobile
   - Franchises arranged as 2-3-2 on desktop, not 3-3-1
+  - Remove various locations of hardcoding logic to convert between SAR and MTL
 
 ## Dev
 
@@ -38,9 +38,6 @@ Every franchise shows a 2026 row with 0 | 0 | 0.00 | 0.00 and a blank result. Th
 
 Content page — lorem ipsum is live
 The Bowl Games Preview piece has real introductory copy but every individual Bowl Game section is lorem ipsum placeholder text. That's fine in development, but it's public-facing now. Either populate the real content or pull those sections until they're written. The mock draft content below it is fully written and genuinely good — the contrast makes the lorem ipsum more noticeable.
-
-Spotlight Games — small typo
-"Blowers vs Mustangs" rivalry description: "desparate" should be "desperate."
 
 ## Completed
 - Content page
