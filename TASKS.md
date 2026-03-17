@@ -7,10 +7,12 @@
 - Cleanup
   - Align order of top and bottom nav bars
   - home/index.html still says Bowl Games on <a> block
+  - Rivalry game slugs say Bowl Game
   - Align accolade symbols on franchises/index
   - Indent owner name to align with franchsie name on franchises/index
   - Season recap brackets on mobile
 - Color refactoring to surface and glow
+- Franchises arranged as 2-3-2 on desktop, not 3-3-1
 
 ## Dev
 
