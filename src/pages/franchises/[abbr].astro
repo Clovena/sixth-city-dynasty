@@ -165,10 +165,10 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
       </div>
     </div>
 
-    <div style="display: grid; grid-template-columns: 1fr 300px; gap: 3rem; margin-top: 3rem; align-items: start;">
+    <div class="franchise-layout-grid" style="display: grid; grid-template-columns: 1fr 300px; gap: 3rem; margin-top: 3rem; align-items: start;">
 
       <!-- Main column -->
-      <div>
+      <div class="franchise-main-col">
 
         <!-- Franchise notes markdown -->
         {FranchiseContent && (
@@ -223,7 +223,7 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
         <!-- Season record -->
         <div>
           <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-primary);">Season Record</h2>
-          <div style="overflow-x: auto;">
+          <div class="season-record-wrap" style="overflow-x: auto;">
             <table class="data-table">
               <thead>
                 <tr>
@@ -231,8 +231,8 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
                   {isAdopted && <th></th>}
                   <th>W</th>
                   <th>L</th>
-                  <th style="text-align: right;">PF</th>
-                  <th style="text-align: right;">PA</th>
+                  <th class="col-hide-mobile" style="text-align: right;">PF</th>
+                  <th class="col-hide-mobile" style="text-align: right;">PA</th>
                   <th>Result</th>
                 </tr>
               </thead>
@@ -265,8 +265,8 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
                     )}
                     <td>{row.wins}</td>
                     <td>{row.losses}</td>
-                    <td style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_for.toFixed(2)}</td>
-                    <td style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_against.toFixed(2)}</td>
+                    <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_for.toFixed(2)}</td>
+                    <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_against.toFixed(2)}</td>
                     <td style={resultStyle}>{row.finish}</td>
                   </tr>
                   );
@@ -277,8 +277,8 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
                     {isAdopted && <td></td>}
                     <td style="font-weight: 700;">{totalWins}</td>
                     <td style="font-weight: 700;">{totalLosses}</td>
-                    <td style="text-align: right; font-variant-numeric: tabular-nums; font-weight: 700;">{totalPF.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td style="text-align: right; font-variant-numeric: tabular-nums; font-weight: 700;">{totalPA.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums; font-weight: 700;">{totalPF.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums; font-weight: 700;">{totalPA.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     <td></td>
                   </tr>
                 )}
@@ -406,3 +406,28 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
   <div style="height: 5rem;"></div>
 
 </Layout>
+
+<style>
+  @media (max-width: 768px) {
+    /* Stack sidebar below main column, both full width */
+    .franchise-layout-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    /* Constrain main column content to screen width */
+    .franchise-main-col {
+      min-width: 0;
+      overflow-x: hidden;
+    }
+
+    /* Season record: remove horizontal scroll, let hidden columns do the work */
+    .season-record-wrap {
+      overflow-x: hidden;
+    }
+
+    /* Hide PF and PA columns */
+    .col-hide-mobile {
+      display: none;
+    }
+  }
+</style>
