@@ -18,10 +18,19 @@
   --color-gold-light: #ffca5c;
   --color-gold-dim: #b47e0f;
 
-  /* ROYGBIV Neon Noir Color Variables */
+}
+
+/* ROYGBIV Neon Noir Color Variables
+   Kept outside @theme so Tailwind's tree-shaker does not drop variables
+   that are only referenced via dynamic CSS custom property names at runtime. */
+:root {
   --color-red: #f22e3d;
   --color-red-surface: #f22e3d33; /* alpha of 33 = 20% opacity*/
   --color-red-glow: #f22e3d66; /* alpha of 66 = 40% opacity*/
+
+  --color-pink: #ff7cb7;
+  --color-pink-surface: #ff7cb733;
+  --color-pink-glow: #ff7cb766;
 
   --color-hcc: #e67e22;
   --color-hcc-surface: #e67e2233;
@@ -36,13 +45,20 @@
   --color-green-glow: #27ae6066;
 
   --color-scc: #7eb8d8;
-  --color-scc-surface: #7eb8d833; 
+  --color-scc-surface: #7eb8d833;
   --color-scc-glow: #7eb8d866;
+
+  --color-purple: #6d7ef5;
+  --color-purple-surface: #6d7ef533;
+  --color-purple-glow: #6d7ef566;
+
+  --color-grey: #a2bcd3;
+  --color-grey-surface: #a2bcd333;
+  --color-grey-glow: #a2bcd366;
 
   --color-white: #e8e8f0;
   --color-white-surface: #e8e8f033;
   --color-white-glow: #e8e8f066;
-
 }
 
 @layer base {

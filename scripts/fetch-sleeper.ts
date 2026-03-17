@@ -127,4 +127,70 @@ for (const season of seasonsToFetch) {
 }
 
 saveResults(allResults);
+
+// ─── Player ID map (opt-in, run with --players) ────────────────────────────
+
+if (process.argv.includes('--players')) {
+  console.log('\nFetching player ID map from dynastyprocess crosswalk...');
+
+  const CSV_URL = 'https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_playerids.csv';
+  const csvRes = await fetch(CSV_URL);
+  if (!csvRes.ok) throw new Error(`Failed to fetch crosswalk CSV: ${csvRes.status}`);
+  const csvText = await csvRes.text();
+
+  function parseCsvLine(line: string): string[] {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (const char of line) {
+      if (char === '"') {
+        inQuotes = !inQuotes;
+      } else if (char === ',' && !inQuotes) {
+        result.push(current);
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current);
+    return result;
+  }
+
+  const lines = csvText.trim().split('\n');
+  const headers = parseCsvLine(lines[0].replace(/\r$/, ''));
+
+  const sleeperIdx = headers.indexOf('sleeper_id');
+  const espnIdx = headers.indexOf('espn_id');
+  const nameIdx = headers.indexOf('name');
+  const posIdx = headers.indexOf('position');
+
+  if ([sleeperIdx, espnIdx, nameIdx, posIdx].includes(-1)) {
+    throw new Error(`Missing expected columns in crosswalk CSV. Found: ${headers.join(', ')}`);
+  }
+
+  const map: Record<string, { espn_id?: string; full_name: string; position: string }> = {};
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i].replace(/\r$/, ''));
+    const sleeperId = cols[sleeperIdx]?.trim();
+    if (!sleeperId || sleeperId === 'NA') continue;
+
+    const espnId = cols[espnIdx]?.trim();
+    const name = cols[nameIdx]?.trim();
+    const position = cols[posIdx]?.trim();
+
+    if (!name || name === 'NA') continue;
+
+    map[sleeperId] = {
+      ...(espnId && espnId !== 'NA' ? { espn_id: espnId } : {}),
+      full_name: name,
+      position: position && position !== 'NA' ? position : '',
+    };
+  }
+
+  const withEspn = Object.values(map).filter(p => p.espn_id).length;
+  writeFileSync(join(DATA_DIR, 'player-id-map.json'), JSON.stringify(map, null, 2));
+  console.log(`✓ Wrote src/data/player-id-map.json (${Object.keys(map).length} players; ${withEspn} with ESPN IDs)`);
+}
+
 console.log('\nDone.');

@@ -7,7 +7,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "fetch": "tsx scripts/fetch-sleeper.ts"
+    "fetch": "tsx scripts/fetch-sleeper.ts",
+    "fetch-players": "tsx scripts/fetch-sleeper.ts --players"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",

@@ -2,7 +2,6 @@
 
 ## TODO
 - Hall of Fame - Player awards, HOF awards, trophies
-- Player headshot call - ESPN CDN & implementation in game recaps
 - Historical matchups of spotlight games
 - Cleanup
   - Align order of top and bottom nav bars
@@ -24,5 +23,6 @@
 - 8.5x14 (legal) print layout
 - Combine Bowl Games and Rivalry Games
 - Rebranded & orphaned logo implementation
-- Game recaps for select matchups
 - Total row in franchise Season Records
+- Game recaps for select matchups
+- Player headshot call - ESPN CDN & implementation in game recaps

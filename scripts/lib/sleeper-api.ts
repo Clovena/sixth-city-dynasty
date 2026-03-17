@@ -120,3 +120,4 @@ export const getWinnersBracket = (leagueId: string) =>
 /** Losers bracket (consolation playoff tree). */
 export const getLosersBracket = (leagueId: string) =>
   get<SleeperBracketMatch[]>(`/league/${leagueId}/losers_bracket`);
+
