@@ -81,11 +81,12 @@ function getDisplayName(abbr: string) {
           <thead>
             <tr>
               <th>Season</th>
-              <th>SCC Champion</th>
-              <th>HCC Champion</th>
-              <th>Dynasty Bowl</th>
+              <th class="col-hide-mobile">SCC Champion</th>
+              <th class="col-hide-mobile">HCC Champion</th>
+              <th class="col-hide-mobile">Dynasty Bowl</th>
               <th>Champion</th>
-              <th>Runner-Up</th>
+              <th class="col-hide-mobile">Runner-Up</th>
+              <th class="col-see-more"></th>
             </tr>
           </thead>
           <tbody>
@@ -101,31 +102,32 @@ function getDisplayName(abbr: string) {
                   class="history-row"
                 >
                   <td style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-gold);">{season.year}</td>
-                  <td>
+                  <td class="col-hide-mobile">
                     <span style="color: var(--color-text-primary);">
                       {getDisplayName(season.scc_champion)}
                     </span>
                     <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{sccFranchise?.name}</span>
                   </td>
-                  <td>
+                  <td class="col-hide-mobile">
                     <span style="color: var(--color-text-primary);">
                       {season.hcc_champion}
                     </span>
                     <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{hccFranchise?.name}</span>
                   </td>
-                  <td style="font-size: 0.85rem; color: var(--color-text-secondary);">{season.dynasty_bowl.label}</td>
+                  <td class="col-hide-mobile" style="font-size: 0.85rem; color: var(--color-text-secondary);">{season.dynasty_bowl.label}</td>
                   <td class="winner-cell">
                     <span style="color: var(--color-gold);">
                       {getDisplayName(season.dynasty_bowl.winner)}
                     </span>
                     <span style="display: block; font-size: 0.75rem; font-weight: 400; color: var(--color-gold-dim);">{winnerFranchise?.name}</span>
                   </td>
-                  <td>
+                  <td class="col-hide-mobile">
                     <span style="color: var(--color-text-secondary);">
                       {season.dynasty_bowl.loser}
                     </span>
                     <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{loserFranchise?.name}</span>
                   </td>
+                  <td class="col-see-more">See more &#8594;</td>
                 </tr>
               );
             })}
@@ -193,7 +195,7 @@ function getDisplayName(abbr: string) {
     <!-- Playoff format notes -->
     <div class="section-rule">
       <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">Playoff Format</h2>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+      <div class="playoff-format-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
         <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem;">
           <p class="section-label">2021–2022</p>
           <p style="font-size: 0.9rem; color: var(--color-text-secondary); line-height: 1.6;">
@@ -214,5 +216,33 @@ function getDisplayName(abbr: string) {
 <style>
   .history-row:hover td {
     background-color: color-mix(in srgb, var(--color-gold) 5%, transparent);
+  }
+
+  /* See more column — desktop: hidden; mobile: visible */
+  .col-see-more {
+    display: none;
+  }
+
+  @media (max-width: 768px) {
+    /* Hide non-essential table columns */
+    .col-hide-mobile {
+      display: none;
+    }
+
+    /* Show and style the "See more" column */
+    .col-see-more {
+      display: table-cell;
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--color-gold-dim);
+      white-space: nowrap;
+      text-align: right;
+    }
+
+    /* Playoff format: single column */
+    .playoff-format-grid {
+      grid-template-columns: 1fr !important;
+    }
   }
 </style>
