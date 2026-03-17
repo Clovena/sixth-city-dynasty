@@ -5,6 +5,10 @@
 - Historical matchups of spotlight games
 - Blurbs for Bowl Games in Content page
 - Rookie drafts on season recap pages
+- Color refactoring to surface and glow
+- More data from Sleeper API
+  - Drafts
+  - Transactions
 - Cleanup
   - Align order of top and bottom nav bars
   - home/index.html still says Bowl Games on <a> block
@@ -12,8 +16,7 @@
   - Align accolade symbols on franchises/index
   - Indent owner name to align with franchsie name on franchises/index
   - Season recap brackets on mobile
-- Color refactoring to surface and glow
-- Franchises arranged as 2-3-2 on desktop, not 3-3-1
+  - Franchises arranged as 2-3-2 on desktop, not 3-3-1
 
 ## Dev
 
