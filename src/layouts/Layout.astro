@@ -19,7 +19,7 @@ const pageTitle = title === 'SCDFL' ? title : `${title} — SCDFL`;
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>{pageTitle}</title>
   </head>
-  <body style="background-color: #0f0f0d; min-height: 100vh; display: flex; flex-direction: column;">
+  <body style="background-color: #0f0f0d; min-height: 100vh; display: flex; flex-direction: column; overflow-x: hidden;">
 
     <header style="border-bottom: 1px solid var(--color-border); position: sticky; top: 0; z-index: 50; background-color: rgba(15,15,13,0.95); backdrop-filter: blur(8px);">
       <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
@@ -27,10 +27,16 @@ const pageTitle = title === 'SCDFL' ? title : `${title} — SCDFL`;
 
           <a href="/" style="display: flex; flex-direction: column; gap: 0; color: var(--color-text-primary); text-decoration: none;">
             <span style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; line-height: 1.1; letter-spacing: -0.01em;">Sixth City</span>
-            <span style="font-family: var(--font-body); font-size: 0.6rem; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: var(--color-gold-dim);">Dynasty Football League</span>
+            <span class="header-subtitle" style="font-family: var(--font-body); font-size: 0.6rem; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; color: var(--color-gold-dim);">Dynasty Football League</span>
           </a>
 
-          <nav>
+          <button id="hamburger-btn" aria-label="Toggle navigation" aria-expanded="false">
+            <span></span>
+            <span></span>
+            <span></span>
+          </button>
+
+          <nav id="main-nav">
             <ul style="display: flex; align-items: center; gap: 0; list-style: none; margin: 0; padding: 0;">
               <li>
                 <a href="/history"
@@ -83,7 +89,7 @@ const pageTitle = title === 'SCDFL' ? title : `${title} — SCDFL`;
             Est. 2021 &bull; Copyright © Zacalytics &bull; Hosted on Sleeper
           </p>
         </div>
-        <nav>
+        <nav class="footer-nav">
           <ul style="display: flex; gap: 1.5rem; list-style: none; margin: 0; padding: 0;">
             <li><a href="/history" style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em;">History</a></li>
             <li><a href="/franchises" style="font-size: 0.75rem; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.06em;">Franchises</a></li>
@@ -97,3 +103,80 @@ const pageTitle = title === 'SCDFL' ? title : `${title} — SCDFL`;
 
   </body>
 </html>
+
+<style is:global>
+  /* Hamburger button — hidden on desktop */
+  #hamburger-btn {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    z-index: 60;
+  }
+
+  #hamburger-btn span {
+    display: block;
+    width: 22px;
+    height: 2px;
+    background-color: var(--color-text-primary);
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  @media (max-width: 768px) {
+    /* Hide header subtitle */
+    .header-subtitle {
+      display: none;
+    }
+
+    /* Show hamburger */
+    #hamburger-btn {
+      display: flex;
+    }
+
+    /* Nav drawer — hidden until toggled */
+    #main-nav {
+      display: none;
+      position: absolute;
+      top: 60px;
+      left: 0;
+      right: 0;
+      background-color: rgba(15, 15, 13, 0.98);
+      border-bottom: 1px solid var(--color-border);
+      padding: 0.5rem 0;
+      z-index: 50;
+    }
+
+    #main-nav.open {
+      display: block;
+    }
+
+    #main-nav ul {
+      flex-direction: column !important;
+      gap: 0 !important;
+    }
+
+    #main-nav ul li a {
+      padding: 0.75rem 1.5rem !important;
+      display: block;
+    }
+
+    /* Hide footer nav */
+    .footer-nav {
+      display: none;
+    }
+  }
+</style>
+
+<script>
+  const btn = document.getElementById('hamburger-btn');
+  const nav = document.getElementById('main-nav');
+
+  btn?.addEventListener('click', () => {
+    const isOpen = nav?.classList.toggle('open');
+    btn.setAttribute('aria-expanded', String(!!isOpen));
+  });
+</script>

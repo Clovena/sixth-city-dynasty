@@ -45,7 +45,7 @@ function getFranchise(abbr: string) {
       </p>
 
       <!-- Quick stats row -->
-      <div style="display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--color-border); width: fit-content;">
+      <div class="quick-stats-grid" style="display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--color-border); width: fit-content;">
         {[
           { label: 'Franchises', value: '14' },
           { label: 'Seasons Completed', value: '5' },
@@ -81,7 +81,7 @@ function getFranchise(abbr: string) {
           const winner = getFranchise(season.dynasty_bowl.winner);
           const loser = getFranchise(season.dynasty_bowl.loser);
           return (
-            <div style="background-color: var(--color-surface); padding: 1.5rem 1.75rem; display: grid; grid-template-columns: 80px 1fr 1fr; gap: 2rem; align-items: center;">
+            <div class="dynasty-bowl-row" style="background-color: var(--color-surface); padding: 1.5rem 1.75rem; display: grid; grid-template-columns: 80px 1fr 1fr; gap: 2rem; align-items: center;">
 
               <div>
                 <p style="font-family: var(--font-display); font-size: 1.75rem; font-weight: 700; color: var(--color-gold); line-height: 1; margin: 0;">{season.year}</p>
@@ -106,7 +106,7 @@ function getFranchise(abbr: string) {
                 </div>
               </div>
 
-              <div style="padding-left: 1.25rem; display: flex; align-items: center; gap: 0.9rem;">
+              <div class="dynasty-bowl-loser" style="padding-left: 1.25rem; display: flex; align-items: center; gap: 0.9rem;">
                 <img
                   src={`/images/logos/${loser?.abbr}.png`}
                   alt=""
@@ -133,7 +133,7 @@ function getFranchise(abbr: string) {
 
   <!-- Section nav -->
   <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
-    <div style="margin-top: 4rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background-color: var(--color-border); margin-bottom: 0;">
+    <div class="section-nav-grid" style="margin-top: 4rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background-color: var(--color-border); margin-bottom: 0;">
 
       <a href="/history" style="text-decoration: none; display: block; background-color: var(--color-surface); padding: 2rem; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='var(--color-surface-alt)'" onmouseout="this.style.backgroundColor='var(--color-surface)'">
         <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-gold-dim); margin: 0 0 0.5rem;">Archive</p>
@@ -161,3 +161,42 @@ function getFranchise(abbr: string) {
   <div style="height: 6rem;"></div>
 
 </Layout>
+
+<style>
+  @media (max-width: 768px) {
+    /* Quick stats: 2×2 grid filling full width */
+    .quick-stats-grid {
+      display: grid !important;
+      grid-template-columns: 1fr 1fr !important;
+      width: 100% !important;
+    }
+
+    /* Reset all left borders, then restore for right-column cells */
+    .quick-stats-grid > div {
+      border-left: none !important;
+    }
+
+    .quick-stats-grid > div:nth-child(even) {
+      border-left: 1px solid var(--color-border) !important;
+    }
+
+    .quick-stats-grid > div:nth-child(3),
+    .quick-stats-grid > div:nth-child(4) {
+      border-top: 1px solid var(--color-border);
+    }
+
+    /* Dynasty bowls: hide runner-up, collapse to 2 columns */
+    .dynasty-bowl-loser {
+      display: none !important;
+    }
+
+    .dynasty-bowl-row {
+      grid-template-columns: 80px 1fr !important;
+    }
+
+    /* Section nav: stack vertically */
+    .section-nav-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
+</style>

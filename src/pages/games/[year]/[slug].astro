@@ -425,4 +425,44 @@ function espnHeadshotUrl(id: string) { const espnId = pMap[id]?.espn_id; return 
     color: var(--color-text-primary);
     margin: 2rem 0 0.75rem;
   }
+
+  /* ── Mobile: Team A above Team B ──────────────────────────────────────── */
+  @media (max-width: 768px) {
+    /* Single column — items flow in DOM order by default (order: 0) */
+    .lineup-grid {
+      grid-template-columns: 1fr;
+    }
+
+    /* Remove Team A's right border (no adjacent column) */
+    .lineup-col-header-a {
+      border-right: none;
+    }
+
+    .lineup-row-a {
+      border-right: none;
+    }
+
+    /* Team B header: push below all Team A rows, match Team A's LTR layout */
+    .lineup-col-header-b {
+      order: 50;
+      flex-direction: row-reverse; /* DOM: [name][img] → displays: [img][name] */
+      justify-content: flex-start;
+      border-top: 1px solid var(--color-border);
+    }
+
+    /* Team B rows: push below Team B header, restore LTR order */
+    .lineup-row-b {
+      order: 51;
+      flex-direction: row;
+    }
+
+    /* Reset Team B text alignments to match Team A */
+    .lineup-row-b .lineup-name {
+      text-align: left;
+    }
+
+    .lineup-row-b .lineup-score {
+      text-align: right;
+    }
+  }
 </style>

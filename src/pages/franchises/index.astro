@@ -45,24 +45,6 @@ const hccFranchises = franchises.filter(f => f.conference === 'HCC')
       </p>
     </div>
 
-    <!-- Conference breakdown stats -->
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background-color: var(--color-border); margin-top: 2.5rem;">
-      <div style="background-color: var(--color-surface); padding: 1.5rem;">
-        <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #7eb8d8; margin-bottom: 0.25rem;">Senatorial Canadian Conference</p>
-        <p style="font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; color: var(--color-text-secondary); margin: 0;">
-          {sccFranchises.map(f => f.abbr).join(' · ')}
-        </p>
-        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.4rem;">1 Dynasty Bowl championship</p>
-      </div>
-      <div style="background-color: var(--color-surface); padding: 1.5rem;">
-        <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: #d4906e; margin-bottom: 0.25rem;">House of Commons Conference</p>
-        <p style="font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; color: var(--color-text-secondary); margin: 0;">
-          {hccFranchises.map(f => f.abbr).join(' · ')}
-        </p>
-        <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.4rem;">4 Dynasty Bowl championships</p>
-      </div>
-    </div>
-
     <!-- SCC -->
     <div style="margin-top: 3rem;">
       <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
@@ -70,7 +52,7 @@ const hccFranchises = franchises.filter(f => f.conference === 'HCC')
         <span class="label-badge badge-scc">SCC</span>
       </div>
       <div>
-        <p class="page-subtitle" style="margin: 0.75rem 0;">
+        <p class="page-subtitle" style="margin: 0.75rem 0 1.5rem;">
           The SCC embraces the everyman’s approach to football: hard-nosed,
           down and dirty blue collar football that the people love. However, 
           some wonder whether or not they are willing to adapt to the way
@@ -141,7 +123,7 @@ const hccFranchises = franchises.filter(f => f.conference === 'HCC')
         <span class="label-badge badge-hcc">HCC</span>
       </div>
       <div>
-        <p class="page-subtitle" style="margin: 0.75rem 0;">
+        <p class="page-subtitle" style="margin: 0.75rem 0 1.5rem;">
           The HCC is the older and more prestigious conference. They pride 
           themselves on their refined strategies, but opponents might say 
           that their lackadaisical temperament has made them no longer 
