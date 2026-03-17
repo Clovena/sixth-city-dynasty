@@ -18,5 +18,8 @@
   "devDependencies": {
     "@types/node": "^25.4.0",
     "tsx": "^4.21.0"
+  },
+  "optionalDependencies": {
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.2.1"
   }
 }
