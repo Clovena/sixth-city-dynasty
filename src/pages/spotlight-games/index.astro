@@ -29,7 +29,7 @@ function getFranchise(abbr: string) {
     </div>
 
     <!-- What are Bowl Games -->
-    <div style="margin-top: 3rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+    <div class="explain-grid" style="margin-top: 3rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
       <div style="background-color: var(--color-green-surface); border: 1px solid var(--color-green-glow); padding: 1.75rem;">
         <p class="section-label">Bowl Games</p>
         <p style="font-size: 0.9rem; color: var(--color-text-secondary); text-align: justify; line-height: 1.65; margin: 0;">
@@ -73,16 +73,16 @@ function getFranchise(abbr: string) {
                   </p>
                 </div>
 
-                <div style="text-align: right; flex-shrink: 0;">
-                  <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
-                    <div style="display: flex; align-items: center; gap: 0.6rem;">
-                      <span style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamA?.name}</span>
+                <div class="bowl-teams-outer" style="text-align: right; flex-shrink: 0;">
+                  <div class="bowl-teams-inner" style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
+                    <div class="bowl-team-a" style="display: flex; align-items: center; gap: 0.6rem;">
+                      <span class="bowl-team-name" style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamA?.name}</span>
                       <img src={`/images/logos/${game.team_a}.png`} alt="" width="24" height="24" style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
                       <span style={`font-family: var(--font-body); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.15rem 0.45rem; background-color: ${teamA?.colors[0]}22; color: ${teamA?.colors[0]}; border: 1px solid ${teamA?.colors[0]}44;`}>{game.team_a}</span>
                     </div>
                     <div style="font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted);">vs.</div>
                     <div style="display: flex; align-items: center; gap: 0.6rem;">
-                      <span style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamB?.name}</span>
+                      <span class="bowl-team-name" style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamB?.name}</span>
                       <img src={`/images/logos/${game.team_b}.png`} alt="" width="24" height="24" style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
                       <span style={`font-family: var(--font-body); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.15rem 0.45rem; background-color: ${teamB?.colors[0]}22; color: ${teamB?.colors[0]}; border: 1px solid ${teamB?.colors[0]}44;`}>{game.team_b}</span>
                     </div>
@@ -119,16 +119,16 @@ function getFranchise(abbr: string) {
                   </p>
                 </div>
 
-                <div style="text-align: right; flex-shrink: 0;">
-                  <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
-                    <div style="display: flex; align-items: center; gap: 0.6rem;">
-                      <span style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamA?.name}</span>
+                <div class="bowl-teams-outer" style="text-align: right; flex-shrink: 0;">
+                  <div class="bowl-teams-inner" style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
+                    <div class="bowl-team-a" style="display: flex; align-items: center; gap: 0.6rem;">
+                      <span class="bowl-team-name" style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamA?.name}</span>
                       <img src={`/images/logos/${game.team_a}.png`} alt="" width="24" height="24" style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
                       <span style={`font-family: var(--font-body); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.15rem 0.45rem; background-color: ${teamA?.colors[0]}22; color: ${teamA?.colors[0]}; border: 1px solid ${teamA?.colors[0]}44;`}>{game.team_a}</span>
                     </div>
                     <div style="font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted);">vs.</div>
                     <div style="display: flex; align-items: center; gap: 0.6rem;">
-                      <span style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamB?.name}</span>
+                      <span class="bowl-team-name" style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamB?.name}</span>
                       <img src={`/images/logos/${game.team_b}.png`} alt="" width="24" height="24" style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
                       <span style={`font-family: var(--font-body); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.15rem 0.45rem; background-color: ${teamB?.colors[0]}22; color: ${teamB?.colors[0]}; border: 1px solid ${teamB?.colors[0]}44;`}>{game.team_b}</span>
                     </div>
@@ -144,3 +144,39 @@ function getFranchise(abbr: string) {
 
   </div>
 </Layout>
+
+<style>
+  @media (max-width: 768px) {
+    /* "What are Bowl Games" info cards: stack vertically */
+    .explain-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    /* Bowl card: collapse to single column */
+    .bowl-card {
+      grid-template-columns: 1fr !important;
+    }
+
+    .bowl-team-name {
+      display: none !important;
+    }
+
+    /* Teams outer: allow full width */
+    .bowl-teams-outer {
+      text-align: left !important;
+    }
+
+    /* Teams inner: switch from vertical column to horizontal row */
+    .bowl-teams-inner {
+      flex-direction: row !important;
+      align-items: center !important;
+      justify-content: space-between !important;
+      gap: 0.5rem !important;
+    }
+
+    /* Team A: reverse order → badge | logo | name (name closest to "vs.") */
+    .bowl-team-a {
+      flex-direction: row-reverse !important;
+    }
+  }
+</style>
