@@ -3,6 +3,7 @@
 ## TODO
 - Hall of Fame - Player awards, HOF awards, trophies
 - Historical matchups of spotlight games
+- Blurbs for Bowl Games in Content page
 - Cleanup
   - Align order of top and bottom nav bars
   - home/index.html still says Bowl Games on <a> block
