@@ -1,20 +1,24 @@
 # SCDFL Site — Task Board
 
 ## TODO
-- Hall of Fame - Player awards, HOF awards, trophies
-- Historical matchups of spotlight games
-- Blurbs for Bowl Games in Content page
-- Rookie drafts on season recap pages
-- Color refactoring to surface and glow
-- Player profile pages, a la pro-football-reference?
-- More data from Sleeper API
-  - Drafts
-  - Transactions
-- Cleanup
+1. High priority cleanup
   - home/index.html still says Bowl Games on <a> block
   - Rivalry game slugs say Bowl Game
   - Align accolade symbols on franchises/index
   - Indent owner name to align with franchsie name on franchises/index
+1. Blurbs for Bowl Games in Content page
+1. Add homepage nav cards for Scores and Content
+1. Adjust preseason rows on franchise pages for "Season not yet started"
+1. Historical matchups of spotlight games
+  - Use matchups.json
+1. More data from Sleeper API
+  - Drafts
+  - Transactions
+1. Rookie drafts on season recap pages
+1. Color refactoring to surface and glow
+1. Hall of Fame - Player awards, HOF awards, trophies
+1. Player profile pages, a la pro-football-reference?
+1. Low priority QOL cleanup
   - Season recap brackets on mobile
   - Franchises arranged as 2-3-2 on desktop, not 3-3-1
   - Remove various locations of hardcoding logic to convert between SAR and MTL
@@ -27,17 +31,6 @@
   - Playoff brackets and transformation of matchups.json
 
 ## Polishing
-
-*From a Claude Desktop review 2026-03-17:*
-
-Home page — one missing connection
-The three section cards at the bottom link to History, Franchises, and Bowl Games — but Scores and Content are nav items with no homepage representation at all. For a visitor hitting the site cold, those sections are invisible unless they notice the nav. Even a small "Latest Content" or "Recent Scores" block would surface them.
-
-Franchise pages — 2026 row in the season table
-Every franchise shows a 2026 row with 0 | 0 | 0.00 | 0.00 and a blank result. This is a pre-season placeholder, which makes sense in your head, but to a visitor it looks like missing or broken data. Either hide rows where all values are zero, or add a subtle "Season not yet played" label to that row.
-
-Content page — lorem ipsum is live
-The Bowl Games Preview piece has real introductory copy but every individual Bowl Game section is lorem ipsum placeholder text. That's fine in development, but it's public-facing now. Either populate the real content or pull those sections until they're written. The mock draft content below it is fully written and genuinely good — the contrast makes the lorem ipsum more noticeable.
 
 ## Completed
 - Content page
