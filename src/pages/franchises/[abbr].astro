@@ -112,10 +112,10 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
             {(championships.length > 0 || runnerUps.length > 0 || confChamps.length > 0) && (
               <span style="display: flex; align-items: center; gap: 3px;">
                 {Array.from({ length: championships.length }).map(() => (
-                  <span style="display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; color: var(--color-gold); font-size: 1.15rem; line-height: 1;">&#11042;</span>
+                  <span style="display: inline-flex; align-items: flex-end; justify-content: center; width: 1.4rem; height: 1.4rem; color: var(--color-gold); font-size: 1.25rem; line-height: 1.3;">&#11042;</span>
                 ))}
                 {Array.from({ length: runnerUps.length }).map(() => (
-                  <span style="display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; color: var(--color-text-primary); font-size: 1.15rem; line-height: 1;">&#11041;</span>
+                  <span style="display: inline-flex; align-items: flex-end; justify-content: center; width: 1.4rem; height: 1.4rem; color: var(--color-text-primary); font-size: 1.25rem; line-height: 1.3;">&#11041;</span>
                 ))}
                 {Array.from({ length: confChamps.length }).map(() => (
                   <span style={`display: inline-flex; align-items: center; justify-content: center; width: 1.4rem; height: 1.4rem; color: ${confColor}; font-size: 1rem; line-height: 1;`}>&#9650;</span>
