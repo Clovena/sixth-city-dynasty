@@ -1,13 +1,7 @@
 # SCDFL Site — Task Board
 
 ## TODO
-1. High priority cleanup
-    - home/index.html still says Bowl Games on <a> block
-    - Rivalry game slugs say Bowl Game
-    - Align accolade symbols on franchises/index
-    - Indent owner name to align with franchsie name on franchises/index
 1. Blurbs for Bowl Games in Content page
-1. Add homepage nav cards for Scores and Content
 1. Adjust preseason rows on franchise pages for "Season not yet started"
 1. Historical matchups of spotlight games
     - Use matchups.json
