@@ -42,6 +42,9 @@ Breakpoint: `@media (max-width: 768px)`. All mobile overrides use scoped `<style
 - `.bowl-team-name` spans hidden on mobile to save space
 
 ### `spotlight-games/[slug].astro`
+- Fetches historical matchup data via `getHistoricalMatchups(teamA, teamB)` which scans all `/data/raw/*-matchups.json` files to find instances where both teams played in the same week with matching `matchup_id`
+- Historical Results table displays: Year | Week | Team A | Score A | Score B | Team B with winner highlighted in gold, loser muted
+- Score boxes and column widths use `min-width` to ensure consistent vertical alignment across all matchup rows
 - `.matchup-card-grid`: 3-col (A | vs | B) collapses to single column; Team B's color border swaps from right to left via `--team-b-color` CSS variable
 - `.matchup-desc-grid`: "About This Matchup" + "Historical Results" stack vertically
 

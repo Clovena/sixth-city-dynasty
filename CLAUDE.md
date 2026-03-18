@@ -170,6 +170,17 @@ Transforms consecutive `**bold**` + `*italic*` paragraph pairs in writeup markdo
 
 ---
 
+## Historical Matchup Lookup (`src/lib/get-historical-matchups.ts`)
+
+Scans all `/data/raw/*-matchups.json` files at build time to find historical instances of two teams playing. Used by `/spotlight-games/[slug].astro` to populate the "Historical Results" table.
+
+- `getHistoricalMatchups(teamAAbbr, teamBAbbr)` takes abbreviations, returns array of matchups sorted newest-first (year desc, week desc)
+- Matchup lookup: both teams' `roster_id` values appear in same week with matching `matchup_id`
+- Each result includes: `year`, `week`, `teamAScore`, `teamBScore` (from `custom_points` field, coalesced with `points`)
+- Handles bye weeks correctly (entries with null `matchup_id` are skipped, ensuring valid matchups only)
+
+---
+
 ## Sleeper API Fetch Scripts (`scripts/`)
 
 ```
