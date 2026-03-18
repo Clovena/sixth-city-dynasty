@@ -238,6 +238,7 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
               </thead>
               <tbody>
                 {franchiseResults.map(row => {
+                  const seasonNotStarted = row.points_for === 0 && row.points_against === 0;
                   const isChamp = row.finish === 'Champion';
                   const isRunnerUp = row.finish === 'Runner-up';
                   const isPlayoff = row.playoff && !isChamp && !isRunnerUp;
@@ -263,11 +264,17 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
                         />
                       </td>
                     )}
-                    <td>{row.wins}</td>
-                    <td>{row.losses}</td>
-                    <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_for.toFixed(2)}</td>
-                    <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_against.toFixed(2)}</td>
-                    <td style={resultStyle}>{row.finish}</td>
+                    {seasonNotStarted ? (
+                      <td colspan="4" style="color: var(--color-text-muted); text-align: center;">Season not yet started.</td>
+                    ) : (
+                      <>
+                        <td>{row.wins}</td>
+                        <td>{row.losses}</td>
+                        <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_for.toFixed(2)}</td>
+                        <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_against.toFixed(2)}</td>
+                      </>
+                    )}
+                    <td style={resultStyle}>{seasonNotStarted ? '—' : row.finish}</td>
                   </tr>
                   );
                 })}

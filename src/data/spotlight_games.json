@@ -6,8 +6,7 @@
     "team_a": "NFD",
     "team_b": "PEI",
     "year_established": 2024,
-    "description": "A long-standing feud set against the backdrop of the Atlantic. The Blowers and Islanders represent provinces separated by the frigid water and wind-swept coasts of the St Lawrence Gulf. PEI has been a consistent HCC presence; NFD has had their ups and downs but are always a thrill to follow. The Atlantic Bowl returns for another year of maritime bragging rights.",
-    "history": []
+    "description": "A long-standing feud set against the backdrop of the Atlantic. The Blowers and Islanders represent provinces separated by the frigid water and wind-swept coasts of the St Lawrence Gulf. PEI has been a consistent HCC presence; NFD has had their ups and downs but are always a thrill to follow. The Atlantic Bowl returns for another year of maritime bragging rights."
   },
   {
     "slug": "blue-collar-classic",
@@ -16,8 +15,7 @@
     "team_a": "CHC",
     "team_b": "IQT",
     "year_established": 2024,
-    "description": "An unlikely pairing united by a working-class ethos. Iqaluit toils on the fishing docks in the extreme north; Choccolocco (Alabama) grinds away on the railroad tracks in the deep south. Both franchises represent proud industrial heritages; both franchises have moments of success in the HCC; and both franchises are trying to claw their way back to an ever-elusive former glory.",
-    "history": []
+    "description": "An unlikely pairing united by a working-class ethos. Iqaluit toils on the fishing docks in the extreme north; Choccolocco (Alabama) grinds away on the railroad tracks in the deep south. Both franchises represent proud industrial heritages; both franchises have moments of success in the HCC; and both franchises are trying to claw their way back to an ever-elusive former glory."
   },
   {
     "slug": "animation-altercation",
@@ -26,8 +24,7 @@
     "team_a": "NNY",
     "team_b": "SAR",
     "year_established": 2026,
-    "description": "A clash of rivals rooted in animated fictional universes. Sarnia refers to a more obscure yet beloved moment in the world of Spongebob, while New New York overtly draws from Futurama's 31st-century world. The Bowl Game name is inspired by Fox's legendary 'Animation Domination' Sunday block, and the matchup itself gives two familiar foes a spotlight at the highest level.",
-    "history": []
+    "description": "A clash of rivals rooted in animated fictional universes. Sarnia refers to a more obscure yet beloved moment in the world of Spongebob, while New New York overtly draws from Futurama's 31st-century world. The Bowl Game name is inspired by Fox's legendary 'Animation Domination' Sunday block, and the matchup itself gives two familiar foes a spotlight at the highest level."
   },
   {
     "slug": "atom-bowl",
@@ -36,8 +33,7 @@
     "team_a": "BKB",
     "team_b": "WPG",
     "year_established": 2026,
-    "description": "A marquee matchup inspired by the Atomic Age. The Bikini Bottom Stars are based in the Bikini Atoll, the canonical home of SpongeBob SquarePants and the site of a score of nuclear tests between 1946 and 1958. The Winnipeg Wranglers share a home with one of the largest nuclear test sites in Western Canada. The Atom Bowl acknowledges the nuclear legacy of both regions and derives its name from the real-life Atom Bowl played in 1946 in the aftermath of Nagasaki.",
-    "history": []
+    "description": "A marquee matchup inspired by the Atomic Age. The Bikini Bottom Stars are based in the Bikini Atoll, the canonical home of SpongeBob SquarePants and the site of a score of nuclear tests between 1946 and 1958. The Winnipeg Wranglers share a home with one of the largest nuclear test sites in Western Canada. The Atom Bowl acknowledges the nuclear legacy of both regions and derives its name from the real-life Atom Bowl played in 1946 in the aftermath of Nagasaki."
   },
   {
     "slug": "cascade-cup",
@@ -46,8 +42,7 @@
     "team_a": "LOW",
     "team_b": "MIS",
     "year_established": 2026,
-    "description": "Two well-acquainted HCC rivals in a clash of overlooked locales. Mississauga lives in the shadow of a larger Canadian metro, and Lower City (Connecticut) remains permanently overlooked in its area. Both have channeled that chip-on-the-shoulder energy year after year. The Cup itself takes its name from the waterfalls common to each team's region, as well as the cascading ambitions of two franchises still hunting their first taste of real success.",
-    "history": []
+    "description": "Two well-acquainted HCC rivals in a clash of overlooked locales. Mississauga lives in the shadow of a larger Canadian metro, and Lower City (Connecticut) remains permanently overlooked in its area. Both have channeled that chip-on-the-shoulder energy year after year. The Cup itself takes its name from the waterfalls common to each team's region, as well as the cascading ambitions of two franchises still hunting their first taste of real success."
   },
   {
     "slug": "dominion-classic",
@@ -56,8 +51,7 @@
     "team_a": "TOR",
     "team_b": "VAN",
     "year_established": 2026,
-    "description": "The league's premier Canadian civic rivalry. Toronto and Vancouver — separated by over 2700 miles — meet in a battle of Canada's two largest cities, each believing they lay claim to the cultural mecca of the Great White North. The name invokes the historical Dominion of Canada, and the annual meeting of the Hogs and Mounties all but decide who reigns supreme over that Dominion.",
-    "history": []
+    "description": "The league's premier Canadian civic rivalry. Toronto and Vancouver — separated by over 2700 miles — meet in a battle of Canada's two largest cities, each believing they lay claim to the cultural mecca of the Great White North. The name invokes the historical Dominion of Canada, and the annual meeting of the Hogs and Mounties all but decide who reigns supreme over that Dominion."
   },
   {
     "slug": "gateway-cup",
@@ -66,8 +60,7 @@
     "team_a": "GLD",
     "team_b": "TBY",
     "year_established": 2026,
-    "description": "Two franchises from opposite ends of the world. Thunder Bay is the gateway to the Canadian northwest; Gold Coast is the gateway to the Great Barrier Reef. The Gateway Cup highlights the Sharks and Mustangs as regional representatives for fanbases otherwise untethered to the rest of the league, and as organizations hungry for sustained success after years of heartbreak.",
-    "history": []
+    "description": "Two franchises from opposite ends of the world. Thunder Bay is the gateway to the Canadian northwest; Gold Coast is the gateway to the Great Barrier Reef. The Gateway Cup highlights the Sharks and Mustangs as regional representatives for fanbases otherwise untethered to the rest of the league, and as organizations hungry for sustained success after years of heartbreak."
   },
   {
     "slug": "iqt-pei",
@@ -76,8 +69,7 @@
     "team_a": "IQT",
     "team_b": "PEI",
     "year_established": 2025,
-    "description": "The crown jewel of Rivalry Week: the league philanthropists and the men who want them destroyed.",
-    "history": []
+    "description": "The crown jewel of Rivalry Week: the league philanthropists and the men who want them destroyed."
   },
   {
     "slug": "van-wpg",
@@ -86,8 +78,7 @@
     "team_a": "VAN",
     "team_b": "WPG",
     "year_established": 2023,
-    "description": "No love lost between western Canada rivals, and no imminent signs of making up.",
-    "history": []
+    "description": "No love lost between western Canada rivals, and no imminent signs of making up."
   },
   {
     "slug": "chc-tor",
@@ -96,8 +87,7 @@
     "team_a": "CHC",
     "team_b": "TOR",
     "year_established": 2026,
-    "description": "Ownership shared a graduate school campus, but never shared so much as a lunch.",
-    "history": []
+    "description": "Ownership shared a graduate school campus, but never shared so much as a lunch."
   },
   {
     "slug": "bkb-low",
@@ -106,8 +96,7 @@
     "team_a": "BKB",
     "team_b": "LOW",
     "year_established": 2026,
-    "description": "The Lasercats' chance to prove they're more than just Bikini Bottom's farm system.",
-    "history": []
+    "description": "The Lasercats' chance to prove they're more than just Bikini Bottom's farm system."
   },
   {
     "slug": "mis-nny",
@@ -116,8 +105,7 @@
     "team_a": "MIS",
     "team_b": "NNY",
     "year_established": 2026,
-    "description": "Between two tortured franchises, it's a war of attrition — and insulin.",
-    "history": []
+    "description": "Between two tortured franchises, it's a war of attrition — and insulin."
   },
   {
     "slug": "nfd-tby",
@@ -126,8 +114,7 @@
     "team_a": "NFD",
     "team_b": "TBY",
     "year_established": 2023,
-    "description": "Two SCC welterweights who are desperate for glory.",
-    "history": []
+    "description": "Two SCC welterweights who are desperate for glory."
   },
   {
     "slug": "gld-sar",
@@ -136,7 +123,6 @@
     "team_a": "GLD",
     "team_b": "SAR",
     "year_established": 2025,
-    "description": "Rivals on the gridiron, both in the AFC North and the SCC.",
-    "history": []
+    "description": "Rivals on the gridiron, both in the AFC North and the SCC."
   }
 ]

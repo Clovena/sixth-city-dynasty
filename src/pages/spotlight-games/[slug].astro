@@ -2,6 +2,7 @@
 import Layout from '../../layouts/Layout.astro';
 import spotlightGames from '../../data/spotlight_games.json';
 import franchises from '../../data/franchises.json';
+import { getHistoricalMatchups } from '../../lib/get-historical-matchups';
 
 export async function getStaticPaths() {
   return spotlightGames.map(sg => ({ params: { slug: sg.slug } }));
@@ -16,6 +17,7 @@ if (!game) {
 
 const teamA = franchises.find(f => f.abbr === game.team_a);
 const teamB = franchises.find(f => f.abbr === game.team_b);
+const historicalMatchups = await getHistoricalMatchups(game.team_a, game.team_b);
 ---
 
 <Layout
@@ -97,33 +99,43 @@ const teamB = franchises.find(f => f.abbr === game.team_b);
         <!-- Historical results -->
       <div>
         <h2 style="font-family: var(--font-display); font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-primary);">Historical Results</h2>
-        {game.history.length === 0 ? (
+        {historicalMatchups.length === 0 ? (
           <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem; text-align: center;">
             <p style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0;">
               {game.year_established === 2026
-                ? 'This Bowl Game debuts in 2026. No historical results yet.'
-                : 'Historical results will be populated in a future update.'}
+                ? 'These teams will meet for the first time in 2026.'
+                : 'No historical matchups found.'}
             </p>
           </div>
         ) : (
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Season</th>
-                <th>Winner</th>
-                <th>Loser</th>
-              </tr>
-            </thead>
-            <tbody>
-              {game.history.map((result: any) => (
-                <tr>
-                  <td style="font-weight: 600;">{result.year}</td>
-                  <td class="winner-cell">{result.winner}</td>
-                  <td style="color: var(--color-text-muted);">{result.loser}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+            {historicalMatchups.map((matchup) => {
+              const isTeamAWinner = matchup.teamAScore > matchup.teamBScore;
+              const isTeamBWinner = matchup.teamBScore > matchup.teamAScore;
+              return (
+                <div style="display: grid; grid-template-columns: auto auto 1fr auto auto 1fr; gap: 0.75rem; align-items: center; padding: 0.75rem; background-color: var(--color-surface); border: 1px solid var(--color-border); border-radius: 4px;">
+                  <div style="font-weight: 600; font-size: 0.85rem; color: var(--color-text-muted); min-width: 45px;">
+                    {matchup.year}
+                  </div>
+                  <div style="font-weight: 600; font-size: 0.85rem; color: var(--color-text-muted); min-width: 35px;">
+                    W{matchup.week}
+                  </div>
+                  <div style={`color: ${isTeamAWinner ? 'var(--color-text-primary)' : 'var(--color-text-muted)'}; text-align: right; font-weight: 600;`}>
+                    {game.team_a}
+                  </div>
+                  <div style={`background-color: ${isTeamAWinner ? 'var(--color-gold)' : 'rgba(255, 255, 255, 0.1)'}; color: ${isTeamAWinner ? '#000' : 'var(--color-text-muted)'}; padding: 0.4rem 0.6rem; border-radius: 3px; font-weight: 600; font-size: 0.85rem; min-width: 50px; text-align: center;`}>
+                    {matchup.teamAScore.toFixed(1)}
+                  </div>
+                  <div style={`background-color: ${isTeamBWinner ? 'var(--color-gold)' : 'rgba(255, 255, 255, 0.1)'}; color: ${isTeamBWinner ? '#000' : 'var(--color-text-muted)'}; padding: 0.4rem 0.6rem; border-radius: 3px; font-weight: 600; font-size: 0.85rem; min-width: 50px; text-align: center;`}>
+                    {matchup.teamBScore.toFixed(1)}
+                  </div>
+                  <div style={`color: ${isTeamBWinner ? 'var(--color-text-primary)' : 'var(--color-text-muted)'}; font-weight: 600;`}>
+                    {game.team_b}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
