@@ -34,8 +34,8 @@ npm run fetch -- --all  # fetch all seasons from Sleeper API
 | `/history` | `src/pages/history.astro` |
 | `/franchises` | `src/pages/franchises/index.astro` |
 | `/franchises/[abbr]` | `src/pages/franchises/[abbr].astro` |
-| `/bowl-games` | `src/pages/bowl-games/index.astro` |
-| `/bowl-games/[slug]` | `src/pages/bowl-games/[slug].astro` |
+| `/spotlight-games` | `src/pages/spotlight-games/index.astro` |
+| `/spotlight-games/[slug]` | `src/pages/spotlight-games/[slug].astro` |
 | `/scores` | `src/pages/scores.astro` |
 | `/games/[year]/[slug]` | `src/pages/games/[year]/[slug].astro` |
 | `/content` | `src/pages/content.astro` |
