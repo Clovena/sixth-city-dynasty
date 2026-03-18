@@ -64,9 +64,25 @@ function getFranchise(abbr: string) {
         <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--color-gold); opacity: 0.6;"></span>
         <span style="font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary); letter-spacing: 0.04em;">Season 6 begins September 9th, 2026</span>
       </div>
+      
+      <!-- Primary section nav -->
+      <div class="section-nav-grid" style="margin-top: 2rem; display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background-color: var(--color-border); margin-bottom: 0;">
 
+        <a href="/scores" style="text-decoration: none; display: block; background-color: var(--color-surface); padding: 2rem; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='var(--color-surface-alt)'" onmouseout="this.style.backgroundColor='var(--color-surface)'">
+          <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.25;">Scoreboard</h3>
+          <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 1rem;">Scores and recaps of every game across the season. Check on this week's matchups, revisit historical showdowns, and explore the way history was made.</p>
+          <span style="font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold);">View Scores &#8594;</span>
+        </a>
+
+        <a href="/content" style="text-decoration: none; display: block; background-color: var(--color-surface); padding: 2rem; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='var(--color-surface-alt)'" onmouseout="this.style.backgroundColor='var(--color-surface)'">
+          <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.25;">Content</h3>
+          <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 1rem;">Power Rankings, mock drafts, schedule previews, and more. Written by the commissioner and other league members.</p>
+          <span style="font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold);">View Content &#8594;</span>
+        </a>
+      </div>
     </div>
   </div>
+
 
   <!-- Recent Dynasty Bowls -->
   <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
@@ -131,35 +147,29 @@ function getFranchise(abbr: string) {
     </div>
   </div>
 
-  <!-- Section nav -->
+  <!-- Secondary section nav -->
   <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
     <div class="section-nav-grid" style="margin-top: 4rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background-color: var(--color-border); margin-bottom: 0;">
 
       <a href="/history" style="text-decoration: none; display: block; background-color: var(--color-surface); padding: 2rem; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='var(--color-surface-alt)'" onmouseout="this.style.backgroundColor='var(--color-surface)'">
-        <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-gold-dim); margin: 0 0 0.5rem;">Archive</p>
         <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.25;">History &amp; Records</h3>
         <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 1rem;">Season results, the championship roll of honor, narrative recaps, and the full statistical record.</p>
         <span style="font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold);">View History &#8594;</span>
       </a>
 
       <a href="/franchises" style="text-decoration: none; display: block; background-color: var(--color-surface); padding: 2rem; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='var(--color-surface-alt)'" onmouseout="this.style.backgroundColor='var(--color-surface)'">
-        <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-gold-dim); margin: 0 0 0.5rem;">Membership</p>
         <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.25;">Franchises</h3>
         <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 1rem;">All 14 franchises across the SCC and HCC. Ownership, history, colors, and individual franchise records.</p>
         <span style="font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold);">View Franchises &#8594;</span>
       </a>
 
-      <a href="/bowl-games" style="text-decoration: none; display: block; background-color: var(--color-surface); padding: 2rem; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='var(--color-surface-alt)'" onmouseout="this.style.backgroundColor='var(--color-surface)'">
-        <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-gold-dim); margin: 0 0 0.5rem;">Traditions</p>
-        <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.25;">Bowl Games</h3>
+      <a href="/spotlight-games" style="text-decoration: none; display: block; background-color: var(--color-surface); padding: 2rem; transition: background-color 0.15s ease;" onmouseover="this.style.backgroundColor='var(--color-surface-alt)'" onmouseout="this.style.backgroundColor='var(--color-surface)'">
+        <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.25;">Spotlight Games</h3>
         <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.5; margin: 0 0 1rem;">The 2026 bowl game slate, Rivalry Week, and the institutional pairings that define the regular season.</p>
-        <span style="font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold);">View Bowl Games &#8594;</span>
+        <span style="font-size: 0.78rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-gold);">View Spotlight Games &#8594;</span>
       </a>
     </div>
   </div>
-
-  <div style="height: 6rem;"></div>
-
 </Layout>
 
 <style>

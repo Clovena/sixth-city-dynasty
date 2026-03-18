@@ -78,35 +78,35 @@ const hccFranchises = franchises.filter(f => f.conference === 'HCC')
                     <div>
                       <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.3rem;">{franchise.abbr}</p>
                       <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: var(--color-text-primary); margin: 0; line-height: 1.2;">{franchise.name}</h3>
+                      <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">{franchise.owner}</p>
                     </div>
                   </div>
-                  {(() => {
-                    const champs = champCounts[franchise.abbr] || 0;
-                    const runnerUps = runnerUpCounts[franchise.abbr] || 0;
-                    const confTitles = confTitleCounts[franchise.abbr] || 0;
-                    const confColor = franchise.conference === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
-                    if (champs + runnerUps + confTitles === 0) return null;
-                    return (
-                      <div style="display: flex; gap: 1px; flex-shrink: 0; margin-left: 0.75rem; margin-top: 0.1rem;">
-                        {Array.from({ length: champs }).map(() => (
-                          <span style="display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-gold); font-size: 1.05rem; line-height: 1;">&#11042;</span>
-                        ))}
-                        {Array.from({ length: runnerUps }).map(() => (
-                          <span style="display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-text-primary); font-size: 1.05rem; line-height: 1;">&#11041;</span>
-                        ))}
-                        {Array.from({ length: confTitles }).map(() => (
-                          <span style={`display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; color: ${confColor}; font-size: 0.9rem; line-height: 1;`}>&#9650;</span>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.75rem;">
-                  <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0;">{franchise.owner}</p>
-                  <div style="display: flex; gap: 4px;">
-                    {franchise.colors.map(color => (
-                      <span style={`display: inline-block; width: 12px; height: 12px; background-color: ${color}; border-radius: 50%;`}></span>
-                    ))}
+                  <div style="display: flex; flex-direction: column;">
+                    <div style="display: inline-flex; align-items: center; gap: 10px; justify-content: flex-end; margin: 0.75rem 0.25rem;">
+                      {franchise.colors.map(color => (
+                        <span style={`display: inline-flex; width: 0.75rem; height: 0.75rem; background-color: ${color}; border-radius: 50%; line-height: 1;`}></span>
+                      ))}
+                    </div>
+                    {(() => {
+                      const champs = champCounts[franchise.abbr] || 0;
+                      const runnerUps = runnerUpCounts[franchise.abbr] || 0;
+                      const confTitles = confTitleCounts[franchise.abbr] || 0;
+                      const confColor = franchise.conference === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
+                      if (champs + runnerUps + confTitles === 0) return null;
+                      return (
+                        <div style="display: flex; gap: 1px; flex-shrink: 0; justify-content: flex-end;">
+                          {Array.from({ length: champs }).map(() => (
+                            <span style="display: inline-flex; align-items: flex-end; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-gold); font-size: 1.13rem; line-height: 1.3;">&#11042;</span>
+                          ))}
+                          {Array.from({ length: runnerUps }).map(() => (
+                            <span style="display: inline-flex; align-items: flex-end; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-text-primary); font-size: 1.13rem; line-height: 1.3;">&#11041;</span>
+                          ))}
+                          {Array.from({ length: confTitles }).map(() => (
+                            <span style={`display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; color: ${confColor}; font-size: 0.9rem; line-height: 1;`}>&#9650;</span>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -150,35 +150,35 @@ const hccFranchises = franchises.filter(f => f.conference === 'HCC')
                     <div>
                       <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.3rem;">{franchise.abbr}</p>
                       <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: var(--color-text-primary); margin: 0; line-height: 1.2;">{franchise.name}</h3>
+                      <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">{franchise.owner}</p>
                     </div>
                   </div>
-                  {(() => {
-                    const champs = champCounts[franchise.abbr] || 0;
-                    const runnerUps = runnerUpCounts[franchise.abbr] || 0;
-                    const confTitles = confTitleCounts[franchise.abbr] || 0;
-                    const confColor = franchise.conference === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
-                    if (champs + runnerUps + confTitles === 0) return null;
-                    return (
-                      <div style="display: flex; gap: 1px; flex-shrink: 0; margin-left: 0.75rem; margin-top: 0.1rem;">
-                        {Array.from({ length: champs }).map(() => (
-                          <span style="display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-gold); font-size: 1.05rem; line-height: 1;">&#11042;</span>
-                        ))}
-                        {Array.from({ length: runnerUps }).map(() => (
-                          <span style="display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-text-primary); font-size: 1.05rem; line-height: 1;">&#11041;</span>
-                        ))}
-                        {Array.from({ length: confTitles }).map(() => (
-                          <span style={`display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; color: ${confColor}; font-size: 0.9rem; line-height: 1;`}>&#9650;</span>
-                        ))}
-                      </div>
-                    );
-                  })()}
-                </div>
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 0.75rem;">
-                  <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0;">{franchise.owner}</p>
-                  <div style="display: flex; gap: 4px;">
-                    {franchise.colors.map(color => (
-                      <span style={`display: inline-block; width: 12px; height: 12px; background-color: ${color}; border-radius: 50%;`}></span>
-                    ))}
+                  <div style="display: flex; flex-direction: column;">
+                    <div style="display: inline-flex; align-items: center; gap: 10px; justify-content: flex-end; margin: 0.75rem 0.25rem;">
+                      {franchise.colors.map(color => (
+                        <span style={`display: inline-flex; width: 0.75rem; height: 0.75rem; background-color: ${color}; border-radius: 50%; line-height: 1;`}></span>
+                      ))}
+                    </div>
+                    {(() => {
+                      const champs = champCounts[franchise.abbr] || 0;
+                      const runnerUps = runnerUpCounts[franchise.abbr] || 0;
+                      const confTitles = confTitleCounts[franchise.abbr] || 0;
+                      const confColor = franchise.conference === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
+                      if (champs + runnerUps + confTitles === 0) return null;
+                      return (
+                        <div style="display: flex; gap: 1px; flex-shrink: 0; justify-content: flex-end;">
+                          {Array.from({ length: champs }).map(() => (
+                            <span style="display: inline-flex; align-items: flex-end; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-gold); font-size: 1.13rem; line-height: 1.3;">&#11042;</span>
+                          ))}
+                          {Array.from({ length: runnerUps }).map(() => (
+                            <span style="display: inline-flex; align-items: flex-end; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-text-primary); font-size: 1.13rem; line-height: 1.3;">&#11041;</span>
+                          ))}
+                          {Array.from({ length: confTitles }).map(() => (
+                            <span style={`display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; color: ${confColor}; font-size: 0.9rem; line-height: 1;`}>&#9650;</span>
+                          ))}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

@@ -11,7 +11,7 @@ const { slug } = Astro.params;
 const game = spotlightGames.find(sg => sg.slug === slug);
 
 if (!game) {
-  return Astro.redirect('/bowl-games');
+  return Astro.redirect('/spotlight-games');
 }
 
 const teamA = franchises.find(f => f.abbr === game.team_a);
@@ -27,19 +27,18 @@ const teamB = franchises.find(f => f.abbr === game.team_b);
 
     <!-- Header -->
     <div style="border-bottom: 1px solid var(--color-border); padding: 3rem 0 2.5rem; margin-top: 3rem;">
-      <a href="/bowl-games" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1.25rem;">
-        &#8592; Bowl Games
+      <a href="/spotlight-games" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1.25rem;">
+        &#8592; Spotlight Games
       </a>
 
+      <h1 class="page-title">{game.name}</h1>
       <div style="display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
-        <p class="section-label" style="margin-bottom: 0;">Bowl Game</p>
         {game.year_established <= 2025 ? (
           <span style="font-size: 0.72rem; color: var(--color-text-muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Est. {game.year_established}</span>
         ) : (
           <span style="font-size: 0.72rem; color: var(--color-gold-dim); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Inaugural 2026</span>
         )}
       </div>
-      <h1 class="page-title">{game.name}</h1>
     </div>
 
     <!-- Matchup card -->

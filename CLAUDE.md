@@ -34,8 +34,8 @@ npm run fetch -- --all  # fetch all seasons from Sleeper API
 | `/history` | `src/pages/history.astro` |
 | `/franchises` | `src/pages/franchises/index.astro` |
 | `/franchises/[abbr]` | `src/pages/franchises/[abbr].astro` |
-| `/bowl-games` | `src/pages/bowl-games/index.astro` |
-| `/bowl-games/[slug]` | `src/pages/bowl-games/[slug].astro` |
+| `/spotlight-games` | `src/pages/spotlight-games/index.astro` |
+| `/spotlight-games/[slug]` | `src/pages/spotlight-games/[slug].astro` |
 | `/scores` | `src/pages/scores.astro` |
 | `/games/[year]/[slug]` | `src/pages/games/[year]/[slug].astro` |
 | `/content` | `src/pages/content.astro` |
@@ -202,3 +202,8 @@ All matchup data is embedded at build time as a JSON blob via `define:vars`. Cli
 ## `getStaticPaths` Rule
 
 Astro's `getStaticPaths` runs in an isolated scope — module-level variables are NOT accessible inside it. All data loading (`import.meta.glob`, imports) must be re-initialized inside the function body. Vite deduplicates actual file reads at build time so there is no performance cost.
+
+
+## Closing Claude Code Sessions
+
+In most cases, if development is being done with AI assistance, all CLAUDE.md files should be reviewed, updated, and/or created to reflect the recent changes in the project. If work is being done in a focused environment, i.e. subdirectory, a CLAUDE.md file should be initialized or updated. The user will generally prompt this behavior. 
