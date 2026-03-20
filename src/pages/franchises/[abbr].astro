@@ -4,7 +4,8 @@ import franchises from '../../data/franchises.json';
 import seasons from '../../data/seasons.json';
 import spotlightGames from '../../data/spotlight_games.json';
 import allResults from '../../data/results.json';
-import { getEntry, render } from 'astro:content';
+import config from '../../data/config.json';
+import { getEntry, render, getCollection } from 'astro:content';
 
 export async function getStaticPaths() {
   return franchises.map(f => ({ params: { abbr: f.abbr } }));
@@ -81,6 +82,66 @@ const totalWins = franchiseResults.reduce((sum, r) => sum + r.wins, 0);
 const totalLosses = franchiseResults.reduce((sum, r) => sum + r.losses, 0);
 const totalPF = franchiseResults.reduce((sum, r) => sum + r.points_for, 0);
 const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
+
+// ── Load matchup data at build time ──────────────────────────────────────────
+const matchupGlob = import.meta.glob('/src/data/raw/*-matchups.json', { eager: true });
+
+type MatchupEntry = { roster_id: number; matchup_id: number; score: number };
+const matchupsData: Record<string, Record<string, MatchupEntry[]>> = {};
+
+for (const [path, mod] of Object.entries(matchupGlob)) {
+  const m = path.match(/(\d{4})-matchups/);
+  if (!m) continue;
+  const year = m[1];
+  const raw = (mod as { default: Record<string, any[]> }).default;
+  const weeks: Record<string, MatchupEntry[]> = {};
+  for (const [week, entries] of Object.entries(raw)) {
+    weeks[week] = entries.map(e => ({
+      roster_id: e.roster_id,
+      matchup_id: e.matchup_id,
+      score: e.custom_points != null ? e.custom_points : e.points,
+    }));
+  }
+  matchupsData[year] = weeks;
+}
+
+// ── Recap slug array ─────────────────────────────────────────────────────────
+const allRecaps = await getCollection('recaps');
+const recapSlugsArr: string[] = allRecaps.map(r => r.id); // "year/slug" keys
+
+// ── Franchise lookup map (same as /scores) ──────────────────────────────────
+type FranchiseEntry = {
+  name: string;
+  abbr: string;
+  founded: number;
+  predecessorAbbr: string | null;
+  rebrands: Array<{ year: number; name: string }>;
+};
+const franchiseMap: Record<number, FranchiseEntry> = {};
+for (const f of franchises) {
+  franchiseMap[f.id] = {
+    name: f.name,
+    abbr: f.abbr,
+    founded: f.founded,
+    predecessorAbbr: ('predecessor_abbr' in f ? (f as any).predecessor_abbr : null) ?? null,
+    rebrands: (f.rebrands ?? []) as Array<{ year: number; name: string }>,
+  };
+}
+
+// ── Dynasty Bowl lookup ──────────────────────────────────────────────────────
+const dynastyBowls: Record<string, { winner: string; loser: string; label: string }> = {};
+for (const s of seasons) {
+  dynastyBowls[String(s.year)] = {
+    winner: s.dynasty_bowl.winner,
+    loser: s.dynasty_bowl.loser,
+    label: s.dynasty_bowl.label,
+  };
+}
+
+// ── Determine available seasons for this franchise ──────────────────────────
+const sortedSeasons = [...config.seasons].sort((a, b) => b.year - a.year);
+const franchiseSeasons = sortedSeasons.filter(s => Object.keys(matchupsData[String(s.year)] ?? {}).length > 0);
+const defaultSeasonYear = franchiseSeasons[0]?.year ?? sortedSeasons[0].year;
 ---
 
 <Layout
@@ -410,6 +471,30 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
       </div>
     </div>
 
+    <!-- Games section -->
+    {franchiseSeasons.length > 0 && (
+      <div style="margin-top: 4rem;">
+        <div style="padding-bottom: 2rem; border-bottom: 1px solid var(--color-border);">
+          <h2 style="font-family: var(--font-display); font-size: 1.75rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-primary);">Games</h2>
+
+          <!-- Year selector -->
+          <div style="display: flex; flex-direction: column; gap: 0.4rem; max-width: 180px;">
+            <label for="franchise-season-select" style="font-family: var(--font-body); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted);">Season</label>
+            <select id="franchise-season-select" style="font-family: var(--font-body); font-size: 0.9rem; color: var(--color-text-primary); background-color: var(--color-surface); border: 1px solid var(--color-border); border-radius: 4px; padding: 0.5rem 2rem 0.5rem 0.75rem; appearance: none; -webkit-appearance: none; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22 viewBox=%220 0 10 6%22><path d=%22M0 0l5 6 5-6z%22 fill=%22%23888%22/></svg>'); background-repeat: no-repeat; background-position: right 0.6rem center; cursor: pointer;">
+              {franchiseSeasons.map(s => (
+                <option value={s.year} selected={s.year === defaultSeasonYear}>
+                  {s.year} Season
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <!-- All weeks grid (no pagination) -->
+        <div id="franchise-games-grid" style="margin-top: 2rem; padding-bottom: 2rem;"></div>
+      </div>
+    )}
+
   </div>
 
   <!-- Bottom spacer -->
@@ -448,4 +533,285 @@ const totalPA = franchiseResults.reduce((sum, r) => sum + r.points_against, 0);
       display: table-cell !important;
     }
   }
+
+  :global(.franchise-matchups-grid) {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+    max-width: 72ch;
+  }
+
+  :global(.franchise-matchup-card) {
+    display: block;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  :global(.franchise-matchup-week-header) {
+    background-color: var(--color-surface);
+    border-bottom: 1px solid var(--color-border);
+    padding: 0.5rem 1rem;
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  :global(.franchise-matchup-body) {
+    display: flex;
+    align-items: stretch;
+  }
+
+  :global(.franchise-matchup-teams) {
+    flex: 1;
+    min-width: 0;
+  }
+
+  :global(.franchise-recap-btn) {
+    display: flex;
+    align-items: center;
+    padding: 0 1.1rem;
+    background-color: color-mix(in srgb, var(--color-surface) 80%, transparent);
+    border-left: 1px solid var(--color-border);
+    color: var(--color-gold);
+    font-family: var(--font-body);
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+    letter-spacing: 0.03em;
+  }
+
+  :global(.franchise-team-row) {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 1rem;
+    transition: background-color 0.1s ease;
+  }
+
+  :global(.franchise-team-row + .franchise-team-row) {
+    border-top: 1px solid var(--color-border);
+  }
+
+  :global(.franchise-team-row.winner) {
+    background-color: color-mix(in srgb, var(--color-surface) 80%, transparent);
+  }
+
+  :global(.franchise-team-row.loser) {
+    opacity: 0.55;
+  }
+
+  :global(.franchise-team-row.tied) {
+    background-color: transparent;
+  }
+
+  :global(.franchise-team-logo) {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  :global(.franchise-team-name) {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  :global(.franchise-team-score) {
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    min-width: 3.5rem;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  :global(.franchise-team-row.winner .franchise-team-score) {
+    color: var(--color-gold);
+  }
+
+  :global(.franchise-dynasty-bowl-banner) {
+    background-color: var(--color-gold-surface);
+    border-bottom: 1px solid var(--color-gold-glow);
+    color: var(--color-gold);
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.35rem 4rem;
+  }
+
+  :global(.franchise-no-games) {
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    color: var(--color-text-muted);
+    padding: 3rem 0;
+    text-align: center;
+  }
 </style>
+
+<script is:inline define:vars={{ matchupsData, franchiseMap, dynastyBowls, recapSlugsArr, defaultSeasonYear, abbr, franchise }}>
+  const seasonSelect = document.getElementById('franchise-season-select');
+  const grid = document.getElementById('franchise-games-grid');
+
+  const franchiseId = franchise.id;
+  const recapSlugs = new Set(recapSlugsArr); // "year/slug" keys
+
+  function makeSlug(week, abbrA, abbrB) {
+    const pad = String(week).padStart(2, '0');
+    const [t1, t2] = [abbrA.toLowerCase(), abbrB.toLowerCase()].sort();
+    return `${pad}-${t1}-${t2}`;
+  }
+
+  function getEffectiveAbbr(franchiseData, year) {
+    if (franchiseData.founded !== 2021 && year < franchiseData.founded) {
+      return franchiseData.predecessorAbbr ?? franchiseData.abbr;
+    }
+    return franchiseData.abbr;
+  }
+
+  function renderGames(year) {
+    const yearStr = String(year);
+    const allWeeks = matchupsData[yearStr] ?? {};
+
+    // Collect all matchups for this franchise across all weeks
+    const gamesByWeek = {};
+
+    for (const [weekStr, entries] of Object.entries(allWeeks)) {
+      const week = Number(weekStr);
+      const franchiseMatches = entries.filter(e => e.roster_id === franchiseId);
+
+      if (franchiseMatches.length === 0) continue;
+
+      for (const franchiseEntry of franchiseMatches) {
+        if (!franchiseEntry.matchup_id) continue;
+
+        // Find opponent in same matchup
+        const opponent = entries.find(
+          e => e.matchup_id === franchiseEntry.matchup_id && e.roster_id !== franchiseId
+        );
+
+        if (!opponent) continue;
+
+        if (!gamesByWeek[week]) gamesByWeek[week] = [];
+        gamesByWeek[week].push({
+          franchiseScore: franchiseEntry.score,
+          opponentRosterId: opponent.roster_id,
+          opponentScore: opponent.score,
+        });
+      }
+    }
+
+    const weeks = Object.keys(gamesByWeek)
+      .map(Number)
+      .sort((a, b) => a - b);
+
+    if (weeks.length === 0) {
+      grid.innerHTML = '<p class="franchise-no-games">No games available for this season.</p>';
+      return;
+    }
+
+    let html = '';
+    for (const week of weeks) {
+      for (const game of gamesByWeek[week]) {
+        const fOpponent = franchiseMap[game.opponentRosterId] ?? {
+          name: `Roster ${game.opponentRosterId}`,
+          abbr: 'UNKNOWN',
+          founded: 2021,
+          predecessorAbbr: null,
+          rebrands: [],
+        };
+
+        const franchiseFranchise = franchiseMap[franchiseId];
+        const scoreFranchise = game.franchiseScore;
+        const scoreOpponent = game.opponentScore;
+        const franchiseWins = scoreFranchise > scoreOpponent;
+        const opponentWins = scoreOpponent > scoreFranchise;
+
+        // Dynasty Bowl banner (week 17 only)
+        let banner = '';
+        if (week === 17) {
+          const db = dynastyBowls[yearStr];
+          if (db) {
+            const abbrFranchise = getEffectiveAbbr(franchiseFranchise, year);
+            const abbrOpponent = getEffectiveAbbr(fOpponent, year);
+            if (
+              (abbrFranchise === db.winner || abbrFranchise === db.loser) &&
+              (abbrOpponent === db.winner || abbrOpponent === db.loser)
+            ) {
+              banner = `<div class="franchise-dynasty-bowl-banner">${db.label}</div>`;
+            }
+          }
+        }
+
+        const slug = makeSlug(week, franchiseFranchise.abbr, fOpponent.abbr);
+        const gameUrl = `/games/${year}/${slug}`;
+        const hasRecap = recapSlugs.has(`${year}/${slug}`);
+
+        html += `
+          <a class="franchise-matchup-card" href="${gameUrl}">
+            ${banner}
+            <div class="franchise-matchup-week-header">Week ${week}</div>
+            <div class="franchise-matchup-body">
+              <div class="franchise-matchup-teams">
+                ${teamRow(franchiseFranchise, scoreFranchise, franchiseWins, opponentWins, year)}
+                ${teamRow(fOpponent, scoreOpponent, opponentWins, franchiseWins, year)}
+              </div>
+              ${hasRecap ? `<div class="franchise-recap-btn">Recap&nbsp;→</div>` : ''}
+            </div>
+          </a>`;
+      }
+    }
+
+    if (!html) {
+      grid.innerHTML = '<p class="franchise-no-games">No games available for this season.</p>';
+      return;
+    }
+
+    grid.innerHTML = `<div class="franchise-matchups-grid">${html}</div>`;
+  }
+
+  function teamRow(franchiseData, score, isWinner, isLoser, year) {
+    const cls = isWinner ? 'winner' : isLoser ? 'loser' : 'tied';
+
+    let name = franchiseData.name;
+    let logoAbbr = franchiseData.abbr;
+    if (franchiseData.founded !== 2021 && year < franchiseData.founded) {
+      const rebrand = franchiseData.rebrands.find(r => r.year === year);
+      if (rebrand) name = rebrand.name;
+      if (franchiseData.predecessorAbbr) logoAbbr = franchiseData.predecessorAbbr;
+    }
+
+    return `
+      <div class="franchise-team-row ${cls}">
+        <img class="franchise-team-logo"
+             src="/images/logos/${logoAbbr}.png"
+             alt="${name}"
+             onerror="this.style.display='none'" />
+        <span class="franchise-team-name">${name}</span>
+        <span class="franchise-team-score">${score.toFixed(2)}</span>
+      </div>`;
+  }
+
+  // Wire up event listener
+  seasonSelect?.addEventListener('change', () => {
+    renderGames(Number(seasonSelect.value));
+  });
+
+  // Initial render
+  renderGames(defaultSeasonYear);
+</script>
