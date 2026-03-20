@@ -2,8 +2,6 @@
 
 ## TODO
 1. Blurbs for Bowl Games in Content page
-1. Historical matchups of spotlight games
-    - Use matchups.json
 1. Consolation bracket
     - Seedings complete for non-playoff teams
     - Brackets generated on season recap pages
