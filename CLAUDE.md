@@ -210,6 +210,29 @@ All matchup data is embedded at build time as a JSON blob via `define:vars`. Cli
 
 ---
 
+## Playoff Bracket (`/history/[year]`) — Clickable Matchups
+
+The playoff bracket on season history pages is fully clickable. Each matchup links to its game recap page:
+
+- **Round 1 matchups** (week 15): All first-round playoff games
+- **Semifinal matchups** (week 16): Conference/division semifinals
+- **Championship matchup** (week 17): Dynasty Bowl final
+
+Clicking any matchup navigates to `/games/[year]/[slug]` where the slug is built using `buildSlug(teamA, teamB, week)`:
+```
+[week_zero_padded]-[abbr_a_sorted_lowercase]-[abbr_b_sorted_lowercase]
+```
+
+Example: `/games/2025/15-bkb-low` (BKB vs. LOW, week 15)
+
+**Implementation details:**
+- Each matchup div is wrapped in an `<a>` tag with no visual changes
+- Teams are alphabetized before building the slug
+- Matchups with missing team data (byes, incomplete brackets) gracefully render without links
+- Replaces the previous playoff format text with "Click a matchup for more details →"
+
+---
+
 ## `getStaticPaths` Rule
 
 Astro's `getStaticPaths` runs in an isolated scope — module-level variables are NOT accessible inside it. All data loading (`import.meta.glob`, imports) must be re-initialized inside the function body. Vite deduplicates actual file reads at build time so there is no performance cost.

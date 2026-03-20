@@ -139,6 +139,13 @@ for (const entry of week15) {
   matchupById.set(entry.matchup_id, list);
 }
 
+// Build slug for game recap link: [week]-[abbr1]-[abbr2] (alphabetized, lowercased)
+function buildSlug(teamA: StandingsRow | null | undefined, teamB: StandingsRow | null | undefined, week: number): string | null {
+  if (!teamA || !teamB) return null;
+  const abbrs = [teamA.effectiveAbbr, teamB.effectiveAbbr].sort().map(a => a.toLowerCase());
+  return `${String(week).padStart(2, '0')}-${abbrs[0]}-${abbrs[1]}`;
+}
+
 // Return winner of a matchup between two teams; if b is null, a gets a bye
 function getMatchupWinner(a: StandingsRow | null, b: StandingsRow | null): StandingsRow | null {
   if (!a) return null;
@@ -312,7 +319,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
     <div class="section-rule">
       <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem;">Playoff Bracket</h2>
       <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2rem;">
-        {teamCount}-team field &bull; {is8Team ? 'SCC left · HCC right' : '1-seed has first-round bye'}
+        Click a matchup for more details →
       </p>
 
       <div class="bracket-wrap">
@@ -323,79 +330,97 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
           <!-- Round 1 (left) -->
           <div class="bracket-round">
             <!-- Top matchup -->
-            <div class="bracket-matchup">
-              <div class={`bracket-slot top${!is8Team && leftTop[1] === null ? ' bye-slot' : ''}`}>
-                {leftTop[0] && (
-                  <>
-                    <img src={`/images/logos/${leftTop[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{leftTop[0].seed}</span>
-                    <span class="slot-name">{leftTop[0].effectiveAbbr}</span>
-                    {!is8Team && leftTop[1] === null && <span class="bye-label">BYE</span>}
-                  </>
-                )}
-              </div>
-              {leftTop[1] !== null && (
-                <>
-                  <div class="bracket-connector-v"></div>
-                  <div class="bracket-slot bottom">
-                    {leftTop[1] && (
+            {(() => {
+              const slug = buildSlug(leftTop[0], leftTop[1], 15);
+              const matchupContent = (
+                <div class="bracket-matchup">
+                  <div class={`bracket-slot top${!is8Team && leftTop[1] === null ? ' bye-slot' : ''}`}>
+                    {leftTop[0] && (
                       <>
-                        <img src={`/images/logos/${leftTop[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{leftTop[1].seed}</span>
-                        <span class="slot-name">{leftTop[1].effectiveAbbr}</span>
+                        <img src={`/images/logos/${leftTop[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{leftTop[0].seed}</span>
+                        <span class="slot-name">{leftTop[0].effectiveAbbr}</span>
+                        {!is8Team && leftTop[1] === null && <span class="bye-label">BYE</span>}
                       </>
                     )}
                   </div>
-                </>
-              )}
-            </div>
+                  {leftTop[1] !== null && (
+                    <>
+                      <div class="bracket-connector-v"></div>
+                      <div class="bracket-slot bottom">
+                        {leftTop[1] && (
+                          <>
+                            <img src={`/images/logos/${leftTop[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                            <span class="slot-seed">{leftTop[1].seed}</span>
+                            <span class="slot-name">{leftTop[1].effectiveAbbr}</span>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
+            })()}
             <!-- Bottom matchup -->
-            <div class="bracket-matchup">
-              <div class="bracket-slot top">
-                {leftBottom[0] && (
-                  <>
-                    <img src={`/images/logos/${leftBottom[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{leftBottom[0].seed}</span>
-                    <span class="slot-name">{leftBottom[0].effectiveAbbr}</span>
-                  </>
-                )}
-              </div>
-              <div class="bracket-connector-v"></div>
-              <div class="bracket-slot bottom">
-                {leftBottom[1] && (
-                  <>
-                    <img src={`/images/logos/${leftBottom[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{leftBottom[1].seed}</span>
-                    <span class="slot-name">{leftBottom[1].effectiveAbbr}</span>
-                  </>
-                )}
-              </div>
-            </div>
+            {(() => {
+              const slug = buildSlug(leftBottom[0], leftBottom[1], 15);
+              const matchupContent = (
+                <div class="bracket-matchup">
+                  <div class="bracket-slot top">
+                    {leftBottom[0] && (
+                      <>
+                        <img src={`/images/logos/${leftBottom[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{leftBottom[0].seed}</span>
+                        <span class="slot-name">{leftBottom[0].effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                  <div class="bracket-connector-v"></div>
+                  <div class="bracket-slot bottom">
+                    {leftBottom[1] && (
+                      <>
+                        <img src={`/images/logos/${leftBottom[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{leftBottom[1].seed}</span>
+                        <span class="slot-name">{leftBottom[1].effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
+            })()}
           </div>
 
           <!-- Semis (left) -->
           <div class="bracket-round bracket-round-semis">
-            <div class="bracket-matchup">
-              <div class="bracket-slot semi-slot top">
-                {leftSemiTop && (
-                  <>
-                    <img src={`/images/logos/${leftSemiTop.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{leftSemiTop.seed}</span>
-                    <span class="slot-name">{leftSemiTop.effectiveAbbr}</span>
-                  </>
-                )}
-              </div>
-              <div class="bracket-connector-v"></div>
-              <div class="bracket-slot semi-slot bottom">
-                {leftSemiBottom && (
-                  <>
-                    <img src={`/images/logos/${leftSemiBottom.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{leftSemiBottom.seed}</span>
-                    <span class="slot-name">{leftSemiBottom.effectiveAbbr}</span>
-                  </>
-                )}
-              </div>
-            </div>
+            {(() => {
+              const slug = buildSlug(leftSemiTop, leftSemiBottom, 16);
+              const matchupContent = (
+                <div class="bracket-matchup">
+                  <div class="bracket-slot semi-slot top">
+                    {leftSemiTop && (
+                      <>
+                        <img src={`/images/logos/${leftSemiTop.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{leftSemiTop.seed}</span>
+                        <span class="slot-name">{leftSemiTop.effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                  <div class="bracket-connector-v"></div>
+                  <div class="bracket-slot semi-slot bottom">
+                    {leftSemiBottom && (
+                      <>
+                        <img src={`/images/logos/${leftSemiBottom.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{leftSemiBottom.seed}</span>
+                        <span class="slot-name">{leftSemiBottom.effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
+            })()}
           </div>
 
         </div><!-- end bracket-left -->
@@ -405,23 +430,29 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
           <div class="bracket-final-label">
             <p class="section-label" style="text-align: center; margin-bottom: 0.5rem;">{season.dynasty_bowl.label}</p>
           </div>
-          <div class="bracket-final-slot">
-            {champion && (
-              <div class="final-team champion-team">
-                <img src={`/images/logos/${champion.effectiveAbbr}.png`} alt="" width="32" height="32" onerror="this.style.display='none'" />
-                <span class="final-seed">{champion.seed}</span>
-                <span class="final-name">{champion.effectiveAbbr}</span>
+          {(() => {
+            const slug = buildSlug(champion, runnerUp, 17);
+            const finalContent = (
+              <div class="bracket-final-slot">
+                {champion && (
+                  <div class="final-team champion-team">
+                    <img src={`/images/logos/${champion.effectiveAbbr}.png`} alt="" width="32" height="32" onerror="this.style.display='none'" />
+                    <span class="final-seed">{champion.seed}</span>
+                    <span class="final-name">{champion.effectiveAbbr}</span>
+                  </div>
+                )}
+                <div class="final-defeated">defeated</div>
+                {runnerUp && (
+                  <div class="final-team">
+                    <img src={`/images/logos/${runnerUp.effectiveAbbr}.png`} alt="" width="32" height="32" onerror="this.style.display='none'" />
+                    <span class="final-seed">{runnerUp.seed}</span>
+                    <span class="final-name">{runnerUp.effectiveAbbr}</span>
+                  </div>
+                )}
               </div>
-            )}
-            <div class="final-defeated">defeated</div>
-            {runnerUp && (
-              <div class="final-team">
-                <img src={`/images/logos/${runnerUp.effectiveAbbr}.png`} alt="" width="32" height="32" onerror="this.style.display='none'" />
-                <span class="final-seed">{runnerUp.seed}</span>
-                <span class="final-name">{runnerUp.effectiveAbbr}</span>
-              </div>
-            )}
-          </div>
+            );
+            return slug ? <a href={`/games/${year}/${slug}`} class="bracket-final-link">{finalContent}</a> : finalContent;
+          })()}
         </div>
 
         <!-- RIGHT SIDE: semis → round1 (DOM order matches display order with flex-direction: row) -->
@@ -429,75 +460,93 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
           <!-- Semis (right) -->
           <div class="bracket-round bracket-round-semis">
-            <div class="bracket-matchup">
-              <div class="bracket-slot semi-slot top">
-                {rightSemiTop && (
-                  <>
-                    <img src={`/images/logos/${rightSemiTop.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{rightSemiTop.seed}</span>
-                    <span class="slot-name">{rightSemiTop.effectiveAbbr}</span>
-                  </>
-                )}
-              </div>
-              <div class="bracket-connector-v"></div>
-              <div class="bracket-slot semi-slot bottom">
-                {rightSemiBottom && (
-                  <>
-                    <img src={`/images/logos/${rightSemiBottom.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{rightSemiBottom.seed}</span>
-                    <span class="slot-name">{rightSemiBottom.effectiveAbbr}</span>
-                  </>
-                )}
-              </div>
-            </div>
+            {(() => {
+              const slug = buildSlug(rightSemiTop, rightSemiBottom, 16);
+              const matchupContent = (
+                <div class="bracket-matchup">
+                  <div class="bracket-slot semi-slot top">
+                    {rightSemiTop && (
+                      <>
+                        <img src={`/images/logos/${rightSemiTop.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{rightSemiTop.seed}</span>
+                        <span class="slot-name">{rightSemiTop.effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                  <div class="bracket-connector-v"></div>
+                  <div class="bracket-slot semi-slot bottom">
+                    {rightSemiBottom && (
+                      <>
+                        <img src={`/images/logos/${rightSemiBottom.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{rightSemiBottom.seed}</span>
+                        <span class="slot-name">{rightSemiBottom.effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
+            })()}
           </div>
 
           <!-- Round 1 (right) -->
           <div class="bracket-round">
             <!-- Top matchup -->
-            <div class="bracket-matchup">
-              <div class="bracket-slot top">
-                {rightTop[0] && (
-                  <>
-                    <img src={`/images/logos/${rightTop[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{rightTop[0].seed}</span>
-                    <span class="slot-name">{rightTop[0].effectiveAbbr}</span>
-                  </>
-                )}
-              </div>
-              <div class="bracket-connector-v"></div>
-              <div class="bracket-slot bottom">
-                {rightTop[1] && (
-                  <>
-                    <img src={`/images/logos/${rightTop[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{rightTop[1].seed}</span>
-                    <span class="slot-name">{rightTop[1].effectiveAbbr}</span>
-                  </>
-                )}
-              </div>
-            </div>
+            {(() => {
+              const slug = buildSlug(rightTop[0], rightTop[1], 15);
+              const matchupContent = (
+                <div class="bracket-matchup">
+                  <div class="bracket-slot top">
+                    {rightTop[0] && (
+                      <>
+                        <img src={`/images/logos/${rightTop[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{rightTop[0].seed}</span>
+                        <span class="slot-name">{rightTop[0].effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                  <div class="bracket-connector-v"></div>
+                  <div class="bracket-slot bottom">
+                    {rightTop[1] && (
+                      <>
+                        <img src={`/images/logos/${rightTop[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{rightTop[1].seed}</span>
+                        <span class="slot-name">{rightTop[1].effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
+            })()}
             <!-- Bottom matchup -->
-            <div class="bracket-matchup">
-              <div class="bracket-slot top">
-                {rightBottom[0] && (
-                  <>
-                    <img src={`/images/logos/${rightBottom[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{rightBottom[0].seed}</span>
-                    <span class="slot-name">{rightBottom[0].effectiveAbbr}</span>
-                  </>
-                )}
-              </div>
-              <div class="bracket-connector-v"></div>
-              <div class="bracket-slot bottom">
-                {rightBottom[1] && (
-                  <>
-                    <img src={`/images/logos/${rightBottom[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                    <span class="slot-seed">{rightBottom[1].seed}</span>
-                    <span class="slot-name">{rightBottom[1].effectiveAbbr}</span>
-                  </>
-                )}
-              </div>
-            </div>
+            {(() => {
+              const slug = buildSlug(rightBottom[0], rightBottom[1], 15);
+              const matchupContent = (
+                <div class="bracket-matchup">
+                  <div class="bracket-slot top">
+                    {rightBottom[0] && (
+                      <>
+                        <img src={`/images/logos/${rightBottom[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{rightBottom[0].seed}</span>
+                        <span class="slot-name">{rightBottom[0].effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                  <div class="bracket-connector-v"></div>
+                  <div class="bracket-slot bottom">
+                    {rightBottom[1] && (
+                      <>
+                        <img src={`/images/logos/${rightBottom[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <span class="slot-seed">{rightBottom[1].seed}</span>
+                        <span class="slot-name">{rightBottom[1].effectiveAbbr}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
+            })()}
           </div>
 
         </div><!-- end bracket-right -->
@@ -557,6 +606,13 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
   .bracket-round-semis {
     flex: 1;
     padding: 0.5rem;
+  }
+
+  .bracket-matchup-link {
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    text-decoration: none;
   }
 
   .bracket-matchup {
@@ -656,6 +712,14 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
   }
 
   /* ── Final / Championship ─────────────────────── */
+  .bracket-final-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    text-decoration: none;
+  }
+
   .bracket-center {
     flex-shrink: 0;
     display: flex;
