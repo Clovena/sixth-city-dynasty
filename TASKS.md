@@ -1,13 +1,9 @@
 # SCDFL Site — Task Board
 
 ## TODO
-1. Teamwise scores on franchise pages
 1. Consolation bracket
     - Seedings complete for non-playoff teams
     - Brackets generated on season recap pages
-1. More links to game recaps
-    - Brackets
-    - Spotlight game history
 1. More data from Sleeper API
     - Drafts
     - Transactions
