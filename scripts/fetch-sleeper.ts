@@ -17,7 +17,7 @@ import { writeFileSync, mkdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import config from '../src/data/config.json' assert { type: 'json' };
-import { getRosters, getMatchups, getNflState } from './lib/sleeper-api.js';
+import { getRosters, getMatchups, getTransactions, getNflState, type SleeperTransaction } from './lib/sleeper-api.js';
 import { buildSeasonStats } from './lib/transform.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -124,6 +124,14 @@ for (const season of seasonsToFetch) {
   }
   saveRaw(`${season.year}-matchups.json`, matchupsByWeek);
   console.log(`  cached matchups weeks 1–${maxWeek} to src/data/raw/`);
+
+  // Pull transactions for each regular-season week
+  const transactionsByWeek: Record<number, SleeperTransaction[]> = {};
+  for (let week = 1; week <= maxWeek + 1; week++) {
+    transactionsByWeek[week] = await getTransactions(season.league_id, week);
+  }
+  saveRaw(`${season.year}-transactions.json`, transactionsByWeek);
+  console.log(`  cached transactions weeks 1–${maxWeek} to src/data/raw/`);
 }
 
 saveResults(allResults);

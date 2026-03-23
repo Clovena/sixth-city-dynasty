@@ -1,0 +1,553 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import playerIdMap from '../../data/player-id-map.json';
+import franchisesData from '../../data/franchises.json';
+
+// Load all transaction files
+const transactionFiles = import.meta.glob('../../data/raw/*-transactions.json', { eager: true });
+
+// Build a map of player ID → player data
+const playerMap = new Map(Object.entries(playerIdMap));
+
+// Build a map of franchise ID → franchise data
+const franchiseMap = new Map(franchisesData.map(f => [f.id, f]));
+
+// Build transactions by year
+const transactionsByYear: { [year: string]: any } = {};
+Object.entries(transactionFiles).forEach(([path, module]: [string, any]) => {
+  const match = path.match(/(\d{4})-transactions\.json/);
+  if (match) {
+    const year = match[1];
+    transactionsByYear[year] = module.default || module;
+  }
+});
+
+// Prepare player list for autocomplete (sorted by name)
+const playerList = Array.from(playerMap.entries())
+  .map(([id, data]) => ({
+    id,
+    name: data.full_name,
+    position: data.position
+  }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
+// Pass data to client
+const playerMapObj = Object.fromEntries(playerMap);
+const franchiseMapObj = Object.fromEntries(franchiseMap);
+---
+
+<Layout title="Transaction Explorer">
+  <div style="max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem;">
+    <h1 style="font-family: var(--font-display); font-size: 2rem; margin-bottom: 2rem;">Transaction Explorer</h1>
+
+    <!-- Search Section -->
+    <div style="display: flex; gap: 1rem; margin-bottom: 2rem; align-items: flex-start;">
+      <div style="flex: 1; position: relative;">
+        <label for="player-search" style="display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--color-text-secondary);">
+          Search for a player
+        </label>
+        <div style="position: relative;">
+          <input
+            type="text"
+            id="player-search"
+            placeholder="Start typing a player name..."
+            style="width: 100%; padding: 0.75rem; background-color: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-body); font-size: 0.95rem; border-radius: 0.375rem;"
+          />
+          <div
+            id="search-results"
+            style="display: none; position: absolute; top: 100%; left: 0; right: 0; background-color: var(--color-surface); border: 1px solid var(--color-border); border-top: none; max-height: 300px; overflow-y: auto; z-index: 10;"
+          ></div>
+        </div>
+      </div>
+
+      <!-- Player Headshot -->
+      <div style="flex-shrink: 0;">
+        <img
+          id="player-headshot"
+          src="/images/player-placeholder.png"
+          alt="Player headshot"
+          style="width: 100px; height: 100px; object-fit: cover; border-radius: 0.375rem; border: 1px solid var(--color-border); display: none;"
+        />
+      </div>
+    </div>
+
+    <!-- Selected Player Info -->
+    <div id="selected-player-info" style="margin-bottom: 2rem; display: none;">
+      <h2 id="selected-player-name" style="font-family: var(--font-display); font-size: 1.5rem; margin: 0;"></h2>
+      <p id="selected-player-position" style="color: var(--color-text-secondary); margin: 0.5rem 0 0; font-size: 0.9rem;"></p>
+    </div>
+
+    <!-- Transactions Table -->
+    <div style="overflow-x: auto;">
+      <table id="transactions-table" style="width: 100%; border-collapse: collapse; display: none;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--color-border);">
+            <th style="padding: 1rem; text-align: left; font-weight: 600; color: var(--color-text-secondary); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Season</th>
+            <th style="padding: 1rem; text-align: left; font-weight: 600; color: var(--color-text-secondary); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Week</th>
+            <th style="padding: 1rem; text-align: left; font-weight: 600; color: var(--color-text-secondary); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Type</th>
+            <th style="padding: 1rem; text-align: left; font-weight: 600; color: var(--color-text-secondary); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Status</th>
+            <th style="padding: 1rem; text-align: left; font-weight: 600; color: var(--color-text-secondary); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Waiver Bid</th>
+            <th style="padding: 1rem; text-align: left; font-weight: 600; color: var(--color-text-secondary); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em;">Teams</th>
+          </tr>
+        </thead>
+        <tbody id="transactions-tbody"></tbody>
+      </table>
+
+      <!-- No Results Message -->
+      <div id="no-results-message" style="text-align: center; padding: 2rem; color: var(--color-text-muted); display: none;">
+        <p>No transactions found for this player.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trade Detail Modal -->
+  <div id="trade-modal" style="display: none; position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.6); z-index: 1000; overflow-y: auto;">
+    <div style="min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 1rem;">
+      <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); border-radius: 0.5rem; max-width: 600px; width: 100%; padding: 2rem; position: relative;">
+        <!-- Close button -->
+        <button id="modal-close" style="position: absolute; top: 1rem; right: 1rem; background: none; border: none; color: var(--color-text-secondary); cursor: pointer; font-size: 1.5rem; padding: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+          ✕
+        </button>
+
+        <!-- Modal content -->
+        <div id="modal-content" style="padding-top: 1rem;"></div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    #search-results [role="option"] {
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      border-bottom: 1px solid var(--color-border);
+      transition: background-color 0.15s ease;
+    }
+
+    #search-results [role="option"]:last-child {
+      border-bottom: none;
+    }
+
+    #search-results [role="option"]:hover,
+    #search-results [role="option"][aria-selected="true"] {
+      background-color: var(--color-surface-alt);
+    }
+
+    :global(table tbody tr) {
+      border-bottom: 1px solid var(--color-border);
+      transition: background-color 0.15s ease;
+    }
+
+    :global(table tbody tr:hover) {
+      background-color: var(--color-surface);
+    }
+
+    :global(table tbody tr.trade-row) {
+      cursor: pointer;
+    }
+
+    :global(table tbody tr.trade-row:hover) {
+      background-color: var(--color-gold-surface);
+    }
+
+    :global(table td) {
+      padding: 1rem;
+      vertical-align: middle;
+      font-size: 0.95rem;
+    }
+
+    :global(.team-flow) {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    :global(.team-logo) {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+    }
+
+    :global(.team-empty) {
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
+    }
+
+    :global(.team-arrow) {
+      color: var(--color-text-secondary);
+      font-size: 1.2rem;
+    }
+
+    :global(.trade-team-section) {
+      margin-bottom: 2rem;
+    }
+
+    :global(.trade-team-header) {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+
+    :global(.trade-team-logo) {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      flex-shrink: 0;
+    }
+
+    :global(.trade-assets) {
+      margin-left: 4rem;
+    }
+
+    :global(.trade-asset-type) {
+      margin-bottom: 0.75rem;
+      font-size: 0.85rem;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    :global(.trade-asset-list) {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    :global(.trade-asset-list li) {
+      padding: 0.25rem 0;
+      font-size: 0.95rem;
+      color: var(--color-text-primary);
+    }
+  </style>
+
+  <script is:inline define:vars={{ playerList, playerMapObj, transactionsByYear, franchiseMapObj }}>
+    const searchInput = document.getElementById('player-search');
+    const searchResults = document.getElementById('search-results');
+    const playerHeadshot = document.getElementById('player-headshot');
+    const selectedPlayerInfo = document.getElementById('selected-player-info');
+    const selectedPlayerName = document.getElementById('selected-player-name');
+    const selectedPlayerPosition = document.getElementById('selected-player-position');
+    const transactionsTable = document.getElementById('transactions-table');
+    const transactionsTbody = document.getElementById('transactions-tbody');
+    const noResultsMessage = document.getElementById('no-results-message');
+    const tradeModal = document.getElementById('trade-modal');
+    const modalClose = document.getElementById('modal-close');
+    const modalContent = document.getElementById('modal-content');
+
+    let selectedPlayerId = null;
+    let transactionMap = {}; // Store full transactions by ID
+
+    // Autocomplete search
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase().trim();
+
+      if (!query) {
+        searchResults.style.display = 'none';
+        return;
+      }
+
+      const matches = playerList.filter(p => p.name.toLowerCase().includes(query)).slice(0, 10);
+
+      if (matches.length === 0) {
+        searchResults.style.display = 'none';
+        return;
+      }
+
+      searchResults.innerHTML = matches.map(player => `
+        <div role="option" data-player-id="${player.id}" style="padding: 0.75rem 1rem; cursor: pointer; border-bottom: 1px solid var(--color-border);">
+          <div style="color: var(--color-text-primary);">${player.name}</div>
+          <div style="color: var(--color-text-muted); font-size: 0.85rem;">${player.position}</div>
+        </div>
+      `).join('');
+
+      searchResults.style.display = 'block';
+
+      // Add click handlers to results
+      searchResults.querySelectorAll('[role="option"]').forEach(option => {
+        option.addEventListener('click', () => {
+          selectPlayer(option.dataset.playerId);
+        });
+      });
+    });
+
+    // Select player from results
+    function selectPlayer(playerId) {
+      selectedPlayerId = playerId;
+      const player = playerMapObj[playerId];
+
+      if (!player) return;
+
+      searchInput.value = player.full_name;
+      searchResults.style.display = 'none';
+      playerHeadshot.style.display = 'block';
+      playerHeadshot.src = `/images/player-placeholder.png`;
+
+      selectedPlayerName.textContent = player.full_name;
+      selectedPlayerPosition.textContent = player.position;
+      selectedPlayerInfo.style.display = 'block';
+
+      // Load transactions
+      loadTransactions(playerId);
+    }
+
+    // Load transactions for selected player
+    function loadTransactions(playerId) {
+      const transactions = [];
+      transactionMap = {}; // Reset transaction map
+
+      // Search through all years and weeks
+      Object.entries(transactionsByYear).forEach(([year, weekData]) => {
+        if (!weekData) return;
+
+        Object.entries(weekData).forEach(([week, txList]) => {
+          if (!Array.isArray(txList)) return;
+
+          txList.forEach(tx => {
+            const inAdds = tx.adds && playerId in tx.adds;
+            const inDrops = tx.drops && playerId in tx.drops;
+
+            if (inAdds || inDrops) {
+              const addRosterId = inAdds ? tx.adds[playerId] : null;
+              const dropRosterId = inDrops ? tx.drops[playerId] : null;
+
+              const summary = {
+                year: parseInt(year),
+                week: parseInt(week),
+                type: tx.type,
+                status: tx.status,
+                addRosterId,
+                dropRosterId,
+                waiver_bid: tx.settings?.waiver_bid,
+                transaction_id: tx.transaction_id
+              };
+
+              transactions.push(summary);
+
+              // Store full transaction for modal
+              transactionMap[tx.transaction_id] = tx;
+            }
+          });
+        });
+      });
+
+      // Sort by year asc, then week asc, then transaction_id asc (oldest first)
+      transactions.sort((a, b) => {
+        if (b.year !== a.year) return a.year - b.year;
+        if (a.week !== b.week) return a.week - b.week;
+        // Compare transaction IDs as BigInt to handle large numbers correctly
+        return BigInt(a.transaction_id) > BigInt(b.transaction_id) ? 1 : -1;
+      });
+
+      // Render transactions
+      if (transactions.length === 0) {
+        transactionsTable.style.display = 'none';
+        noResultsMessage.style.display = 'block';
+        return;
+      }
+
+      transactionsTable.style.display = 'table';
+      noResultsMessage.style.display = 'none';
+
+      transactionsTbody.innerHTML = transactions.map(tx => {
+        try {
+          const addingFranchise = franchiseMapObj[tx.addRosterId];
+          const droppingFranchise = franchiseMapObj[tx.dropRosterId];
+
+          // Guard against missing franchises
+          if (!addingFranchise) {
+            console.warn(`Missing franchise for roster ID ${tx.addRosterId}`);
+            return '';
+          }
+          if (tx.type === 'trade' && !droppingFranchise) {
+            console.warn(`Missing franchise for roster ID ${tx.dropRosterId}`);
+            return '';
+          }
+
+          let teamsHtml = '';
+          if (tx.type === 'trade') {
+            // Trade: show dropping → adding
+            teamsHtml = `
+              <div class="team-flow">
+                <img src="/images/logos/${droppingFranchise.abbr}.png" alt="${droppingFranchise.abbr}" class="team-logo" title="${droppingFranchise.name}" />
+                <span class="team-arrow">→</span>
+                <img src="/images/logos/${addingFranchise.abbr}.png" alt="${addingFranchise.abbr}" class="team-logo" title="${addingFranchise.name}" />
+              </div>
+            `;
+          } else {
+            // Waiver or free agent: show empty space → adding
+            teamsHtml = `
+              <div class="team-flow">
+                <div class="team-empty"></div>
+                <span class="team-arrow">→</span>
+                <img src="/images/logos/${addingFranchise.abbr}.png" alt="${addingFranchise.abbr}" class="team-logo" title="${addingFranchise.name}" />
+              </div>
+            `;
+          }
+
+          const waiverBidDisplay = tx.type === 'waiver' && tx.waiver_bid !== undefined ? tx.waiver_bid : '—';
+          const rowClass = tx.type === 'trade' ? 'trade-row' : '';
+          const dataTxId = tx.type === 'trade' ? `data-tx-id="${tx.transaction_id}"` : '';
+
+          return `
+            <tr class="${rowClass}" ${dataTxId}>
+              <td>${tx.year}</td>
+              <td>${tx.week}</td>
+              <td>${tx.type}</td>
+              <td><span style="color: ${tx.status === 'complete' ? '#27ae60' : 'var(--color-text-muted)'};">${tx.status}</span></td>
+              <td>${waiverBidDisplay}</td>
+              <td>${teamsHtml}</td>
+            </tr>
+          `;
+        } catch (e) {
+          console.error('Error rendering transaction:', tx, e);
+          return '';
+        }
+      }).join('');
+
+      // Add click handlers to trade rows
+      transactionsTbody.querySelectorAll('tr.trade-row').forEach(row => {
+        row.addEventListener('click', () => {
+          const txId = row.dataset.txId;
+          if (txId && transactionMap[txId]) {
+            openTradeModal(transactionMap[txId]);
+          }
+        });
+      });
+    }
+
+    // Open trade modal
+    function openTradeModal(tx) {
+      const date = new Date(tx.created);
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+      // Collect all teams involved
+      const teamIds = [...new Set(tx.roster_ids || [])];
+      const isMultiTeam = teamIds.length >= 3;
+      let teamsHtml = '';
+
+      teamIds.forEach(rosterId => {
+        const franchise = franchiseMapObj[rosterId];
+        if (!franchise) return;
+
+        const assetsReceived = [];
+        const assetsSent = [];
+
+        // Collect players received by this team
+        if (tx.adds) {
+          Object.entries(tx.adds).forEach(([playerId, receivingRosterId]) => {
+            if (receivingRosterId === rosterId) {
+              const player = playerMapObj[playerId];
+              if (player) {
+                assetsReceived.push(player.full_name);
+              }
+            }
+          });
+        }
+
+        // Collect players sent by this team
+        if (tx.drops) {
+          Object.entries(tx.drops).forEach(([playerId, sendingRosterId]) => {
+            if (sendingRosterId === rosterId) {
+              const player = playerMapObj[playerId];
+              if (player) {
+                assetsSent.push(player.full_name);
+              }
+            }
+          });
+        }
+
+        // Collect draft picks
+        if (tx.draft_picks && Array.isArray(tx.draft_picks)) {
+          tx.draft_picks.forEach(pick => {
+            const pickDesc = `${pick.season} Round ${pick.round}`;
+            if (pick.owner_id === rosterId) {
+              assetsReceived.push(pickDesc);
+            }
+            if (pick.previous_owner_id === rosterId) {
+              assetsSent.push(pickDesc);
+            }
+          });
+        }
+
+        // Only render team if they received something
+        if (assetsReceived.length > 0) {
+          let sectionHtml = `
+            <div class="trade-team-section">
+              <div class="trade-team-header">
+                <img src="/images/logos/${franchise.abbr}.png" alt="${franchise.abbr}" class="trade-team-logo" title="${franchise.name}" />
+                <span>${franchise.name}</span>
+              </div>
+          `;
+
+          if (isMultiTeam) {
+            // Multi-team: show sent and received
+            sectionHtml += `
+              <div class="trade-assets">
+                ${assetsSent.length > 0 ? `
+                  <div style="margin-bottom: 1rem;">
+                    <div class="trade-asset-type">Sent</div>
+                    <ul class="trade-asset-list">
+                      ${assetsSent.map(asset => `<li>• ${asset}</li>`).join('')}
+                    </ul>
+                  </div>
+                ` : ''}
+                <div>
+                  <div class="trade-asset-type">Received</div>
+                  <ul class="trade-asset-list">
+                    ${assetsReceived.map(asset => `<li>• ${asset}</li>`).join('')}
+                  </ul>
+                </div>
+              </div>
+            `;
+          } else {
+            // Two-team: show only received with header
+            sectionHtml += `
+              <div class="trade-asset-type">Received</div>
+              <ul class="trade-asset-list">
+                ${assetsReceived.map(asset => `<li>• ${asset}</li>`).join('')}
+              </ul>
+            `;
+          }
+
+          sectionHtml += `</div>`;
+          teamsHtml += sectionHtml;
+        }
+      });
+
+      modalContent.innerHTML = `
+        <h2 style="font-family: var(--font-display); font-size: 1.5rem; margin: 0 0 0.5rem;">Trade Details</h2>
+        <p style="color: var(--color-text-secondary); margin: 0 0 2rem; font-size: 0.9rem;">${dateStr}</p>
+        ${teamsHtml}
+      `;
+
+      tradeModal.style.display = 'flex';
+    }
+
+    // Close modal
+    function closeTradeModal() {
+      tradeModal.style.display = 'none';
+    }
+
+    // Wire up modal close button
+    modalClose.addEventListener('click', closeTradeModal);
+
+    // Close modal when clicking outside
+    tradeModal.addEventListener('click', (e) => {
+      if (e.target === tradeModal) {
+        closeTradeModal();
+      }
+    });
+
+    // Allow Enter key to select first result
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const firstResult = searchResults.querySelector('[role="option"]');
+        if (firstResult) {
+          selectPlayer(firstResult.dataset.playerId);
+        }
+      }
+    });
+  </script>
+</Layout>

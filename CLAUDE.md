@@ -52,6 +52,7 @@ npm run fetch -- --all  # fetch all seasons from Sleeper API
 | `config.json` | Sleeper league IDs per season; `current: true` flags the active season |
 | `raw/[year]-rosters.json` | Raw Sleeper roster data — written by fetch script |
 | `raw/[year]-matchups.json` | Raw Sleeper matchup data keyed by week number — written by fetch script |
+| `raw/[year]-transactions.json` | Raw Sleeper transaction data (waivers, free agents, trades) keyed by week — written by fetch script |
 | `raw/nfl-state.json` | Raw NFL state (current week, season type) — written by fetch script |
 
 ---
