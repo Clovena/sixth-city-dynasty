@@ -127,7 +127,7 @@ for (const season of seasonsToFetch) {
 
   // Pull transactions for each regular-season week
   const transactionsByWeek: Record<number, SleeperTransaction[]> = {};
-  for (let week = 1; week <= maxWeek; week++) {
+  for (let week = 1; week <= maxWeek + 1; week++) {
     transactionsByWeek[week] = await getTransactions(season.league_id, week);
   }
   saveRaw(`${season.year}-transactions.json`, transactionsByWeek);
