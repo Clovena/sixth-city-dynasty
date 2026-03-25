@@ -1,0 +1,329 @@
+---
+import Layout from '../../../layouts/Layout.astro';
+import franchisesJson from '../../../data/franchises.json';
+
+// ── Load all matchup files at build time ────────────────────────────────────
+const matchupGlob = import.meta.glob('/src/data/raw/*-matchups.json', { eager: true });
+
+// Type: { [year]: { [week]: { [roster_id]: string[] } } }
+// Compact form: only starters arrays, keyed by roster_id per week
+type StartersData = Record<string, Record<string, Record<number, string[]>>>;
+const startersData: StartersData = {};
+
+// Build the compact starters structure
+for (const [path, mod] of Object.entries(matchupGlob)) {
+  const m = path.match(/(\d{4})-matchups/);
+  if (!m) continue;
+  const year = m[1];
+  const raw = (mod as { default: Record<string, any[]> }).default;
+
+  if (!startersData[year]) {
+    startersData[year] = {};
+  }
+
+  for (const [week, entries] of Object.entries(raw)) {
+    if (!Array.isArray(entries)) continue;
+    startersData[year][week] = {};
+
+    for (const entry of entries) {
+      // Skip bye entries (null matchup_id) — no meaningful starters to audit
+      if (!entry.matchup_id) continue;
+
+      startersData[year][week][entry.roster_id] = entry.starters || [];
+    }
+  }
+}
+
+// ── Franchise lookup: roster_id → { name, abbr } ──────────────────────────
+type FranchiseEntry = {
+  id: number;
+  name: string;
+  abbr: string;
+};
+const franchiseMap: Record<number, FranchiseEntry> = {};
+const franchiseList: FranchiseEntry[] = [];
+for (const f of franchisesJson) {
+  franchiseMap[f.id] = {
+    id: f.id,
+    name: f.name,
+    abbr: f.abbr,
+  };
+  franchiseList.push(franchiseMap[f.id]);
+}
+
+// Sort franchise list by name for dropdown
+franchiseList.sort((a, b) => a.name.localeCompare(b.name));
+
+// ── Collect available years from startersData ────────────────────────────────
+const availableYears = Object.keys(startersData)
+  .map(Number)
+  .sort((a, b) => b - a); // Newest first
+---
+
+<Layout title="Roster Audit - Commissioner Tools">
+  <div style="max-width: 1400px; margin: 0 auto; padding: 2rem 1.5rem;">
+    <h1 style="font-family: var(--font-display); font-size: 2rem; margin-bottom: 0.5rem;">Roster Audit</h1>
+    <p style="color: var(--color-text-muted); margin-bottom: 2rem;">
+      Inspect weekly starting roster changes for any franchise. Green = unchanged from prior week, Amber = changed, Red = newly added player.
+    </p>
+
+    <!-- Selectors -->
+    <div style="display: flex; gap: 1.5rem; margin-bottom: 2rem; flex-wrap: wrap; align-items: flex-end;">
+      <div>
+        <label for="franchise-select" style="display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--color-text-muted); text-transform: uppercase; font-weight: 600;">Franchise</label>
+        <select id="franchise-select" style="padding: 0.75rem; background-color: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-primary); border-radius: 4px; font-family: var(--font-body); font-size: 0.95rem; min-width: 200px;">
+          <option value="">— Select a franchise —</option>
+          {franchiseList.map(f => (
+            <option value={f.id}>{f.abbr} • {f.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label for="year-select" style="display: block; margin-bottom: 0.5rem; font-size: 0.9rem; color: var(--color-text-muted); text-transform: uppercase; font-weight: 600;">Year</label>
+        <select id="year-select" style="padding: 0.75rem; background-color: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-primary); border-radius: 4px; font-family: var(--font-body); font-size: 0.95rem; min-width: 120px;">
+          <option value="">— Select a year —</option>
+          {availableYears.map(y => (
+            <option value={y}>{y}</option>
+          ))}
+        </select>
+      </div>
+    </div>
+
+    <!-- Results area -->
+    <div id="results" style="margin-top: 2rem;">
+      <!-- Rendered dynamically -->
+    </div>
+  </div>
+
+  <style>
+    :global(.roster-table) {
+      width: 100%;
+      border-collapse: collapse;
+      background-color: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 1rem;
+    }
+
+    :global(.roster-table thead) {
+      background-color: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    :global(.roster-table th) {
+      padding: 0.75rem 0.5rem;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-right: 1px solid var(--color-border);
+    }
+
+    :global(.roster-table th:last-child) {
+      border-right: none;
+    }
+
+    :global(.roster-table td) {
+      padding: 0.75rem 0.5rem;
+      font-size: 0.85rem;
+      border-right: 1px solid var(--color-border);
+      text-align: center;
+      font-family: monospace;
+    }
+
+    :global(.roster-table td:last-child) {
+      border-right: none;
+    }
+
+    :global(.roster-table tbody tr) {
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    :global(.roster-table tbody tr:last-child) {
+      border-bottom: none;
+    }
+
+    :global(.roster-table tbody tr:hover) {
+      background-color: rgba(255, 255, 255, 0.02);
+    }
+
+    :global(.player-cell) {
+      padding: 0.5rem 0.25rem !important;
+      font-size: 0.8rem;
+    }
+
+    :global(.player-cell.unchanged) {
+      color: #27ae60;
+      background-color: rgba(39, 174, 96, 0.1);
+    }
+
+    :global(.player-cell.changed) {
+      color: #f39c12;
+      background-color: rgba(243, 156, 18, 0.15);
+    }
+
+    :global(.player-cell.new) {
+      color: #e74c3c;
+      background-color: rgba(231, 76, 60, 0.15);
+    }
+
+    :global(.changes-cell) {
+      font-weight: 600;
+      color: var(--color-text-primary);
+    }
+
+    :global(.week-cell) {
+      font-weight: 600;
+      color: var(--color-text-primary);
+      min-width: 60px;
+    }
+
+    :global(.no-data) {
+      text-align: center;
+      padding: 3rem 1.5rem;
+      color: var(--color-text-muted);
+    }
+  </style>
+
+  <script define:vars={{ startersData, franchiseMap }}>
+    const franchiseSelect = document.getElementById('franchise-select');
+    const yearSelect = document.getElementById('year-select');
+    const resultsArea = document.getElementById('results');
+
+    // Debug: log data structure
+    console.log('Data loaded:', { startersDataKeys: Object.keys(startersData), franchiseMapKeys: Object.keys(franchiseMap) });
+
+    // Event listeners
+    franchiseSelect.addEventListener('change', () => {
+      console.log('Franchise changed to:', franchiseSelect.value);
+      renderResults();
+    });
+
+    yearSelect.addEventListener('change', () => {
+      console.log('Year changed to:', yearSelect.value);
+      renderResults();
+    });
+
+    function renderResults() {
+      const rosterIdStr = franchiseSelect.value;
+      const yearStr = yearSelect.value;
+
+      console.log('renderResults called with rosterIdStr:', rosterIdStr, 'yearStr:', yearStr);
+
+      if (!rosterIdStr || !yearStr) {
+        resultsArea.innerHTML = '<div class="no-data">Select a franchise and year to view roster changes.</div>';
+        return;
+      }
+
+      const rosterId = Number(rosterIdStr);
+      const year = yearStr;
+      console.log('Looking up franchise for rosterId:', rosterId);
+      const franchise = franchiseMap[rosterId];
+      console.log('Found franchise:', franchise);
+
+      if (!franchise) {
+        resultsArea.innerHTML = '<div class="no-data">Franchise not found.</div>';
+        return;
+      }
+
+      const yearData = startersData[year];
+      if (!yearData) {
+        resultsArea.innerHTML = '<div class="no-data">No data available for this year.</div>';
+        return;
+      }
+
+      // Get weeks for this franchise in this year
+      // Note: JSON keys are strings, so we need to look up by string version of roster ID
+      const rosterIdKey = String(rosterId);
+      const weeksWithData = Object.keys(yearData)
+        .filter(week => rosterIdKey in yearData[week])
+        .map(Number)
+        .sort((a, b) => a - b);
+
+      if (weeksWithData.length === 0) {
+        resultsArea.innerHTML = '<div class="no-data">No roster data found for this franchise in this year.</div>';
+        return;
+      }
+
+      // Build table
+      let html = `
+        <div>
+          <p style="color: var(--color-text-muted); font-size: 0.9rem; margin: 0 0 1rem 0;">
+            <strong>${franchise.abbr} • ${franchise.name}</strong> — ${year}
+          </p>
+          <table class="roster-table">
+            <thead>
+              <tr>
+                <th style="min-width: 60px;">Week</th>
+      `;
+
+      // 15 starter slots
+      for (let i = 1; i <= 15; i++) {
+        html += `<th style="min-width: 50px;">Slot ${i}</th>`;
+      }
+
+      html += `
+                <th style="min-width: 80px;">Changes</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      let previousStarters = null;
+
+      for (const week of weeksWithData) {
+        const currentStarters = yearData[String(week)][rosterIdKey];
+
+        let changesCount = 0;
+        let cellsHtml = '';
+
+        for (let slot = 0; slot < 15; slot++) {
+          const playerId = currentStarters[slot] || '';
+          let cellClass = 'player-cell';
+
+          if (previousStarters === null) {
+            // Week 1: all are "new" (no prior week to compare)
+            cellClass += ' unchanged';
+          } else {
+            const prevPlayerId = previousStarters[slot] || '';
+            if (playerId !== prevPlayerId) {
+              changesCount++;
+              cellClass += ' changed';
+            } else {
+              cellClass += ' unchanged';
+            }
+          }
+
+          cellsHtml += `<td class="${cellClass}" title="Player ID: ${playerId}">${playerId.slice(0, 4)}…</td>`;
+        }
+
+        const changesSummary = previousStarters === null ? '—' : changesCount;
+
+        html += `
+          <tr>
+            <td class="week-cell">W${String(week).padStart(2, '0')}</td>
+            ${cellsHtml}
+            <td class="changes-cell">${changesSummary}</td>
+          </tr>
+        `;
+
+        previousStarters = currentStarters;
+      }
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      resultsArea.innerHTML = html;
+    }
+
+    // Initial render prompt
+    renderResults();
+  </script>
+</Layout>
