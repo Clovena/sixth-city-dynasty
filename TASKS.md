@@ -4,8 +4,6 @@
 1. Consolation bracket
     - Seedings complete for non-playoff teams
     - Brackets generated on season recap pages
-1. More data from Sleeper API
-    - Drafts
 1. Rookie drafts on season recap pages
 1. Color refactoring to surface and glow
 1. Hall of Fame - Player awards, HOF awards, trophies
@@ -38,3 +36,4 @@
 - Bugfix Netlify deployment
 - Mobile display optimization
 - Transaction data
+- Draft data

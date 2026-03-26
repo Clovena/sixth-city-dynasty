@@ -13,14 +13,21 @@ npm run fetch -- --players # Fetch Sleeper player database → player-id-map.jso
 ```
 
 **Regular fetch commands** (`npm run fetch` / `--all`):
-- Fetch roster, matchup, and transaction data from Sleeper's public API (no authentication required)
+- Fetch roster, matchup, transaction, and draft pick data from Sleeper's public API (no authentication required)
 - Write raw responses to `src/data/raw/` for inspection
 - Transform and merge processed stats into `src/data/results.json`
 - Preserve manually-maintained `playoff` and `finish` fields in results.json
+- Fetch draft picks for all draft IDs in `draft-config.json`
 
 **Transactional data** (fetched automatically with regular fetches):
 - Waiver claims, free agent pickups, trades — one file per season, per week
 - Stored in `src/data/raw/{year}-transactions.json` as a week-keyed object
+
+**Draft pick data** (fetched automatically if entries exist in `draft-config.json`):
+- All draft picks from specified drafts; includes player, roster, and position data
+- Stored in `src/data/raw/{year}-{type}-draft.json` as an array of pick objects
+- `draft_slot` maps to `draft-slots.json` for original franchise assignments
+- `roster_id` in pick data indicates which team actually made the pick (after trades)
 
 **Player fetch** (`npm run fetch -- --players`):
 - Fetches Sleeper's `/players/nfl` endpoint (~5MB, contains all ~20k+ players)
@@ -33,8 +40,8 @@ npm run fetch -- --players # Fetch Sleeper player database → player-id-map.jso
 
 | File | Purpose |
 |------|---------|
-| `fetch-sleeper.ts` | Orchestrator — handles season selection, API calls, data merging, player ID mapping, transaction fetching |
-| `sleeper-api.ts` | Typed API wrappers — `getRosters()`, `getMatchups()`, `getTransactions()`, `getPlayers()`, etc. |
+| `fetch-sleeper.ts` | Orchestrator — handles season selection, API calls, data merging, player ID mapping, transaction/draft fetching |
+| `sleeper-api.ts` | Typed API wrappers — `getRosters()`, `getMatchups()`, `getTransactions()`, `getDraftPicks()`, etc. |
 | `transform.ts` | Statistics transformation — rosters → per-franchise season stats |
 
 ---
@@ -302,12 +309,51 @@ The ESPN CDN is external; images include `onerror` fallback to gracefully degrad
 
 ---
 
+## Draft Pick Data (`{year}-{type}-draft.json`)
+
+Array of all picks from a draft. Each pick includes player, roster assignment, and metadata.
+
+**Schema (TypeScript):**
+```ts
+interface SleeperDraftPickResult {
+  player_id: string;                        // Sleeper player ID
+  picked_by: string;                        // user_id of manager who made the pick
+  roster_id: string;                        // roster_id of team that made the pick (after trades)
+  round: number;                            // draft round (1-indexed)
+  draft_slot: number;                       // column on draftboard (1–14); maps to draft-slots.json
+  pick_no: number;                          // overall pick number (1-indexed)
+  metadata: {
+    first_name: string;
+    last_name: string;
+    position: string;                       // e.g., 'QB', 'RB', 'WR', 'IDP'
+    team: string;                           // NFL team (e.g., 'CHI', 'SF')
+    player_id: string;                      // duplicate of player_id field
+    sport: string;                          // 'nfl'
+    status?: string;                        // e.g., 'Active', 'Injured Reserve'
+    injury_status?: string;                 // injury designation
+    news_updated?: string;                  // unix timestamp (ms)
+    number?: string;                        // jersey number
+    [key: string]: unknown;
+  };
+  is_keeper: boolean | null;                // if pick was kept from previous season
+  draft_id: string;                         // draft ID (same for all picks in file)
+}
+```
+
+**Key fields for reconstruction:**
+- `draft_slot` + `draft-slots.json` → original franchise that held the pick
+- `roster_id` → which team actually made the pick (after potential trades)
+- `round`, `pick_no` → pick sequencing
+
+---
+
 ## Capabilities
 
 ### Current
 
 - ✅ Fetch rosters endpoint (win/loss/points stats per season)
 - ✅ Fetch transactions endpoint (waivers, free agents, trades per week per season)
+- ✅ Fetch draft picks endpoint (all picks with player/roster metadata)
 - ✅ Player ID → ESPN ID mapping (`player-id-map.json`)
 - ✅ Player headshot integration (ESPN CDN, with fallback for unmapped players)
 - ❌ No full player-level lineups or scoring breakdowns yet
@@ -319,6 +365,7 @@ The ESPN CDN is external; images include `onerror` fallback to gracefully degrad
 - Display full lineups + scoring breakdowns on game recap pages
 - Derive player-level scoring from Sleeper API
 - Transaction history display on franchise pages
+- Draft board visualization (original vs. final roster assignment)
 
 ---
 

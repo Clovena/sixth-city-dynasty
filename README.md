@@ -33,10 +33,12 @@ npm run preview
 ## Data Fetching
 
 ```bash
-npm run fetch              # Fetch current season from Sleeper API
+npm run fetch              # Fetch current season (rosters, matchups, transactions, drafts) from Sleeper API
 npm run fetch -- --all     # Fetch all seasons from Sleeper API
 npm run fetch -- --players # Fetch player ID → ESPN mapping (run ~once per year after draft)
 ```
+
+**Draft configuration:** Draft IDs must be manually entered in `src/data/draft-config.json`. See [`src/data/CLAUDE.md`](src/data/CLAUDE.md) for the schema. The fetch script automatically pulls picks for all configured drafts and writes them to `src/data/raw/{year}-{type}-draft.json`.
 
 See [`scripts/lib/CLAUDE.md`](scripts/lib/CLAUDE.md) for full details on data pipeline, player mapping, and refresh cadence.
 
@@ -84,9 +86,16 @@ Everything flows from JSON files. These are the single source of truth:
 | `franchises.json` | Every franchise page, all index cards, name/color/owner lookups sitewide | Manual |
 | `seasons.json` | History page table, roll of honor, dynasty bowl results on home page | Manual |
 | `spotlight_games.json` | Spotlight games index, individual game pages, affiliations on franchise pages | Manual |
+| `config.json` | League IDs per season for Sleeper API fetching | Manual (commissioner) |
+| `draft-config.json` | Draft IDs and types (rookie, IDP, etc.) to fetch picks for | Manual (commissioner) |
+| `draft-slots.json` | Original franchise assignment for each draft slot (helper for pick attribution) | Manual (commissioner) |
 | `results.json` | Per-franchise season stats (wins, losses, points) used throughout | `npm run fetch` |
 | `player-id-map.json` | Player headshots (ESPN CDN URLs) and names on game recap pages | `npm run fetch -- --players` |
-| `raw/*.json` | Raw API responses (for inspection and v2 feature development) | `npm run fetch` / `npm run fetch -- --all` |
+| `raw/{year}-rosters.json` | Raw roster data from Sleeper API (for inspection and v2 development) | `npm run fetch` |
+| `raw/{year}-matchups.json` | Raw matchup data from Sleeper API (week-by-week games) | `npm run fetch` |
+| `raw/{year}-transactions.json` | Raw transaction data from Sleeper API (waivers, trades, free agents) | `npm run fetch` |
+| `raw/{year}-{type}-draft.json` | Raw draft picks from Sleeper API (all picks with player metadata) | `npm run fetch` |
+| `raw/nfl-state.json` | Current NFL week and season state | `npm run fetch` |
 
 When a page needs data, it imports the JSON and does a `.find()` or `.filter()` in JavaScript at build time. Nothing is fetched at runtime.
 
