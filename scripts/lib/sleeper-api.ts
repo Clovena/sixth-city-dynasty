@@ -123,6 +123,31 @@ export interface SleeperTransaction {
   waiver_budget: unknown[];                 // always empty array in observed data
 }
 
+// Draft pick result from /draft/{draft_id}/picks endpoint
+export interface SleeperDraftPickResult {
+  player_id: string;
+  picked_by: string;                        // user_id of the manager who made the pick
+  roster_id: string;                        // roster_id of the team that made the pick
+  round: number;
+  draft_slot: number;                       // column on the draft board (maps to draft-slots.json)
+  pick_no: number;                          // overall pick number
+  metadata: {
+    team: string;
+    status?: string;
+    sport: string;
+    position: string;
+    player_id: string;
+    number?: string;
+    news_updated?: string;
+    last_name: string;
+    injury_status?: string;
+    first_name: string;
+    [key: string]: unknown;
+  };
+  is_keeper: boolean | null;
+  draft_id: string;
+}
+
 // ─── Endpoint functions ────────────────────────────────────────────────────
 
 /** Current NFL state — week, season, season_type, etc. */
@@ -157,3 +182,6 @@ export const getLosersBracket = (leagueId: string) =>
 export const getTransactions = (leagueId: string, round: number) =>
   get<SleeperTransaction[]>(`/league/${leagueId}/transactions/${round}`);
 
+/** All draft picks for a given draft_id. */
+export const getDraftPicks = (draftId: string) =>
+  get<SleeperDraftPickResult[]>(`/draft/${draftId}/picks`);
