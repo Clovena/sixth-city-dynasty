@@ -4,6 +4,7 @@ import Layout from '../layouts/Layout.astro';
 import config from '../data/config.json';
 import franchisesJson from '../data/franchises.json';
 import seasonsJson from '../data/seasons.json';
+import exhibitionsJson from '../data/raw/exhibitions.json';
 
 // ── Load all matchup files at build time ────────────────────────────────────
 const matchupGlob = import.meta.glob('/src/data/raw/*-matchups.json', { eager: true });
@@ -72,6 +73,30 @@ const defaultSeasonYear = sortedSeasons
 const defaultWeekNum = Math.max(
   ...Object.keys(matchupsData[String(defaultSeasonYear)] ?? {}).map(Number)
 );
+
+// ── Exhibition data (compact form for client) ─────────────────────────────────
+type ExhibEntry = {
+  year: number;
+  week: number;
+  slug: string;
+  displayNameA: string;
+  displayNameB: string;
+  scoreA: number;
+  scoreB: number;
+  membersA: string[];
+  membersB: string[];
+};
+const exhibitionsData: ExhibEntry[] = (exhibitionsJson as any[]).map((e: any) => ({
+  year: e.year,
+  week: e.week,
+  slug: e.slug,
+  displayNameA: e.team_a.display_name,
+  displayNameB: e.team_b.display_name,
+  scoreA: e.team_a.score,
+  scoreB: e.team_b.score,
+  membersA: e.team_a.members,
+  membersB: e.team_b.members,
+}));
 ---
 
 <Layout title="Scores" description="Week-by-week matchup scores for every season of the Sixth City Dynasty Football League.">
@@ -240,7 +265,7 @@ const defaultWeekNum = Math.max(
   }
 </style>
 
-<script define:vars={{ matchupsData, franchiseMap, dynastyBowls, recapSlugsArr, defaultSeasonYear, defaultWeekNum }}>
+<script define:vars={{ matchupsData, franchiseMap, dynastyBowls, recapSlugsArr, defaultSeasonYear, defaultWeekNum, exhibitionsData }}>
   const seasonSelect = document.getElementById('season-select');
   const weekSelect = document.getElementById('week-select');
   const grid = document.getElementById('scores-grid');
@@ -264,11 +289,53 @@ const defaultWeekNum = Math.max(
       .join('');
   }
 
+  // ── Exhibition team row with multiple logos ───────────────────────────────
+  function exhibTeamRow(members, displayName, score, isWinner, isLoser) {
+    const cls = isWinner ? 'winner' : isLoser ? 'loser' : 'tied';
+    const logos = members.map(abbr =>
+      `<img class="team-logo" src="/images/logos/${abbr}.png" alt="${abbr}"
+            style="width:36px;height:36px;object-fit:contain;"
+            onerror="this.style.display='none'" />`
+    ).join('');
+    return `
+      <div class="team-row ${cls}">
+        <span style="display:flex;gap:4px;flex-shrink:0;">${logos}</span>
+        <span class="team-name">${displayName}</span>
+        <span class="team-score">${score.toFixed(2)}</span>
+      </div>`;
+  }
+
   // ── Render matchups for a given season + week ────────────────────────────
   function renderScores(year, week) {
+    // Exhibition games for this year/week
+    const yearExhibs = (exhibitionsData ?? []).filter(e => e.year === year && e.week === week);
+
+    let html = '';
+    if (yearExhibs.length > 0) {
+      html += '<p class="section-label" style="margin-bottom:0.5rem;">Exhibitions</p>'
+        + '<div class="matchups-grid" style="margin-bottom:1.5rem;">';
+      for (const e of yearExhibs) {
+        const aWins = e.scoreA > e.scoreB;
+        const bWins = e.scoreB > e.scoreA;
+        html += `
+          <a class="matchup-card" href="/games/${year}/${e.slug}">
+            <div class="matchup-body">
+              <div class="matchup-teams">
+                ${exhibTeamRow(e.membersA, e.displayNameA, e.scoreA, aWins, bWins)}
+                ${exhibTeamRow(e.membersB, e.displayNameB, e.scoreB, bWins, aWins)}
+              </div>
+            </div>
+          </a>`;
+      }
+      html += `
+      </div>
+      <p class="section-label" style="margin-bottom:0.5rem;">Regular Season</p>`;
+    }
+
+    // Standard matchups
     const entries = matchupsData[String(year)]?.[String(week)] ?? [];
 
-    if (entries.length === 0) {
+    if (entries.length === 0 && yearExhibs.length === 0) {
       grid.innerHTML = '<p class="no-data">No data available for this selection.</p>';
       return;
     }
@@ -286,7 +353,7 @@ const defaultWeekNum = Math.max(
       .filter(n => n > 0 && !isNaN(n))
       .sort((a, b) => a - b);
 
-    let html = '<div class="matchups-grid">';
+    html += '<div class="matchups-grid">';
     for (const mid of matchupIds) {
       const [teamA, teamB] = grouped[mid];
       if (!teamA || !teamB) continue;

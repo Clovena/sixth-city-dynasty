@@ -16,9 +16,6 @@
 import { writeFileSync, mkdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import config from '../src/data/config.json' assert { type: 'json' };
-import draftConfigData from '../src/data/draft-config.json' assert { type: 'json' };
-const draftConfig = draftConfigData as DraftConfig;
 import { getRosters, getMatchups, getTransactions, getNflState, getDraftPicks, type SleeperTransaction } from './lib/sleeper-api.js';
 import { buildSeasonStats } from './lib/transform.js';
 
@@ -33,6 +30,33 @@ interface DraftConfigEntry {
 interface DraftConfig {
   drafts: DraftConfigEntry[];
 }
+
+interface ExhibitionConfigEntry {
+  year: number;
+  week: number;
+  league_id: string;
+  exhib_type: 'tagteam' | 'onevsall';
+  team_a_id: number;
+  team_a_members: string[];
+  team_a_slug: string;
+  team_a_display_name: string;
+  team_b_id: number;
+  team_b_members: string[];
+  team_b_slug: string;
+  team_b_display_name: string;
+}
+
+interface ExhibitionConfig {
+  exhibitions: ExhibitionConfigEntry[];
+}
+
+// ─── Config imports ────────────────────────────────────────────────────────
+
+import config from '../src/data/config.json' assert { type: 'json' };
+import draftConfigData from '../src/data/draft-config.json' assert { type: 'json' };
+import exhibitionConfigData from '../src/data/exhibition-config.json' assert { type: 'json' };
+const draftConfig = draftConfigData as DraftConfig;
+const exhibitionConfig = exhibitionConfigData as ExhibitionConfig;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -149,6 +173,72 @@ for (const season of seasonsToFetch) {
 }
 
 saveResults(allResults);
+
+// ─── Exhibition matchups ───────────────────────────────────────────────────
+
+if (exhibitionConfig.exhibitions.length > 0) {
+  console.log(`\nFetching ${exhibitionConfig.exhibitions.length} exhibition(s)...`);
+
+  // Load existing file to enable upsert
+  let existing: any[] = [];
+  try {
+    existing = JSON.parse(readFileSync(join(RAW_DIR, 'exhibitions.json'), 'utf-8'));
+  } catch {
+    // first run — start empty
+  }
+
+  for (const cfg of exhibitionConfig.exhibitions) {
+    const raw = await getMatchups(cfg.league_id, cfg.week);
+    const teamAEntry = raw.find((e: any) => e.roster_id === cfg.team_a_id);
+    const teamBEntry = raw.find((e: any) => e.roster_id === cfg.team_b_id);
+
+    const scoreA = teamAEntry ? (teamAEntry.custom_points ?? teamAEntry.points ?? 0) : 0;
+    const scoreB = teamBEntry ? (teamBEntry.custom_points ?? teamBEntry.points ?? 0) : 0;
+
+    const [slugA, slugB] = [cfg.team_a_slug.toLowerCase(), cfg.team_b_slug.toLowerCase()].sort();
+    const weekPad = String(cfg.week).padStart(2, '0');
+    const slug = `${weekPad}-${slugA}-${slugB}`;
+
+    const enriched = {
+      year: cfg.year,
+      week: cfg.week,
+      slug,
+      league_id: cfg.league_id,
+      exhib_type: cfg.exhib_type,
+      team_a: {
+        id: cfg.team_a_id,
+        slug: cfg.team_a_slug,
+        display_name: cfg.team_a_display_name,
+        members: cfg.team_a_members,
+        score: scoreA,
+        starters: teamAEntry?.starters ?? [],
+        starters_points: teamAEntry?.starters_points ?? [],
+        players_points: teamAEntry?.players_points ?? {},
+      },
+      team_b: {
+        id: cfg.team_b_id,
+        slug: cfg.team_b_slug,
+        display_name: cfg.team_b_display_name,
+        members: cfg.team_b_members,
+        score: scoreB,
+        starters: teamBEntry?.starters ?? [],
+        starters_points: teamBEntry?.starters_points ?? [],
+        players_points: teamBEntry?.players_points ?? {},
+      },
+    };
+
+    // Upsert by (year + week + league_id)
+    const idx = existing.findIndex(
+      e => e.year === cfg.year && e.week === cfg.week && e.league_id === cfg.league_id
+    );
+    if (idx >= 0) existing[idx] = enriched;
+    else existing.push(enriched);
+
+    console.log(`  ✓ ${slug}`);
+  }
+
+  saveRaw('exhibitions.json', existing);
+}
 
 // ─── Draft data ────────────────────────────────────────────────────────────
 

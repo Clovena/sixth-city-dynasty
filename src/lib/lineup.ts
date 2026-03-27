@@ -1,4 +1,4 @@
-import { ROSTER_SLOTS } from './roster-slots';
+import { ROSTER_SLOTS, ROSTER_SLOTS_TAGTEAM, ROSTER_SLOTS_ONEVSALL } from './roster-slots';
 
 export interface LineupEntry {
   position: string;
@@ -66,4 +66,22 @@ export function mapStartersToSlots(
       visible: hasData,
     };
   });
+}
+
+/**
+ * Maps exhibition starters to their display slots.
+ * Starters arrive in display order for exhibitions — identity mapping.
+ */
+export function mapExhibitionStartersToSlots(
+  starters: string[],
+  startersPoints: number[],
+  exhibType: 'tagteam' | 'onevsall',
+): LineupEntry[] {
+  const slots = exhibType === 'tagteam' ? ROSTER_SLOTS_TAGTEAM : ROSTER_SLOTS_ONEVSALL;
+  return slots.map((slot, i) => ({
+    ...slot,
+    playerId: starters[i] ?? '',
+    points: startersPoints[i] ?? 0,
+    visible: i < starters.length,
+  }));
 }

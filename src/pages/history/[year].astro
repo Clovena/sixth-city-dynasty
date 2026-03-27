@@ -5,6 +5,7 @@ import franchises from '../../data/franchises.json';
 import results from '../../data/results.json';
 import draftConfig from '../../data/draft-config.json';
 import draftSlotsData from '../../data/draft-slots.json';
+import exhibitionsJson from '../../data/raw/exhibitions.json';
 import { getEntry, render } from 'astro:content';
 
 export function getStaticPaths() {
@@ -14,6 +15,10 @@ export function getStaticPaths() {
 const { year } = Astro.params;
 const yearNum = parseInt(year);
 const season = seasons.find(s => s.year === yearNum)!;
+
+// ── Exhibition data ─────────────────────────────────────────────────────────
+
+const yearExhibitions = (exhibitionsJson as any[]).filter((e: any) => e.year === yearNum);
 
 // ── Franchise helpers ───────────────────────────────────────────────────────
 
@@ -651,6 +656,48 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
       </div><!-- end bracket-wrap -->
 
+      {yearExhibitions.length > 0 && (
+        <div class="section-rule">
+          <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">
+            Exhibition Games
+          </h2>
+          <div style="display:grid; grid-template-columns:1fr; gap:1rem; max-width:72ch;">
+            {yearExhibitions.map((e: any) => {
+              const aWins = e.team_a.score > e.team_b.score;
+              const bWins = e.team_b.score > e.team_a.score;
+              return (
+                <a class="matchup-card" href={`/games/${yearNum}/${e.slug}`}>
+                  <div class="matchup-body">
+                    <div class="matchup-teams">
+                      <div class={`team-row ${aWins ? 'winner' : bWins ? 'loser' : 'tied'}`}>
+                        <span style="display:flex;gap:4px;flex-shrink:0;">
+                          {e.team_a.members.map((abbr: string) => (
+                            <img src={`/images/logos/${abbr}.png`} alt={abbr} width="36" height="36"
+                                 style="object-fit:contain;" onerror="this.style.display='none'" />
+                          ))}
+                        </span>
+                        <span class="team-name">{e.team_a.display_name}</span>
+                        <span class="team-score">{e.team_a.score.toFixed(2)}</span>
+                      </div>
+                      <div class={`team-row ${bWins ? 'winner' : aWins ? 'loser' : 'tied'}`}>
+                        <span style="display:flex;gap:4px;flex-shrink:0;">
+                          {e.team_b.members.map((abbr: string) => (
+                            <img src={`/images/logos/${abbr}.png`} alt={abbr} width="36" height="36"
+                                 style="object-fit:contain;" onerror="this.style.display='none'" />
+                          ))}
+                        </span>
+                        <span class="team-name">{e.team_b.display_name}</span>
+                        <span class="team-score">{e.team_b.score.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {draftBoards.length > 0 && (
         <div class="section-rule draft-section">
           <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">
@@ -940,6 +987,82 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
     text-transform: uppercase;
     color: var(--color-text-muted);
     padding: 0.15rem 0;
+  }
+
+  /* ── Exhibition games ─────────────────────── */
+  .matchup-card {
+    display: block;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    overflow: hidden;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .matchup-body {
+    display: flex;
+    align-items: stretch;
+  }
+
+  .matchup-teams {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .team-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 1rem;
+    transition: background-color 0.1s ease;
+  }
+
+  .team-row + .team-row {
+    border-top: 1px solid var(--color-border);
+  }
+
+  .team-row.winner {
+    background-color: color-mix(in srgb, var(--color-surface) 80%, transparent);
+  }
+
+  .team-row.loser {
+    opacity: 0.55;
+  }
+
+  .team-row.tied {
+    background-color: transparent;
+  }
+
+  .team-logo {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .team-name {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--color-text-primary);
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .team-score {
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    min-width: 3.5rem;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .winner .team-score {
+    color: var(--color-gold);
   }
 
   /* ── Draft board ──────────────────────────────────── */

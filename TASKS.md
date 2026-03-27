@@ -1,6 +1,10 @@
 # SCDFL Site — Task Board
 
 ## TODO
+1. Exhibition games
+    - Manual-ish API call, separate from programmatic matchups call
+    - Game recaps \[exhib\].astro
+    - Display on score pages and year recap pages
 1. Hall of Fame - Player awards, HOF awards, trophies
 1. Player profile pages, a la pro-football-reference?
 1. Low priority QOL cleanup

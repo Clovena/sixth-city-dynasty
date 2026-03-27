@@ -1,0 +1,32 @@
+{
+  "exhibitions": [
+    {
+      "year": 2025,
+      "week": 4,
+      "league_id": "1263323796526333952",
+      "exhib_type": "tagteam",      
+      "team_a_id": 2,
+      "team_a_members": ["BKB", "WPG"],
+      "team_a_slug": "BKBWPG",
+      "team_a_display_name": "Stars / Wranglers",
+      "team_b_id": 1,
+      "team_b_members": ["NFD", "NNY"],
+      "team_b_slug": "NFDNNY",
+      "team_b_display_name": "Blowers / Benders"
+    },
+    {
+      "year": 2025,
+      "week": 13,
+      "league_id": "1263323796526333952",
+      "exhib_type": "onevsall",      
+      "team_a_id": 3,
+      "team_a_members": ["PEI"],
+      "team_a_slug": "PEI",
+      "team_a_display_name": "Prince Edward Islanders",
+      "team_b_id": 1,
+      "team_b_members": ["WORLD"],
+      "team_b_slug": "WORLD",
+      "team_b_display_name": "The World"
+    }
+  ]
+}
