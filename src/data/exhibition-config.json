@@ -21,7 +21,7 @@
       "team_a_members": ["PEI"],
       "team_a_slug": "PEI",
       "team_b_id": 3,
-      "team_b_members": [],
+      "team_b_members": ["WORLD"],
       "team_b_slug": "WORLD"
     }
   ]
