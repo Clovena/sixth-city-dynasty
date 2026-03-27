@@ -28,3 +28,57 @@ export const ROSTER_SLOTS: RosterSlot[] = [
   { position: 'DB',   colorVar: 'pink',   isDefensive: true  },
   { position: 'DFLX', colorVar: 'white',  isDefensive: true  },
 ];
+
+/**
+ * Starter order for exhibition games, which differ in various ways
+ * from the canonical order used across standard matchups.
+ */
+export const ROSTER_SLOTS_TAGTEAM: RosterSlot[] = [
+  { position: 'QB',   colorVar: 'red',    isDefensive: false },
+  { position: 'QB',   colorVar: 'red',    isDefensive: false },
+  { position: 'RB',   colorVar: 'green',  isDefensive: false },
+  { position: 'RB',   colorVar: 'green',  isDefensive: false },
+  { position: 'RB',   colorVar: 'green',  isDefensive: false },
+  { position: 'RB',   colorVar: 'green',  isDefensive: false },
+  { position: 'WR',   colorVar: 'scc',    isDefensive: false },
+  { position: 'WR',   colorVar: 'scc',    isDefensive: false },
+  { position: 'WR',   colorVar: 'scc',    isDefensive: false },
+  { position: 'WR',   colorVar: 'scc',    isDefensive: false },
+  { position: 'WR',   colorVar: 'scc',    isDefensive: false },
+  { position: 'WR',   colorVar: 'scc',    isDefensive: false },
+  { position: 'TE',   colorVar: 'gold',   isDefensive: false },
+  { position: 'TE',   colorVar: 'gold',   isDefensive: false },
+  { position: 'FLX',  colorVar: 'white',  isDefensive: false },
+  { position: 'FLX',  colorVar: 'white',  isDefensive: false },
+  { position: 'FLX',  colorVar: 'white',  isDefensive: false },
+  { position: 'FLX',  colorVar: 'white',  isDefensive: false },
+  { position: 'SFLX', colorVar: 'white',  isDefensive: false },
+  { position: 'SFLX', colorVar: 'white',  isDefensive: false },
+  { position: 'PK',   colorVar: 'grey',   isDefensive: false },
+  { position: 'PK',   colorVar: 'grey',   isDefensive: false },
+  { position: 'DL',   colorVar: 'hcc',    isDefensive: true  },
+  { position: 'DL',   colorVar: 'hcc',    isDefensive: true  },
+  { position: 'LB',   colorVar: 'purple', isDefensive: true  },
+  { position: 'LB',   colorVar: 'purple', isDefensive: true  },
+  { position: 'DB',   colorVar: 'pink',   isDefensive: true  },
+  { position: 'DB',   colorVar: 'pink',   isDefensive: true  },
+  { position: 'DFLX', colorVar: 'white',  isDefensive: true  },
+  { position: 'DFLX', colorVar: 'white',  isDefensive: true  },
+];
+
+export const ROSTER_SLOTS_ONEVSALL: RosterSlot[] = [
+  { position: 'QB',   colorVar: 'red',    isDefensive: false },
+  { position: 'RB',   colorVar: 'green',  isDefensive: false },
+  { position: 'RB',   colorVar: 'green',  isDefensive: false },
+  { position: 'WR',   colorVar: 'scc',    isDefensive: false },
+  { position: 'WR',   colorVar: 'scc',    isDefensive: false },
+  { position: 'WR',   colorVar: 'scc',    isDefensive: false },
+  { position: 'TE',   colorVar: 'gold',   isDefensive: false },
+  { position: 'FLX',  colorVar: 'white',  isDefensive: false },
+  { position: 'FLX',  colorVar: 'white',  isDefensive: false },
+  { position: 'SFLX', colorVar: 'white',  isDefensive: false },
+  { position: 'DL',   colorVar: 'hcc',    isDefensive: true  },
+  { position: 'LB',   colorVar: 'purple', isDefensive: true  },
+  { position: 'DB',   colorVar: 'pink',   isDefensive: true  },
+  { position: 'DFLX', colorVar: 'white',  isDefensive: true  },
+];
