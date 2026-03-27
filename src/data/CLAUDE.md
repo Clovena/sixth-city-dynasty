@@ -37,6 +37,44 @@ League configuration — Sleeper league IDs per season.
 
 ---
 
+### `exhibition-config.json`
+Exhibition matchup configuration — metadata for special tag-team and one-vs-all games outside the regular season.
+
+**Schema:**
+```json
+{
+  "exhibitions": [
+    {
+      "year": 2025,
+      "week": 4,
+      "league_id": "1263323796526333952",
+      "exhib_type": "tagteam",
+      "team_a_id": 2,
+      "team_a_members": ["BKB", "WPG"],
+      "team_a_slug": "BKBWPG",
+      "team_a_display_name": "Stars / Wranglers",
+      "team_b_id": 1,
+      "team_b_members": ["NFD", "NNY"],
+      "team_b_slug": "NFDNNY",
+      "team_b_display_name": "Blowers / Benders"
+    }
+  ]
+}
+```
+
+**Fields:**
+- `year`, `week`: When the exhibition took place
+- `league_id`: Sleeper league ID for this exhibition (separate from regular season leagues)
+- `exhib_type`: `"tagteam"` (30 starters) or `"onevsall"` (14 starters)
+- `team_*_id`: Sleeper roster ID within the exhibition league (NOT a franchise.id; these are separate leagues)
+- `team_*_members`: Array of franchise abbreviations (for display names and logo lookup)
+- `team_*_slug`: URL slug component (alphabetized before use in /games/[year]/[slug])
+- `team_*_display_name`: Team name for score card display
+
+**Usage:** `scripts/fetch-sleeper.ts` reads this, fetches matchup data from each exhibition's league, filters to specified roster IDs, enriches with config metadata, and saves to `exhibitions.json`.
+
+---
+
 ### `draft-config.json`
 Draft IDs and metadata for league drafts to fetch.
 
@@ -232,6 +270,50 @@ All picks from a single draft, in order.
 
 ---
 
+### `exhibitions.json`
+Exhibition matchup data — enriched from `exhibition-config.json` + Sleeper API.
+
+**Source:** `GET /league/{league_id}/matchups/{week}` per entry in `exhibition-config.json`
+
+**Structure:** Array of exhibition objects, one per configured exhibition.
+
+```json
+[
+  {
+    "year": 2025,
+    "week": 4,
+    "slug": "04-bkbwpg-nfdnny",
+    "league_id": "1263323796526333952",
+    "exhib_type": "tagteam",
+    "team_a": {
+      "id": 2,
+      "slug": "BKBWPG",
+      "display_name": "Stars / Wranglers",
+      "members": ["BKB", "WPG"],
+      "score": 538.32,
+      "starters": ["12508", "5849", ...],
+      "starters_points": [19.34, 18.1, ...],
+      "players_points": { "12508": 19.34, ... }
+    },
+    "team_b": { /* same structure */ }
+  }
+]
+```
+
+**Key fields:**
+- `slug`: URL component for `/games/[year]/[slug]` links (alphabetized team slugs)
+- `team_*`: Full team data including rosters, starters, and scoring
+- `exhib_type`: Used by `mapExhibitionStartersToSlots()` to select correct starter schema
+
+**Processing:** `scripts/fetch-sleeper.ts` generates this file by:
+1. Reading `exhibition-config.json`
+2. For each exhibition: calling `getMatchups(league_id, week)`
+3. Filtering raw matchup array to the specified `roster_id` values
+4. Enriching with config metadata (display names, members, slugs)
+5. Upserting by (year + week + league_id) to support updates
+
+---
+
 ### `nfl-state.json`
 Current NFL season state.
 
@@ -355,10 +437,12 @@ Season-level data: champions, Dynasty Bowl winner/loser, format notes.
 | `config.json` | Manual | Once per new season | Commissioner |
 | `draft-config.json` | Manual | Once per draft (multiple per season possible) | Commissioner |
 | `draft-slots.json` | Manual | Once per draft | Commissioner |
+| `exhibition-config.json` | Manual | Once per exhibition scheduled | Commissioner |
 | `{year}-rosters.json` | Sleeper API | `npm run fetch` (weekly during season) | Automated script |
 | `{year}-matchups.json` | Sleeper API | `npm run fetch` (weekly during season) | Automated script |
 | `{year}-transactions.json` | Sleeper API | `npm run fetch` (weekly during season) | Automated script |
 | `{year}-{type}-draft.json` | Sleeper API | `npm run fetch` (once per draft) | Automated script |
+| `exhibitions.json` | Sleeper API | `npm run fetch` (whenever exhibition-config changes) | Automated script |
 | `nfl-state.json` | Sleeper API | `npm run fetch` (weekly) | Automated script |
 | `results.json` | Rosters + Manual | `npm run fetch` (API fields); manual edits for playoff/finish | Hybrid |
 | `player-id-map.json` | dynastyprocess.com | `npm run fetch -- --players` (once yearly, post-NFL draft) | Automated script |

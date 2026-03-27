@@ -50,9 +50,11 @@ npm run fetch -- --all  # fetch all seasons from Sleeper API
 | `seasons.json` | Per-season results: conference champions, dynasty bowl, format, notes |
 | `results.json` | Per-franchise season stats keyed by abbr (wins, losses, PF, PA, playoff, finish) |
 | `config.json` | Sleeper league IDs per season; `current: true` flags the active season |
+| `exhibition-config.json` | Exhibition matchup configuration (see Exhibition Matchups section) |
 | `raw/[year]-rosters.json` | Raw Sleeper roster data — written by fetch script |
 | `raw/[year]-matchups.json` | Raw Sleeper matchup data keyed by week number — written by fetch script |
 | `raw/[year]-transactions.json` | Raw Sleeper transaction data (waivers, free agents, trades) keyed by week — written by fetch script |
+| `raw/exhibitions.json` | Exhibition matchups data — written by fetch script (enriched from exhibition-config.json) |
 | `raw/nfl-state.json` | Raw NFL state (current week, season type) — written by fetch script |
 
 ---
@@ -171,6 +173,54 @@ Transforms consecutive `**bold**` + `*italic*` paragraph pairs in writeup markdo
 
 ---
 
+## Exhibition Matchups
+
+Exhibition games (tag-team, one-vs-all) are configured in `src/data/exhibition-config.json` and fetched via the Sleeper API.
+
+**Configuration schema** (`exhibition-config.json`):
+```jsonc
+{
+  "exhibitions": [
+    {
+      "year": 2025,
+      "week": 4,
+      "league_id": "1263323796526333952",  // Sleeper league ID for this exhibition
+      "exhib_type": "tagteam",             // "tagteam" (30 starters) or "onevsall" (14 starters)
+      "team_a_id": 2,                      // Sleeper roster_id (not franchise.id)
+      "team_a_slug": "BKBWPG",             // URL slug component (alphabetized before display)
+      "team_a_display_name": "Stars / Wranglers",
+      "team_a_members": ["BKB", "WPG"],    // Franchise abbrs for display + logos
+      "team_b_id": 1,
+      "team_b_slug": "NFDNNY",
+      "team_b_display_name": "Blowers / Benders",
+      "team_b_members": ["NFD", "NNY"]
+    }
+  ]
+}
+```
+
+**Raw output schema** (`src/data/raw/exhibitions.json`):
+- Enriched from config + Sleeper API matchup data
+- Full team rosters, starters arrays, and scoring data
+- Slug format: `[week_zero_padded]-[team_a_slug_lower]-[team_b_slug_lower]` (alphabetized)
+- Example slugs: `04-bkbwpg-nfdnny`, `13-pei-world`
+
+**Display locations**:
+- `/games/[year]/[slug]` — full game recap page (shares route with regular games)
+- `/scores` — exhibition cards above standard matchups (client-side filtered by year/week)
+- `/history/[year]` — exhibition section above draft board
+
+**Starters mapping** (`src/lib/lineup.ts`):
+- `mapExhibitionStartersToSlots(starters, startersPoints, exhibType)` maps raw starters to display slots
+- Exhibition starters arrive in display order (identity mapping, no era remapping needed)
+- Uses `ROSTER_SLOTS_TAGTEAM` (30 slots) for tagteam, `ROSTER_SLOTS_ONEVSALL` (14 slots) for one-vs-all
+
+**Team logos** (scores/history pages):
+- All `team_*_members[]` logos displayed side-by-side on score cards
+- First member used as fallback for recap page header
+
+---
+
 ## Historical Matchup Lookup (`src/lib/get-historical-matchups.ts`)
 
 Scans all `/data/raw/*-matchups.json` files at build time to find historical instances of two teams playing. Used by `/spotlight-games/[slug].astro` to populate the "Historical Results" table.
@@ -192,11 +242,12 @@ scripts/
     transform.ts        # buildSeasonStats() — returns { year, wins, losses, points_for, points_against }
 ```
 
-- `npm run fetch` fetches current season only (weeks 1 → `nflState.week` for matchups)
-- `npm run fetch -- --all` fetches all seasons (weeks 1–17 for non-current seasons)
+- `npm run fetch` fetches current season only (weeks 1 → `nflState.week` for matchups) + all exhibitions
+- `npm run fetch -- --all` fetches all seasons (weeks 1–17 for non-current seasons) + all exhibitions
 - Writes raw JSON to `src/data/raw/`
 - Merges wins/losses/PF/PA into `results.json` — preserves `playoff` and `finish` fields (manually maintained)
-- `franchise.id` (number) === Sleeper `roster_id` — use this for all roster_id → franchise lookups
+- `franchise.id` (number) === Sleeper `roster_id` — use this for all regular-season roster_id → franchise lookups
+- Exhibition `roster_id` values do NOT map to `franchise.id` — they're distinct Sleeper league rosters
 - `custom_points` takes precedence over `points` for score display; coalesce null with `|| 0`
 
 ---

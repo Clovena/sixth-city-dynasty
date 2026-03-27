@@ -8,6 +8,7 @@ src/data/raw/*
 !src/data/raw/2023-*.json
 !src/data/raw/2024-*.json
 !src/data/raw/2025-*.json
+!src/data/raw/exhibitions.json
 ### Load historical data into version control
 
 # Debug scripts - used locally only

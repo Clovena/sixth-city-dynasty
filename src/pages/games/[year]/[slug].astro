@@ -2,7 +2,7 @@
 import { getCollection, render } from 'astro:content';
 import Layout from '../../../layouts/Layout.astro';
 import franchisesJson from '../../../data/franchises.json';
-import { mapStartersToSlots } from '../../../lib/lineup';
+import { mapStartersToSlots, mapExhibitionStartersToSlots } from '../../../lib/lineup';
 import playerIdMap from '../../../data/player-id-map.json';
 
 // ── Static paths — self-contained, no module-scope variable access ────────────
@@ -36,7 +36,18 @@ export async function getStaticPaths() {
 
         const weekNum = parseInt(weekStr);
         const weekPad = String(weekNum).padStart(2, '0');
-        const [t1, t2] = [fA.abbr.toLowerCase(), fB.abbr.toLowerCase()].sort();
+
+        // Use predecessor abbreviations if franchise was adopted before this year
+        const getEffectiveAbbr = (franchise: any, yr: number) => {
+          if (franchise.founded !== 2021 && yr < franchise.founded) {
+            return franchise.predecessor_abbr;
+          }
+          return franchise.abbr;
+        };
+
+        const abbr1 = getEffectiveAbbr(fA, parseInt(yearStr));
+        const abbr2 = getEffectiveAbbr(fB, parseInt(yearStr));
+        const [t1, t2] = [abbr1.toLowerCase(), abbr2.toLowerCase()].sort();
         const slug = `${weekPad}-${t1}-${t2}`;
 
         paths.push({
@@ -47,11 +58,20 @@ export async function getStaticPaths() {
     }
   }
 
+  // ── Exhibition paths ──────────────────────────────────────────────────────
+  const { default: exhibitionsData } = await import('../../../data/raw/exhibitions.json');
+  for (const exhib of exhibitionsData) {
+    paths.push({
+      params: { year: String(exhib.year), slug: exhib.slug },
+      props: { year: exhib.year, week: exhib.week, isExhibition: true, exhib },
+    });
+  }
+
   return paths;
 }
 
 // ── Page component ────────────────────────────────────────────────────────────
-const { year, week, rosterIdA, rosterIdB } = Astro.props;
+const { year, week, isExhibition, exhib, rosterIdA, rosterIdB } = Astro.props;
 const { slug } = Astro.params;
 
 // Load matchup data for this page
@@ -63,79 +83,101 @@ for (const [path, mod] of Object.entries(matchupGlob)) {
   matchupsData[m[1]] = (mod as { default: Record<string, any[]> }).default;
 }
 
-const franchiseById = Object.fromEntries(franchisesJson.map(f => [f.id, f]));
-const fA = franchiseById[rosterIdA]!;
-const fB = franchiseById[rosterIdB]!;
-
-// Scores
-const weekEntries: any[] = matchupsData[String(year)]?.[String(week)] ?? [];
-const entryA = weekEntries.find((e: any) => e.roster_id === rosterIdA);
-const entryB = weekEntries.find((e: any) => e.roster_id === rosterIdB);
-const scoreA: number = entryA ? (entryA.custom_points != null ? entryA.custom_points : entryA.points) : 0;
-const scoreB: number = entryB ? (entryB.custom_points != null ? entryB.custom_points : entryB.points) : 0;
-const aWins = scoreA > scoreB;
-const bWins = scoreB > scoreA;
-
-// Records through this week
-const allWeeks = matchupsData[String(year)] ?? {};
-const sortedWeekNums = Object.keys(allWeeks).map(Number).sort((a, b) => a - b);
+let fA: any, fB: any, effA: any, effB: any, scoreA: number, scoreB: number, aWins: boolean, bWins: boolean;
 let winsA = 0, lossesA = 0, winsB = 0, lossesB = 0;
-for (const w of sortedWeekNums) {
-  if (w > week) break;
-  const wEntries: any[] = allWeeks[String(w)] ?? [];
-  const gGrouped: Record<number, any[]> = {};
-  for (const e of wEntries) {
-    if (!e.matchup_id) continue;
-    if (!gGrouped[e.matchup_id]) gGrouped[e.matchup_id] = [];
-    gGrouped[e.matchup_id].push(e);
-  }
-  for (const gPair of Object.values(gGrouped)) {
-    if (gPair.length < 2) continue;
-    const myA = gPair.find((e: any) => e.roster_id === rosterIdA);
-    if (myA) {
-      const opp = gPair.find((e: any) => e.roster_id !== rosterIdA)!;
-      const myS = myA.custom_points != null ? myA.custom_points : myA.points;
-      const oppS = opp.custom_points != null ? opp.custom_points : opp.points;
-      if (myS > oppS) winsA++; else if (oppS > myS) lossesA++;
+let lineupA: any[], lineupB: any[];
+let pageTitle: string;
+
+if (isExhibition && exhib) {
+  // Exhibition game
+  scoreA = exhib.team_a.score;
+  scoreB = exhib.team_b.score;
+  aWins = scoreA > scoreB;
+  bWins = scoreB > scoreA;
+
+  lineupA = mapExhibitionStartersToSlots(exhib.team_a.starters, exhib.team_a.starters_points, exhib.exhib_type);
+  lineupB = mapExhibitionStartersToSlots(exhib.team_b.starters, exhib.team_b.starters_points, exhib.exhib_type);
+
+  effA = { name: exhib.team_a.display_name, logoAbbr: exhib.team_a.members[0] ?? 'UNKNOWN', members: exhib.team_a.members };
+  effB = { name: exhib.team_b.display_name, logoAbbr: exhib.team_b.members[0] ?? 'UNKNOWN', members: exhib.team_b.members };
+
+  pageTitle = `${effA.name} vs ${effB.name}`;
+} else {
+  // Regular game
+  const franchiseById = Object.fromEntries(franchisesJson.map(f => [f.id, f]));
+  fA = franchiseById[rosterIdA]!;
+  fB = franchiseById[rosterIdB]!;
+
+  // Scores
+  const weekEntries: any[] = matchupsData[String(year)]?.[String(week)] ?? [];
+  const regularEntryA = weekEntries.find((e: any) => e.roster_id === rosterIdA);
+  const regularEntryB = weekEntries.find((e: any) => e.roster_id === rosterIdB);
+  scoreA = regularEntryA ? (regularEntryA.custom_points != null ? regularEntryA.custom_points : regularEntryA.points) : 0;
+  scoreB = regularEntryB ? (regularEntryB.custom_points != null ? regularEntryB.custom_points : regularEntryB.points) : 0;
+  aWins = scoreA > scoreB;
+  bWins = scoreB > scoreA;
+
+  // Records through this week
+  const allWeeks = matchupsData[String(year)] ?? {};
+  const sortedWeekNums = Object.keys(allWeeks).map(Number).sort((a, b) => a - b);
+  for (const w of sortedWeekNums) {
+    if (w > week) break;
+    const wEntries: any[] = allWeeks[String(w)] ?? [];
+    const gGrouped: Record<number, any[]> = {};
+    for (const e of wEntries) {
+      if (!e.matchup_id) continue;
+      if (!gGrouped[e.matchup_id]) gGrouped[e.matchup_id] = [];
+      gGrouped[e.matchup_id].push(e);
     }
-    const myB = gPair.find((e: any) => e.roster_id === rosterIdB);
-    if (myB) {
-      const opp = gPair.find((e: any) => e.roster_id !== rosterIdB)!;
-      const myS = myB.custom_points != null ? myB.custom_points : myB.points;
-      const oppS = opp.custom_points != null ? opp.custom_points : opp.points;
-      if (myS > oppS) winsB++; else if (oppS > myS) lossesB++;
+    for (const gPair of Object.values(gGrouped)) {
+      if (gPair.length < 2) continue;
+      const myA = gPair.find((e: any) => e.roster_id === rosterIdA);
+      if (myA) {
+        const opp = gPair.find((e: any) => e.roster_id !== rosterIdA)!;
+        const myS = myA.custom_points != null ? myA.custom_points : myA.points;
+        const oppS = opp.custom_points != null ? opp.custom_points : opp.points;
+        if (myS > oppS) winsA++; else if (oppS > myS) lossesA++;
+      }
+      const myB = gPair.find((e: any) => e.roster_id === rosterIdB);
+      if (myB) {
+        const opp = gPair.find((e: any) => e.roster_id !== rosterIdB)!;
+        const myS = myB.custom_points != null ? myB.custom_points : myB.points;
+        const oppS = opp.custom_points != null ? opp.custom_points : opp.points;
+        if (myS > oppS) winsB++; else if (oppS > myS) lossesB++;
+      }
     }
   }
+
+  // Effective identity (adopted franchises use predecessor identity pre-founding)
+  function getEffective(franchise: any, yr: number) {
+    if (franchise.founded !== 2021 && yr < franchise.founded) {
+      const rebrand = franchise.rebrands?.find((r: any) => r.year === yr);
+      return {
+        name: rebrand?.name ?? franchise.name,
+        logoAbbr: franchise.predecessor_abbr ?? franchise.abbr,
+      };
+    }
+    return { name: franchise.name, logoAbbr: franchise.abbr };
+  }
+  effA = getEffective(fA, year);
+  effB = getEffective(fB, year);
+
+  // Lineups
+  lineupA = mapStartersToSlots(regularEntryA?.starters ?? [], regularEntryA?.starters_points ?? [], year, week);
+  lineupB = mapStartersToSlots(regularEntryB?.starters ?? [], regularEntryB?.starters_points ?? [], year, week);
+
+  pageTitle = `${effA.name} vs ${effB.name}`;
 }
 
-// Effective identity (adopted franchises use predecessor identity pre-founding)
-function getEffective(franchise: any, yr: number) {
-  if (franchise.founded !== 2021 && yr < franchise.founded) {
-    const rebrand = franchise.rebrands?.find((r: any) => r.year === yr);
-    return {
-      name: rebrand?.name ?? franchise.name,
-      logoAbbr: franchise.predecessor_abbr ?? franchise.abbr,
-    };
-  }
-  return { name: franchise.name, logoAbbr: franchise.abbr };
-}
-const effA = getEffective(fA, year);
-const effB = getEffective(fB, year);
-
-// Recap
+// Recap (same for both regular and exhibition)
 const allRecaps = await getCollection('recaps');
 const recap = allRecaps.find(r => r.id === `${year}/${slug}`) ?? null;
 let Content: any = null;
 if (recap) {
   const rendered = await render(recap);
   Content = rendered.Content;
+  pageTitle = recap.data.title;
 }
-
-const pageTitle = recap ? recap.data.title : `${effA.name} vs ${effB.name}`;
-
-// Lineups
-const lineupA = mapStartersToSlots(entryA?.starters ?? [], entryA?.starters_points ?? [], year, week);
-const lineupB = mapStartersToSlots(entryB?.starters ?? [], entryB?.starters_points ?? [], year, week);
 
 // Player metadata helpers
 const pMap = playerIdMap as Record<string, { espn_id?: string; full_name: string; position: string }>;
@@ -149,17 +191,30 @@ function espnHeadshotUrl(id: string) { const espnId = pMap[id]?.espn_id; return 
 
     <a href="/scores" style="font-family: var(--font-body); font-size: 0.72rem; font-weight: 600; color: var(--color-text-muted); text-decoration: none; letter-spacing: 0.1em; text-transform: uppercase;">← Scores</a>
 
-    <p class="section-label" style="margin-top: 1.75rem;">Week {week} &middot; {year} Season</p>
+    {isExhibition ? (
+      <p class="section-label" style="margin-top: 1.75rem;">Exhibition &middot; Week {week} &middot; {year}</p>
+    ) : (
+      <p class="section-label" style="margin-top: 1.75rem;">Week {week} &middot; {year} Season</p>
+    )}
 
     <!-- Score block -->
     <div style="border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; margin-top: 0.75rem;">
 
       <div class:list={['game-team', aWins ? 'winner' : bWins ? 'loser' : 'tied']}>
-        <img src={`/images/logos/${effA.logoAbbr}.png`} alt={effA.name} width="52" height="52"
-             style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+        {isExhibition && effA.members ? (
+          <div style="display: flex; gap: 4px; flex-shrink: 0;">
+            {effA.members.map((abbr: string) => (
+              <img src={`/images/logos/${abbr}.png`} alt={abbr} width="36" height="36"
+                   style="object-fit: contain;" onerror="this.style.display='none'" />
+            ))}
+          </div>
+        ) : (
+          <img src={`/images/logos/${effA.logoAbbr}.png`} alt={effA.name} width="52" height="52"
+               style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+        )}
         <div style="flex: 1; min-width: 0;">
           <div class="game-team-name">{effA.name}</div>
-          <div class="game-record">{winsA}–{lossesA}</div>
+          {!isExhibition && <div class="game-record">{winsA}–{lossesA}</div>}
         </div>
         <span class:list={['game-score', aWins ? 'winner' : '']}>{scoreA.toFixed(2)}</span>
       </div>
@@ -167,11 +222,20 @@ function espnHeadshotUrl(id: string) { const espnId = pMap[id]?.espn_id; return 
       <div style="height: 1px; background: var(--color-border);"></div>
 
       <div class:list={['game-team', bWins ? 'winner' : aWins ? 'loser' : 'tied']}>
-        <img src={`/images/logos/${effB.logoAbbr}.png`} alt={effB.name} width="52" height="52"
-             style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+        {isExhibition && effB.members ? (
+          <div style="display: flex; gap: 4px; flex-shrink: 0;">
+            {effB.members.map((abbr: string) => (
+              <img src={`/images/logos/${abbr}.png`} alt={abbr} width="36" height="36"
+                   style="object-fit: contain;" onerror="this.style.display='none'" />
+            ))}
+          </div>
+        ) : (
+          <img src={`/images/logos/${effB.logoAbbr}.png`} alt={effB.name} width="52" height="52"
+               style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+        )}
         <div style="flex: 1; min-width: 0;">
           <div class="game-team-name">{effB.name}</div>
-          <div class="game-record">{winsB}–{lossesB}</div>
+          {!isExhibition && <div class="game-record">{winsB}–{lossesB}</div>}
         </div>
         <span class:list={['game-score', bWins ? 'winner' : '']}>{scoreB.toFixed(2)}</span>
       </div>
@@ -185,14 +249,32 @@ function espnHeadshotUrl(id: string) { const espnId = pMap[id]?.espn_id; return 
 
         <!-- Column headers -->
         <div class="lineup-col-header lineup-col-header-a">
-          <img src={`/images/logos/${effA.logoAbbr}.png`} alt="" width="22" height="22"
-               style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+          {isExhibition && effA.members ? (
+            <div style="display: flex; gap: 2px;">
+              {effA.members.map((abbr: string) => (
+                <img src={`/images/logos/${abbr}.png`} alt={abbr} width="18" height="18"
+                     style="object-fit: contain;" onerror="this.style.display='none'" />
+              ))}
+            </div>
+          ) : (
+            <img src={`/images/logos/${effA.logoAbbr}.png`} alt="" width="22" height="22"
+                 style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+          )}
           <span>{effA.name}</span>
         </div>
         <div class="lineup-col-header lineup-col-header-b">
           <span>{effB.name}</span>
-          <img src={`/images/logos/${effB.logoAbbr}.png`} alt="" width="22" height="22"
-               style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+          {isExhibition && effB.members ? (
+            <div style="display: flex; gap: 2px;">
+              {effB.members.map((abbr: string) => (
+                <img src={`/images/logos/${abbr}.png`} alt={abbr} width="18" height="18"
+                     style="object-fit: contain;" onerror="this.style.display='none'" />
+              ))}
+            </div>
+          ) : (
+            <img src={`/images/logos/${effB.logoAbbr}.png`} alt="" width="22" height="22"
+                 style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
+          )}
         </div>
 
         <!-- Roster rows -->

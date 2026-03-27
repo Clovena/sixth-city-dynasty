@@ -758,7 +758,9 @@ const defaultSeasonYear = franchiseSeasons[0]?.year ?? sortedSeasons[0].year;
           }
         }
 
-        const slug = makeSlug(week, franchiseFranchise.abbr, fOpponent.abbr);
+        const effAbbrFranchise = getEffectiveAbbr(franchiseFranchise, year);
+        const effAbbrOpponent = getEffectiveAbbr(fOpponent, year);
+        const slug = makeSlug(week, effAbbrFranchise, effAbbrOpponent);
         const gameUrl = `/games/${year}/${slug}`;
         const hasRecap = recapSlugs.has(`${year}/${slug}`);
 
