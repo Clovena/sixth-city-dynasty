@@ -18,6 +18,7 @@ npm run fetch -- --players # Fetch Sleeper player database → player-id-map.jso
 - Transform and merge processed stats into `src/data/results.json`
 - Preserve manually-maintained `playoff` and `finish` fields in results.json
 - Fetch draft picks for all draft IDs in `draft-config.json`
+- Fetch and enrich exhibition matchup data from `exhibition-config.json`
 
 **Transactional data** (fetched automatically with regular fetches):
 - Waiver claims, free agent pickups, trades — one file per season, per week
@@ -28,6 +29,13 @@ npm run fetch -- --players # Fetch Sleeper player database → player-id-map.jso
 - Stored in `src/data/raw/{year}-{type}-draft.json` as an array of pick objects
 - `draft_slot` maps to `draft-slots.json` for original franchise assignments
 - `roster_id` in pick data indicates which team actually made the pick (after trades)
+
+**Exhibition matchup data** (fetched automatically if entries exist in `exhibition-config.json`):
+- Each exhibition reads `exhibition-config.json` for metadata (league_id, team slugs, display names, members)
+- Calls `getMatchups(league_id, week)` to fetch raw matchup data
+- Filters to only the roster_ids specified in config (`team_a_id`, `team_b_id`)
+- Enriches with config metadata and saves to `src/data/raw/exhibitions.json`
+- Upserts by (year + week + league_id) to support updates
 
 **Player fetch** (`npm run fetch -- --players`):
 - Fetches Sleeper's `/players/nfl` endpoint (~5MB, contains all ~20k+ players)
@@ -68,7 +76,7 @@ buildSeasonStats()    [extract wins/losses/PF/PA per franchise]
 
 ## Key Mapping: Sleeper `roster_id` → Franchise
 
-**Rule:** `franchises.json` `id` (number) === Sleeper `roster_id` (number)
+**Rule for regular seasons:** `franchises.json` `id` (number) === Sleeper `roster_id` (number)
 
 In `transform.ts`:
 ```ts
@@ -79,6 +87,13 @@ for (const f of franchises) {
 ```
 
 Every roster returned by `getRosters()` has a `roster_id` (1–14). This directly maps to the corresponding franchise's `id` field. No user_id matching needed — it's positional.
+
+**Rule for exhibitions:** `exhibition-config.json` `team_*_id` does NOT match `franchise.id`
+
+Exhibition rosters live in separate Sleeper leagues and have their own roster IDs. The config provides explicit mappings:
+- `team_a_id`, `team_b_id` — Sleeper roster IDs within the exhibition league (e.g., 1, 2, 3)
+- `team_a_members[]`, `team_b_members[]` — franchise abbreviations for display + logo lookup
+- No roster ID → franchise lookup needed; config metadata is complete
 
 ---
 
@@ -380,3 +395,43 @@ Common issues:
 - **Missing `franchise found for roster_id X`**: Check `franchises.json` — ensure all roster_ids 1–14 have corresponding `id` fields
 - **Null `points_against`**: Handled by `|| 0` coalescing in `sleeperPoints()`; indicates season not yet complete
 - **League ID mismatch**: Verify `config.json` `league_id` matches the actual Sleeper league
+
+---
+
+## Exhibition Data (`exhibitions.json`)
+
+Enriched exhibition matchup data written by `fetch-sleeper.ts`. Format combines config metadata + raw Sleeper API response.
+
+**Schema:**
+```ts
+interface Exhibition {
+  year: number;
+  week: number;
+  slug: string;                    // URL slug: "04-bkbwpg-nfdnny"
+  league_id: string;               // Sleeper league ID (not a standard season league)
+  exhib_type: 'tagteam' | 'onevsall';
+  team_a: {
+    id: number;                    // Sleeper roster_id (in exhibition league)
+    slug: string;                  // config.team_a_slug
+    display_name: string;          // config.team_a_display_name
+    members: string[];             // config.team_a_members (franchise abbrs)
+    score: number;                 // custom_points ?? points ?? 0
+    starters: string[];            // player IDs in starting order
+    starters_points: number[];      // points per starter in order
+    players_points: Record<string, number>;  // full player ID → points map
+  };
+  team_b: { /* same structure */ };
+}
+```
+
+**Generation:**
+1. Read all exhibition entries from `exhibition-config.json`
+2. For each: call `getMatchups(league_id, week)`
+3. Filter raw matchup array to entries where `roster_id === team_a_id` or `team_b_id`
+4. Extract one entry per team, combine with config metadata
+5. Build slug: `[week_zero_padded]-[team_a_slug_lower]-[team_b_slug_lower]` (alphabetized)
+6. Load existing `exhibitions.json`, upsert by (year + week + league_id), write back
+
+**Starters order:**
+- Starters arrive from the API in display order (no era remapping needed like regular seasons)
+- `mapExhibitionStartersToSlots()` in `src/lib/lineup.ts` maps to `ROSTER_SLOTS_TAGTEAM` (30 slots) or `ROSTER_SLOTS_ONEVSALL` (14 slots)
