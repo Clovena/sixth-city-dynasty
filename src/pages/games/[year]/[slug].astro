@@ -1,69 +1,70 @@
 ---
 import { getCollection, render } from 'astro:content';
 import Layout from '../../../layouts/Layout.astro';
-import franchisesJson from '../../../data/franchises.json';
+import { supabase } from '../../../lib/supabase';
 import { mapStartersToSlots, mapExhibitionStartersToSlots } from '../../../lib/lineup';
-import playerIdMap from '../../../data/player-id-map.json';
 
 // ── Static paths — self-contained, no module-scope variable access ────────────
 export async function getStaticPaths() {
-  const { default: franchises } = await import('../../../data/franchises.json');
-  const franchiseById = Object.fromEntries(franchises.map((f: any) => [f.id, f]));
+  const { supabase: sb } = await import('../../../lib/supabase');
 
-  const matchupGlob = import.meta.glob('/src/data/raw/*-matchups.json', { eager: true });
-  const paths: any[] = [];
+  // Fetch all matchups and franchise identities in parallel
+  const [matchupsRes, franchisesRes, exhibitionsRes] = await Promise.all([
+    sb.schema('scdfl').from('matchups')
+      .select('year, week, roster_id_a, roster_id_b')
+      .limit(1000),
+    sb.schema('scdfl').from('franchises')
+      .select('sleeper_id, abbr, "from", "to"'),
+    sb.schema('scdfl').from('exhibitions')
+      .select('id, year, week, exhib_type, team_a_slug, team_a_display_name, team_a_members, team_b_slug, team_b_display_name, team_b_members'),
+  ]);
 
-  for (const [path, mod] of Object.entries(matchupGlob)) {
-    const m = path.match(/(\d{4})-matchups/);
-    if (!m) continue;
-    const yearStr = m[1];
-    const weeks = (mod as { default: Record<string, any[]> }).default;
+  const matchups = matchupsRes.data ?? [];
+  const franchises = franchisesRes.data ?? [];
+  const exhibitions = exhibitionsRes.data ?? [];
 
-    for (const [weekStr, entries] of Object.entries(weeks)) {
-      const grouped: Record<number, any[]> = {};
-      for (const e of entries) {
-        if (!e.matchup_id) continue;
-        if (!grouped[e.matchup_id]) grouped[e.matchup_id] = [];
-        grouped[e.matchup_id].push(e);
-      }
-
-      for (const pair of Object.values(grouped)) {
-        if (pair.length < 2) continue;
-        const [eA, eB] = pair;
-        const fA = franchiseById[eA.roster_id];
-        const fB = franchiseById[eB.roster_id];
-        if (!fA || !fB) continue;
-
-        const weekNum = parseInt(weekStr);
-        const weekPad = String(weekNum).padStart(2, '0');
-
-        // Use predecessor abbreviations if franchise was adopted before this year
-        const getEffectiveAbbr = (franchise: any, yr: number) => {
-          if (franchise.founded !== 2021 && yr < franchise.founded) {
-            return franchise.predecessor_abbr;
-          }
-          return franchise.abbr;
-        };
-
-        const abbr1 = getEffectiveAbbr(fA, parseInt(yearStr));
-        const abbr2 = getEffectiveAbbr(fB, parseInt(yearStr));
-        const [t1, t2] = [abbr1.toLowerCase(), abbr2.toLowerCase()].sort();
-        const slug = `${weekPad}-${t1}-${t2}`;
-
-        paths.push({
-          params: { year: yearStr, slug },
-          props: { year: parseInt(yearStr), week: weekNum, rosterIdA: eA.roster_id, rosterIdB: eB.roster_id },
-        });
-      }
-    }
+  // Resolve roster_id → effective abbr for a given year
+  function getEffectiveAbbr(rosterId: number, year: number): string | null {
+    const sleeperId = String(rosterId);
+    const identity = franchises.find(
+      (f: any) => f.sleeper_id === sleeperId && f.from <= year && (f.to === null || f.to >= year)
+    );
+    return identity?.abbr ?? null;
   }
 
-  // ── Exhibition paths ──────────────────────────────────────────────────────
-  const { default: exhibitionsData } = await import('../../../data/raw/exhibitions.json');
-  for (const exhib of exhibitionsData) {
+  const paths: any[] = [];
+
+  // Regular game paths
+  for (const m of matchups) {
+    const abbrA = getEffectiveAbbr(m.roster_id_a, m.year);
+    const abbrB = getEffectiveAbbr(m.roster_id_b, m.year);
+    if (!abbrA || !abbrB) continue;
+
+    const weekPad = String(m.week).padStart(2, '0');
+    const [t1, t2] = [abbrA.toLowerCase(), abbrB.toLowerCase()].sort();
+    const slug = `${weekPad}-${t1}-${t2}`;
+
     paths.push({
-      params: { year: String(exhib.year), slug: exhib.slug },
-      props: { year: exhib.year, week: exhib.week, isExhibition: true, exhib },
+      params: { year: String(m.year), slug },
+      props: { year: m.year, week: m.week, rosterIdA: m.roster_id_a, rosterIdB: m.roster_id_b },
+    });
+  }
+
+  // Exhibition paths
+  for (const ex of exhibitions) {
+    const weekPad = String(ex.week).padStart(2, '0');
+    const [s1, s2] = [ex.team_a_slug.toLowerCase(), ex.team_b_slug.toLowerCase()].sort();
+    const slug = `${weekPad}-${s1}-${s2}`;
+
+    paths.push({
+      params: { year: String(ex.year), slug },
+      props: {
+        year: ex.year,
+        week: ex.week,
+        isExhibition: true,
+        exhibitionId: ex.id,
+        exhib: ex,
+      },
     });
   }
 
@@ -71,105 +72,145 @@ export async function getStaticPaths() {
 }
 
 // ── Page component ────────────────────────────────────────────────────────────
-const { year, week, isExhibition, exhib, rosterIdA, rosterIdB } = Astro.props;
+const { year, week, isExhibition, exhibitionId, exhib, rosterIdA, rosterIdB } = Astro.props;
 const { slug } = Astro.params;
-
-// Load matchup data for this page
-const matchupGlob = import.meta.glob('/src/data/raw/*-matchups.json', { eager: true });
-const matchupsData: Record<string, Record<string, any[]>> = {};
-for (const [path, mod] of Object.entries(matchupGlob)) {
-  const m = path.match(/(\d{4})-matchups/);
-  if (!m) continue;
-  matchupsData[m[1]] = (mod as { default: Record<string, any[]> }).default;
-}
 
 let fA: any, fB: any, effA: any, effB: any, scoreA: number, scoreB: number, aWins: boolean, bWins: boolean;
 let winsA = 0, lossesA = 0, winsB = 0, lossesB = 0;
 let lineupA: any[], lineupB: any[];
 let pageTitle: string;
+let allPlayerIds: string[] = [];
 
 if (isExhibition && exhib) {
-  // Exhibition game
-  scoreA = exhib.team_a.score;
-  scoreB = exhib.team_b.score;
+  // ── Exhibition game ─────────────────────────────────────────────────────────
+  const { data: exhibMatchup } = await supabase
+    .schema('scdfl').from('exhibition_matchups')
+    .select('score_a, score_b, starters_a, starter_points_a, starters_b, starter_points_b')
+    .eq('exhibition_id', exhibitionId)
+    .single();
+
+  scoreA = Number(exhibMatchup?.score_a ?? 0);
+  scoreB = Number(exhibMatchup?.score_b ?? 0);
   aWins = scoreA > scoreB;
   bWins = scoreB > scoreA;
 
-  lineupA = mapExhibitionStartersToSlots(exhib.team_a.starters, exhib.team_a.starters_points, exhib.exhib_type);
-  lineupB = mapExhibitionStartersToSlots(exhib.team_b.starters, exhib.team_b.starters_points, exhib.exhib_type);
+  const startersA: string[] = exhibMatchup?.starters_a ?? [];
+  const starterPointsA: number[] = (exhibMatchup?.starter_points_a ?? []).map(Number);
+  const startersB: string[] = exhibMatchup?.starters_b ?? [];
+  const starterPointsB: number[] = (exhibMatchup?.starter_points_b ?? []).map(Number);
 
-  effA = { name: exhib.team_a.display_name, logoAbbr: exhib.team_a.members[0] ?? 'UNKNOWN', members: exhib.team_a.members };
-  effB = { name: exhib.team_b.display_name, logoAbbr: exhib.team_b.members[0] ?? 'UNKNOWN', members: exhib.team_b.members };
+  lineupA = mapExhibitionStartersToSlots(startersA, starterPointsA, exhib.exhib_type);
+  lineupB = mapExhibitionStartersToSlots(startersB, starterPointsB, exhib.exhib_type);
 
+  effA = { name: exhib.team_a_display_name, logoAbbr: exhib.team_a_members[0] ?? 'UNKNOWN', members: exhib.team_a_members };
+  effB = { name: exhib.team_b_display_name, logoAbbr: exhib.team_b_members[0] ?? 'UNKNOWN', members: exhib.team_b_members };
+
+  allPlayerIds = [...startersA, ...startersB].filter(Boolean);
   pageTitle = `${effA.name} vs ${effB.name}`;
 } else {
-  // Regular game
-  const franchiseById = Object.fromEntries(franchisesJson.map(f => [f.id, f]));
-  fA = franchiseById[rosterIdA]!;
-  fB = franchiseById[rosterIdB]!;
+  // ── Regular game ────────────────────────────────────────────────────────────
 
-  // Scores
-  const weekEntries: any[] = matchupsData[String(year)]?.[String(week)] ?? [];
-  const regularEntryA = weekEntries.find((e: any) => e.roster_id === rosterIdA);
-  const regularEntryB = weekEntries.find((e: any) => e.roster_id === rosterIdB);
-  scoreA = regularEntryA ? (regularEntryA.custom_points != null ? regularEntryA.custom_points : regularEntryA.points) : 0;
-  scoreB = regularEntryB ? (regularEntryB.custom_points != null ? regularEntryB.custom_points : regularEntryB.points) : 0;
+  // Fetch matchup data, franchise identities, and records in parallel
+  const [matchupRes, franchisesRes, recordsRes] = await Promise.all([
+    supabase.schema('scdfl').from('matchups')
+      .select('*')
+      .eq('year', year).eq('week', week)
+      .or(`roster_id_a.eq.${rosterIdA},roster_id_b.eq.${rosterIdA}`)
+      .limit(1)
+      .single(),
+    supabase.schema('scdfl').from('franchises')
+      .select('sleeper_id, abbr, name, conf, colors, "from", "to"')
+      .lte('"from"', year)
+      .or(`"to".gte.${year},"to".is.null`),
+    supabase.schema('scdfl').from('matchups')
+      .select('roster_id_a, roster_id_b, score_a, score_b')
+      .eq('year', year).eq('game_type', 0).lte('week', week)
+      .or(`roster_id_a.in.(${rosterIdA},${rosterIdB}),roster_id_b.in.(${rosterIdA},${rosterIdB})`)
+      .limit(500),
+  ]);
+
+  const matchup = matchupRes.data;
+  const franchises = franchisesRes.data ?? [];
+  const recordRows = recordsRes.data ?? [];
+
+  // Resolve franchise identity for each team
+  const sleeperA = String(rosterIdA);
+  const sleeperB = String(rosterIdB);
+  fA = franchises.find((f: any) => f.sleeper_id === sleeperA);
+  fB = franchises.find((f: any) => f.sleeper_id === sleeperB);
+
+  // Determine which side of the matchup row corresponds to which roster
+  // The matchup row may have roster_id_a = rosterIdA or roster_id_b = rosterIdA
+  const aIsFirst = matchup?.roster_id_a === rosterIdA;
+  scoreA = Number(aIsFirst ? matchup?.score_a : matchup?.score_b) || 0;
+  scoreB = Number(aIsFirst ? matchup?.score_b : matchup?.score_a) || 0;
   aWins = scoreA > scoreB;
   bWins = scoreB > scoreA;
 
-  // Records through this week
-  const allWeeks = matchupsData[String(year)] ?? {};
-  const sortedWeekNums = Object.keys(allWeeks).map(Number).sort((a, b) => a - b);
-  for (const w of sortedWeekNums) {
-    if (w > week) break;
-    const wEntries: any[] = allWeeks[String(w)] ?? [];
-    const gGrouped: Record<number, any[]> = {};
-    for (const e of wEntries) {
-      if (!e.matchup_id) continue;
-      if (!gGrouped[e.matchup_id]) gGrouped[e.matchup_id] = [];
-      gGrouped[e.matchup_id].push(e);
+  // Records through this week (regular season only)
+  for (const row of recordRows) {
+    const rA = row.roster_id_a;
+    const rB = row.roster_id_b;
+    const sA = Number(row.score_a);
+    const sB = Number(row.score_b);
+
+    // Team A record
+    if (rA === rosterIdA || rB === rosterIdA) {
+      const myScore = rA === rosterIdA ? sA : sB;
+      const oppScore = rA === rosterIdA ? sB : sA;
+      if (myScore > oppScore) winsA++; else if (oppScore > myScore) lossesA++;
     }
-    for (const gPair of Object.values(gGrouped)) {
-      if (gPair.length < 2) continue;
-      const myA = gPair.find((e: any) => e.roster_id === rosterIdA);
-      if (myA) {
-        const opp = gPair.find((e: any) => e.roster_id !== rosterIdA)!;
-        const myS = myA.custom_points != null ? myA.custom_points : myA.points;
-        const oppS = opp.custom_points != null ? opp.custom_points : opp.points;
-        if (myS > oppS) winsA++; else if (oppS > myS) lossesA++;
-      }
-      const myB = gPair.find((e: any) => e.roster_id === rosterIdB);
-      if (myB) {
-        const opp = gPair.find((e: any) => e.roster_id !== rosterIdB)!;
-        const myS = myB.custom_points != null ? myB.custom_points : myB.points;
-        const oppS = opp.custom_points != null ? opp.custom_points : opp.points;
-        if (myS > oppS) winsB++; else if (oppS > myS) lossesB++;
-      }
+    // Team B record
+    if (rA === rosterIdB || rB === rosterIdB) {
+      const myScore = rA === rosterIdB ? sA : sB;
+      const oppScore = rA === rosterIdB ? sB : sA;
+      if (myScore > oppScore) winsB++; else if (oppScore > myScore) lossesB++;
     }
   }
 
-  // Effective identity (adopted franchises use predecessor identity pre-founding)
-  function getEffective(franchise: any, yr: number) {
-    if (franchise.founded !== 2021 && yr < franchise.founded) {
-      const rebrand = franchise.rebrands?.find((r: any) => r.year === yr);
-      return {
-        name: rebrand?.name ?? franchise.name,
-        logoAbbr: franchise.predecessor_abbr ?? franchise.abbr,
-      };
-    }
-    return { name: franchise.name, logoAbbr: franchise.abbr };
-  }
-  effA = getEffective(fA, year);
-  effB = getEffective(fB, year);
+  // Effective identity
+  effA = { name: fA?.name ?? 'Unknown', logoAbbr: fA?.abbr ?? 'UNKNOWN' };
+  effB = { name: fB?.name ?? 'Unknown', logoAbbr: fB?.abbr ?? 'UNKNOWN' };
 
-  // Lineups
-  lineupA = mapStartersToSlots(regularEntryA?.starters ?? [], regularEntryA?.starters_points ?? [], year, week);
-  lineupB = mapStartersToSlots(regularEntryB?.starters ?? [], regularEntryB?.starters_points ?? [], year, week);
+  // Lineups — orient starters to match rosterIdA/rosterIdB
+  const startersA: string[] = (aIsFirst ? matchup?.starters_a : matchup?.starters_b) ?? [];
+  const starterPointsA: number[] = ((aIsFirst ? matchup?.starter_points_a : matchup?.starter_points_b) ?? []).map(Number);
+  const startersB: string[] = (aIsFirst ? matchup?.starters_b : matchup?.starters_a) ?? [];
+  const starterPointsB: number[] = ((aIsFirst ? matchup?.starter_points_b : matchup?.starter_points_a) ?? []).map(Number);
 
+  lineupA = mapStartersToSlots(startersA, starterPointsA, year, week);
+  lineupB = mapStartersToSlots(startersB, starterPointsB, year, week);
+
+  allPlayerIds = [...startersA, ...startersB].filter(Boolean);
   pageTitle = `${effA.name} vs ${effB.name}`;
 }
 
-// Recap (same for both regular and exhibition)
+// ── Player metadata ───────────────────────────────────────────────────────────
+const playerMap = new Map<string, { full_name: string; espn_id: string | null }>();
+
+if (allPlayerIds.length > 0) {
+  const { data: players } = await supabase
+    .schema('scdfl').from('v_players')
+    .select('player_id, first_name, last_name, fantasy_positions, espn_id')
+    .in('player_id', allPlayerIds)
+    .limit(100);
+
+  for (const p of players ?? []) {
+    const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.player_id;
+    playerMap.set(p.player_id, {
+      full_name: fullName,
+      espn_id: p.espn_id ?? null,
+    });
+  }
+}
+
+function playerName(id: string) { return playerMap.get(id)?.full_name || id; }
+function espnHeadshotUrl(id: string) {
+  const espnId = playerMap.get(id)?.espn_id;
+  return espnId ? `https://a.espncdn.com/i/headshots/nfl/players/full/${espnId}.png` : null;
+}
+
+// ── Recap ─────────────────────────────────────────────────────────────────────
 const allRecaps = await getCollection('recaps');
 const recap = allRecaps.find(r => r.id === `${year}/${slug}`) ?? null;
 let Content: any = null;
@@ -178,11 +219,6 @@ if (recap) {
   Content = rendered.Content;
   pageTitle = recap.data.title;
 }
-
-// Player metadata helpers
-const pMap = playerIdMap as Record<string, { espn_id?: string; full_name: string; position: string }>;
-function playerName(id: string) { return pMap[id]?.full_name || id; }
-function espnHeadshotUrl(id: string) { const espnId = pMap[id]?.espn_id; return espnId ? `https://a.espncdn.com/i/headshots/nfl/players/full/${espnId}.png` : null; }
 ---
 
 <Layout title={pageTitle} description={`Week ${week}, ${year} — ${effA.name} vs ${effB.name}`}>
