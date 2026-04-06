@@ -1,0 +1,1 @@
+ Rivals on the gridiron, both in the AFC North and the SCC. 

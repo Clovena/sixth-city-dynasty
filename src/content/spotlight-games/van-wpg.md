@@ -1,0 +1,1 @@
+ No love lost between western Canada rivals, and no imminent signs of making up. 
