@@ -1,10 +1,345 @@
-<!-- TODO: player bio page, with Sleeper ID as url input
- Headshot included from ESPN CDN
- Player name, ID, position from player-id-map.json
- Dynasty team from [current-year]-rosters.json
- Season by season stats (will require API pull for actual NFL stats, then join on matchups to determine starts) incl. fpts
- Accolades (will require some form of metadata on league awards; may use code to determine medalists after stats pulled as above)
- Draft and trade history (requires transactions pulled from Sleeper API)
- Should be linked from game recap pages
- Additionally, may explore team overview pages to include full roster, which can link to player bios -->
- 
+---
+import Layout from '../../layouts/Layout.astro';
+import { supabase } from '../../lib/supabase';
+
+// ── Static paths: one page per rostered player ─────────────────────────────
+export async function getStaticPaths() {
+  const { supabase: sb } = await import('../../lib/supabase');
+  const { data: rows } = await sb.schema('scdfl').from('rosters')
+    .select('player_id');
+  return (rows ?? []).map(r => ({ params: { id: r.player_id } }));
+}
+
+const { id: pid } = Astro.params;
+
+// ── Player data from Supabase ───────────────────────────────────────────────
+const { data: playerRow, error: pErr } = await supabase
+  .schema('scdfl').from('v_players')
+  .select('player_id, first_name, last_name, position, fantasy_positions, team, status, age, years_exp, height, weight, college, espn_id')
+  .eq('player_id', pid)
+  .single();
+
+if (pErr || !playerRow) {
+  return Astro.redirect('/franchises');
+}
+
+const player = {
+  id: playerRow.player_id,
+  name: `${playerRow.first_name ?? ''} ${playerRow.last_name ?? ''}`.trim(),
+  position: playerRow.position ?? '—',
+  nflTeam: playerRow.team ?? '—',
+  age: playerRow.age,
+  yearsExp: playerRow.years_exp,
+  status: playerRow.status,
+  height: playerRow.height,
+  weight: playerRow.weight,
+  college: playerRow.college,
+  espnId: playerRow.espn_id,
+};
+
+// ── Dynasty team from Supabase (current roster snapshot) ────────────────────
+const { data: rosterRow } = await supabase
+  .schema('scdfl').from('rosters')
+  .select('sleeper_id')
+  .eq('player_id', pid)
+  .limit(1)
+  .single();
+
+let dynastyTeam: { abbr: string; name: string; color: string; conf: string } | null = null;
+
+if (rosterRow) {
+  const { data: franchise } = await supabase
+    .schema('scdfl').from('franchises')
+    .select('abbr, name, conf, colors')
+    .eq('sleeper_id', String(rosterRow.sleeper_id))
+    .is('to', null)
+    .single();
+
+  if (franchise) {
+    dynastyTeam = {
+      abbr: franchise.abbr,
+      name: franchise.name,
+      color: franchise.colors?.[0] ?? 'var(--color-border)',
+      conf: franchise.conf,
+    };
+  }
+}
+
+// ── Dummy data (accolades & stats — to be replaced with real data later) ────
+const accolades = [
+  { year: 2024, label: 'League Champion', icon: '&#11042;', color: 'var(--color-gold)' },
+  { year: 2023, label: 'WR Medalist', icon: '&#9733;', color: 'var(--color-gold)' },
+];
+
+const statsByYear = [
+  { year: 2022, gp: 6, rec: 13, recYds: 163, recTd: 1, rushAtt: 2, rushYds: 14, rushTd: 0, fpts: 28.7 },
+  { year: 2023, gp: 12, rec: 24, recYds: 361, recTd: 3, rushAtt: 5, rushYds: 38, rushTd: 0, fpts: 72.9 },
+  { year: 2024, gp: 17, rec: 68, recYds: 1107, recTd: 10, rushAtt: 8, rushYds: 61, rushTd: 1, fpts: 228.8 },
+  { year: 2025, gp: 15, rec: 59, recYds: 985, recTd: 8, rushAtt: 6, rushYds: 42, rushTd: 0, fpts: 194.7 },
+];
+
+const careerTotals = {
+  gp: statsByYear.reduce((s, r) => s + r.gp, 0),
+  rec: statsByYear.reduce((s, r) => s + r.rec, 0),
+  recYds: statsByYear.reduce((s, r) => s + r.recYds, 0),
+  recTd: statsByYear.reduce((s, r) => s + r.recTd, 0),
+  rushAtt: statsByYear.reduce((s, r) => s + r.rushAtt, 0),
+  rushYds: statsByYear.reduce((s, r) => s + r.rushYds, 0),
+  rushTd: statsByYear.reduce((s, r) => s + r.rushTd, 0),
+  fpts: statsByYear.reduce((s, r) => s + r.fpts, 0),
+};
+
+const headshotUrl = player.espnId
+  ? `https://a.espncdn.com/i/headshots/nfl/players/full/${player.espnId}.png`
+  : '/images/player-placeholder.png';
+---
+
+<Layout title={player.name} description={`Player profile for ${player.name} — SCDFL dynasty football.`}>
+
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+
+    <!-- Player hero band -->
+    <div class="player-hero" style={`border-left: 4px solid ${dynastyTeam?.color ?? 'var(--color-border)'}; border-bottom: 1px solid var(--color-border); padding: 3rem 0 2.5rem 2rem; margin-top: 3rem;`}>
+      <a href="/franchises" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1.25rem;">
+        &#8592; Players
+      </a>
+
+      <div class="player-hero-inner" style="display: flex; align-items: flex-start; gap: 2rem; flex-wrap: wrap;">
+        <!-- Headshot -->
+        <div style="flex-shrink: 0; width: 120px; height: 120px; border-radius: 50%; overflow: hidden; background-color: var(--color-surface); border: 2px solid var(--color-border);">
+          <img
+            src={headshotUrl}
+            alt={`${player.name} headshot`}
+            width="120"
+            height="120"
+            style="object-fit: cover; width: 100%; height: 100%;"
+            onerror="this.src='/images/player-placeholder.png';this.onerror=null;"
+          />
+        </div>
+
+        <!-- Name & meta -->
+        <div style="flex: 1; min-width: 260px;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+            <span style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted);">{player.position} &bull; {player.nflTeam}</span>
+          </div>
+          <h1 style="font-family: var(--font-display); font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 700; line-height: 1.1; color: var(--color-text-primary); margin: 0;">
+            {player.name}
+          </h1>
+
+          <!-- Dynasty team link -->
+          {dynastyTeam ? (
+            <div style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.6rem;">
+              <img
+                src={`/images/logos/${dynastyTeam.abbr}.png`}
+                alt={dynastyTeam.name}
+                width="24"
+                height="24"
+                style="object-fit: contain;"
+                onerror="this.style.display='none'"
+              />
+              <a href={`/franchises/${dynastyTeam.abbr}`} style="font-size: 0.85rem; font-weight: 600; color: var(--color-gold);">
+                {dynastyTeam.name}
+              </a>
+            </div>
+          ) : (
+            <p style="margin-top: 0.75rem; font-size: 0.8rem; color: var(--color-text-muted); font-style: italic;">Free Agent</p>
+          )}
+        </div>
+
+        <!-- Bio details -->
+        <div class="player-bio-grid" style="display: grid; grid-template-columns: repeat(3, auto); gap: 1.5rem 2rem; flex-shrink: 0; align-self: center;">
+          {player.college && (
+            <div>
+              <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">College</p>
+              <p style="font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{player.college}</p>
+            </div>
+          )}
+          <div>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Age</p>
+            <p style="font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{player.age ?? '—'}</p>
+          </div>
+          <div>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Experience</p>
+            <p style="font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{player.yearsExp != null ? `${player.yearsExp} yr${player.yearsExp !== 1 ? 's' : ''}` : '—'}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Accolades -->
+    {accolades.length > 0 && (
+      <div style="display: flex; align-items: center; gap: 1.5rem; padding: 0.75rem 0; border-bottom: 1px solid var(--color-border); margin-top: 1rem; flex-wrap: wrap;">
+        <p class="section-label" style="margin-bottom: 0;">Accolades</p>
+        <div style="display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;">
+          {accolades.map(a => (
+            <span style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--color-text-secondary);">
+              <span style={`font-size: 1rem; color: ${a.color};`} set:html={a.icon} />
+              <span>{a.year} {a.label}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    )}
+
+    <!-- Main content area -->
+    <div class="player-layout-grid" style="display: grid; grid-template-columns: 1fr 300px; gap: 3rem; margin-top: 3rem; align-items: start;">
+
+      <!-- Stats column -->
+      <div>
+        <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin-bottom: 1.25rem; color: var(--color-text-primary);">Season Stats</h2>
+
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th style="text-align: center;">GP</th>
+                <th style="text-align: center;">Rec</th>
+                <th style="text-align: right;">Rec Yds</th>
+                <th style="text-align: center;">Rec TD</th>
+                <th style="text-align: center;">Rush</th>
+                <th style="text-align: right;">Rush Yds</th>
+                <th style="text-align: center;">Rush TD</th>
+                <th style="text-align: right;">FPTS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {statsByYear.map(row => (
+                <tr>
+                  <td style="font-weight: 600;">{row.year}</td>
+                  <td style="text-align: center;">{row.gp}</td>
+                  <td style="text-align: center;">{row.rec}</td>
+                  <td style="text-align: right;">{row.recYds.toLocaleString()}</td>
+                  <td style="text-align: center;">{row.recTd}</td>
+                  <td style="text-align: center;">{row.rushAtt}</td>
+                  <td style="text-align: right;">{row.rushYds}</td>
+                  <td style="text-align: center;">{row.rushTd}</td>
+                  <td style="text-align: right; font-weight: 600; color: var(--color-gold);">{row.fpts.toFixed(1)}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td style="font-weight: 700; border-top: 2px solid var(--color-border);">Career</td>
+                <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.gp}</td>
+                <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rec}</td>
+                <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.recYds.toLocaleString()}</td>
+                <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.recTd}</td>
+                <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushAtt}</td>
+                <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushYds}</td>
+                <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushTd}</td>
+                <td style="text-align: right; font-weight: 700; color: var(--color-gold); border-top: 2px solid var(--color-border);">{careerTotals.fpts.toFixed(1)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="player-sidebar">
+        <!-- Player info card -->
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem 1.5rem;">
+          <p class="section-label" style="margin-bottom: 0.75rem;">Player Info</p>
+          <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 0.75rem; color: var(--color-text-muted);">Sleeper ID</span>
+              <span style="font-size: 0.85rem; color: var(--color-text-secondary); font-family: monospace;">{player.id}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 0.75rem; color: var(--color-text-muted);">Position</span>
+              <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.position}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 0.75rem; color: var(--color-text-muted);">NFL Team</span>
+              <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.nflTeam}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 0.75rem; color: var(--color-text-muted);">Dynasty Team</span>
+              {dynastyTeam
+                ? <a href={`/franchises/${dynastyTeam.abbr}`} style="font-size: 0.85rem; font-weight: 600;">{dynastyTeam.abbr}</a>
+                : <span style="font-size: 0.85rem; color: var(--color-text-muted); font-style: italic;">None</span>
+              }
+            </div>
+            {player.college && (
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">College</span>
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.college}</span>
+              </div>
+            )}
+            {player.age != null && (
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Age</span>
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.age}</span>
+              </div>
+            )}
+            {player.yearsExp != null && (
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Experience</span>
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.yearsExp} yr{player.yearsExp !== 1 ? 's' : ''}</span>
+              </div>
+            )}
+            {player.height && (
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Height</span>
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.height}</span>
+              </div>
+            )}
+            {player.weight && (
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Weight</span>
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.weight} lbs</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <!-- Dynasty draft card -->
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem 1.5rem; margin-top: 1rem;">
+          <p class="section-label" style="margin-bottom: 0.75rem;">Dynasty Draft</p>
+          <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 0.75rem; color: var(--color-text-muted);">Drafted</span>
+              <span style="font-size: 0.85rem; color: var(--color-text-secondary);">—</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 0.75rem; color: var(--color-text-muted);">Pick</span>
+              <span style="font-size: 0.85rem; color: var(--color-text-secondary);">—</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 0.75rem; color: var(--color-text-muted);">Drafted By</span>
+              <span style="font-size: 0.85rem; color: var(--color-text-secondary);">—</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transaction history card (placeholder) -->
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem 1.5rem; margin-top: 1rem;">
+          <p class="section-label" style="margin-bottom: 0.75rem;">Transaction History</p>
+          <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">Coming soon</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</Layout>
+
+<style>
+  @media (max-width: 768px) {
+    .player-layout-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .player-bio-grid {
+      grid-template-columns: repeat(2, auto) !important;
+    }
+
+    .player-hero-inner {
+      gap: 1.25rem !important;
+    }
+
+    .player-sidebar {
+      margin-top: 0;
+    }
+  }
+</style>
