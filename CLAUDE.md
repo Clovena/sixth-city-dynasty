@@ -10,9 +10,24 @@ Astro 5 static site for the SCDFL. Commissioner: Zac. Est. 2021. 14 franchises, 
 npm run dev          # dev server
 npm run build        # static build → dist/
 npm run preview      # preview built site
-npm run fetch        # fetch current season from Sleeper API
-npm run fetch -- --all  # fetch all seasons from Sleeper API
+
+# --- Supabase sync scripts (see scripts/lib/CLAUDE.md for details) ---
+npm run sync              # run all routine syncs (results, matchups, rosters, transactions, drafts, exhibitions, stats)
+npm run sync:results      # sync win/loss/points per franchise per season
+npm run sync:matchups     # sync all weekly matchups (regular + playoff + consolation)
+npm run sync:rosters      # sync current-season roster assignments (full replace)
+npm run sync:transactions # sync all transactions (waivers, trades, free agents)
+npm run sync:drafts       # sync draft pick results for all configured drafts
+npm run sync:exhibitions  # sync exhibition matchup scores
+npm run sync:stats        # sync weekly NFL player stats from nflverse
+
+# --- Player metadata (run sparingly — heavyweight API calls) ---
+npm run sync:players      # sync Sleeper player database (~20k+ players, ≤ 1x/day)
+npm run sync:pids         # sync DynastyProcess player ID crosswalk (ESPN, PFF, etc.)
+npm run sync:player-meta  # run sync:players then sync:pids sequentially
 ```
+
+All sync scripts live in `scripts/lib/` and write directly to Supabase (schema `scdfl`). They use `SUPABASE_SERVICE_KEY` (not the anon key). See `scripts/lib/CLAUDE.md` for full documentation.
 
 ---
 
@@ -20,6 +35,9 @@ npm run fetch -- --all  # fetch all seasons from Sleeper API
 
 - **Astro 5** — static output, content collections, `import.meta.glob`
 - **Tailwind CSS 4** — via `@tailwindcss/vite` (not PostCSS)
+- **Supabase** — PostgreSQL database (schema `scdfl`); all league data lives here
+  - Build-time client: `src/lib/supabase.ts` (uses `SUPABASE_ANON_KEY` via `import.meta.env`)
+  - Sync scripts: `scripts/lib/*.ts` (use `SUPABASE_SERVICE_KEY` via `dotenv`)
 - **Remark/Rehype** — custom plugin (`src/lib/remark-team-headers.ts`) for markdown AST transformation
 - **Node 18+** — see `.nvmrc`; also pinned in `netlify.toml` to fix lightningcss binding issue
 - No framework components (vanilla JS for all interactivity)
@@ -42,52 +60,72 @@ npm run fetch -- --all  # fetch all seasons from Sleeper API
 
 ---
 
-## Data Files (`src/data/`)
+## Supabase Schema (`scdfl`)
 
-| File | Purpose |
+All league data is stored in the `scdfl` schema in Supabase. See `SUPABASE_DEFINITIONS.sql` for full DDL, and `src/data/CLAUDE.md` for detailed table shapes, relationships, and maintenance processes.
+
+### Tables
+
+| Table | Maintenance | Purpose |
+|-------|-------------|---------|
+| `franchises` | Manual | Franchise identities (one row per identity era; active rows have `"to" IS NULL`) |
+| `seasons` | Manual | Per-season metadata: league_id, conference champions, playoff config |
+| `results` | `sync:results` + manual | Per-franchise per-season stats (wins, losses, PF, PA); `playoff`, `seed`, `finish` are manual |
+| `matchups` | `sync:matchups` | All weekly matchups with scores, starters, and `game_type` classification |
+| `rosters` | `sync:rosters` | Current-season roster assignments (full replace each sync) |
+| `transactions` | `sync:transactions` | All asset movements (one row per add/drop per team side) |
+| `players` | `sync:players` | Sleeper player metadata (~20k+ rows) |
+| `player_ids` | `sync:pids` | DynastyProcess crosswalk (ESPN, PFF, PFR, etc.) |
+| `drafts` | Manual | Draft configuration (draft_id, year, type) |
+| `draft_results` | `sync:drafts` | All draft picks with slot/roster/player data |
+| `exhibitions` | Manual | Exhibition game configuration (league_id, team members, slugs) |
+| `exhibition_matchups` | `sync:exhibitions` | Exhibition scores and starter data |
+| `spotlight_games` | Manual | Spotlight game metadata (bowl games, rivalries) |
+| `spotlight_game_years` | Manual | Which years each spotlight game occurs |
+| `nfl_stats` | `sync:stats` | Weekly NFL player stats from nflverse (~95k rows) |
+| `accolades` | Manual | Annual league awards (MVP, trade of the year, etc.) |
+
+### Views
+
+| View | Purpose |
 |------|---------|
-| `franchises.json` | All 14 franchise records (see schema below) |
-| `seasons.json` | Per-season results: conference champions, dynasty bowl, format, notes |
-| `results.json` | Per-franchise season stats keyed by abbr (wins, losses, PF, PA, playoff, finish) |
-| `config.json` | Sleeper league IDs per season; `current: true` flags the active season |
-| `exhibition-config.json` | Exhibition matchup configuration (see Exhibition Matchups section) |
-| `raw/[year]-rosters.json` | Raw Sleeper roster data — written by fetch script |
-| `raw/[year]-matchups.json` | Raw Sleeper matchup data keyed by week number — written by fetch script |
-| `raw/[year]-transactions.json` | Raw Sleeper transaction data (waivers, free agents, trades) keyed by week — written by fetch script |
-| `raw/exhibitions.json` | Exhibition matchups data — written by fetch script (enriched from exhibition-config.json) |
-| `raw/nfl-state.json` | Raw NFL state (current week, season type) — written by fetch script |
+| `v_players` | Joins `players` + `player_ids`; coalesces ESPN/Rotowire/Yahoo IDs from both sources |
+
+### Key Identifiers
+
+| Concept | Field | Table | Notes |
+|---------|-------|-------|-------|
+| Franchise identity | `abbr` + `"to" IS NULL` | `franchises` | Active identity; historical rows have non-null `"to"` |
+| Franchise join key | `sleeper_id` | `franchises` | Text; cast to int for matchup roster_id joins |
+| Matchup roster slot | `roster_id_a` / `roster_id_b` | `matchups` | Integer; equals `franchises.id` |
+| Player identity | `player_id` | `players`, `rosters` | Sleeper player ID (text) |
+| NFL stats link | `gsis_id` | `nfl_stats` → `player_ids` | Cross-referenced via `player_ids.gsis_id` |
+| ESPN headshot | `espn_id` | `v_players` | `https://a.espncdn.com/i/headshots/nfl/players/full/{espn_id}.png` |
+| Draft slot owner | `original_roster_id` | `draft_results` | Who originally held the pick (before trades) |
+| Current season | `MAX(year)` | `seasons` | No explicit "current" flag — latest year wins |
 
 ---
 
-## Franchise Schema (`franchises.json`)
+## Franchise Identity Model
 
-```jsonc
-{
-  "id": 1,               // numeric roster_id — maps directly to roster_id in Sleeper API
-  "sleeper_id": "1",     // string version of id — legacy, identical to id
-  "abbr": "TOR",         // current abbreviation (also used for logo filename)
-  "name": "Toronto Hogs",
-  "owner": "Zac",
-  "conference": "SCC",   // "SCC" or "HCC"
-  "colors": ["#4f4471", "#ea332a", "#7a709b"],
-  "founded": 2023,       // year this ownership began; 2021 = original franchise
-  "predecessor_abbr": "TOH",   // abbr of predecessor team (only if founded != 2021)
-  "rebrands": [          // name history for adopted teams across pre-founding seasons
-    { "year": 2021, "name": "Toronto Hogs" },
-    { "year": 2022, "name": "Toronto Hogs" }
-  ]
-}
-```
+The `franchises` table uses a temporal identity model (one row per identity era) instead of the old single-object-per-franchise approach.
+
+- **Active franchises:** `"to" IS NULL` — always 14 rows
+- **Historical identities:** `"to"` is set to the last year that identity was active
+- **Composite PK:** `(id, "from")` — same numeric `id` can appear multiple times with different eras
+- **Unique index on `abbr`** — abbreviations are globally unique across all eras
 
 ### Adoption logic (important — used in multiple places)
 
-A franchise is **adopted** when `founded !== 2021`. For adopted franchises:
-- Seasons **before** `founded`: display `predecessor_abbr` logo, look up name from `rebrands[].name` by year
-- Seasons **on or after** `founded`: display current `abbr` logo and `name`
+To resolve a franchise identity for a specific season year:
+```sql
+SELECT * FROM scdfl.franchises
+WHERE "from" <= :year AND ("to" >= :year OR "to" IS NULL)
+```
+
+This replaces the old `founded`/`predecessor_abbr`/`rebrands[]` pattern. The temporal model handles rebrands natively — each identity era is its own row with its own `abbr`, `name`, `colors`, etc.
 
 This affects: franchise pages (`[abbr].astro` season table), scores page team display, game recap pages.
-
-The founding year `2021` is a safe hard-coded constant — it will never change.
 
 ---
 
@@ -175,34 +213,21 @@ Transforms consecutive `**bold**` + `*italic*` paragraph pairs in writeup markdo
 
 ## Exhibition Matchups
 
-Exhibition games (tag-team, one-vs-all) are configured in `src/data/exhibition-config.json` and fetched via the Sleeper API.
+Exhibition games (tag-team, one-vs-all) are configured in the `scdfl.exhibitions` table and scored in `scdfl.exhibition_matchups`.
 
-**Configuration schema** (`exhibition-config.json`):
-```jsonc
-{
-  "exhibitions": [
-    {
-      "year": 2025,
-      "week": 4,
-      "league_id": "1263323796526333952",  // Sleeper league ID for this exhibition
-      "exhib_type": "tagteam",             // "tagteam" (30 starters) or "onevsall" (14 starters)
-      "team_a_id": 2,                      // Sleeper roster_id (not franchise.id)
-      "team_a_slug": "BKBWPG",             // URL slug component (alphabetized before display)
-      "team_a_display_name": "Stars / Wranglers",
-      "team_a_members": ["BKB", "WPG"],    // Franchise abbrs for display + logos
-      "team_b_id": 1,
-      "team_b_slug": "NFDNNY",
-      "team_b_display_name": "Blowers / Benders",
-      "team_b_members": ["NFD", "NNY"]
-    }
-  ]
-}
-```
+**Configuration** (`scdfl.exhibitions` — manually maintained):
+- `year`, `week`, `league_id` — when and where the exhibition takes place
+- `exhib_type` — `'tagteam'` (30 starters) or `'onevsall'` (14 starters)
+- `team_id_a` / `team_id_b` — Sleeper roster_ids within the exhibition league (NOT franchise.id)
+- `team_a_members[]` / `team_b_members[]` — franchise abbreviations for display + logos
+- `team_a_slug` / `team_b_slug` — URL slug components
+- `team_a_display_name` / `team_b_display_name` — display labels
 
-**Raw output schema** (`src/data/raw/exhibitions.json`):
-- Enriched from config + Sleeper API matchup data
-- Full team rosters, starters arrays, and scoring data
-- Slug format: `[week_zero_padded]-[team_a_slug_lower]-[team_b_slug_lower]` (alphabetized)
+**Scores** (`scdfl.exhibition_matchups` — synced via `npm run sync:exhibitions`):
+- `exhibition_id` (FK to `exhibitions.id`) — one-to-one with config
+- `score_a`, `score_b`, `starters_a[]`, `starter_points_a[]`, etc.
+
+**Slug format:** `[week_zero_padded]-[team_a_slug_lower]-[team_b_slug_lower]` (alphabetized)
 - Example slugs: `04-bkbwpg-nfdnny`, `13-pei-world`
 
 **Display locations**:
@@ -221,44 +246,36 @@ Exhibition games (tag-team, one-vs-all) are configured in `src/data/exhibition-c
 
 ---
 
-## Historical Matchup Lookup (`src/lib/get-historical-matchups.ts`)
+## Sync Scripts (`scripts/lib/`)
 
-Scans all `/data/raw/*-matchups.json` files at build time to find historical instances of two teams playing. Used by `/spotlight-games/[slug].astro` to populate the "Historical Results" table.
+Nine standalone TypeScript scripts that sync data from external APIs into Supabase. Each is independently runnable via `npx tsx`. See `scripts/lib/CLAUDE.md` for full documentation.
 
-- `getHistoricalMatchups(teamAAbbr, teamBAbbr)` takes abbreviations, returns array of matchups sorted newest-first (year desc, week desc)
-- Matchup lookup: both teams' `roster_id` values appear in same week with matching `matchup_id`
-- Each result includes: `year`, `week`, `teamAScore`, `teamBScore` (from `custom_points` field, coalesced with `points`)
-- Handles bye weeks correctly (entries with null `matchup_id` are skipped, ensuring valid matchups only)
+**Routine syncs** (`npm run sync` runs all):
+| Script | Source | Target Table | Cadence |
+|--------|--------|--------------|---------|
+| `sync-results.ts` | Sleeper rosters API | `results` | Weekly during season |
+| `sync-matchups.ts` | Sleeper matchups API | `matchups` | Weekly during season |
+| `sync-rosters.ts` | Sleeper rosters API | `rosters` | Weekly during season |
+| `sync-transactions.ts` | Sleeper transactions API | `transactions` | Weekly during season |
+| `sync-drafts.ts` | Sleeper draft picks API | `draft_results` | Once per draft |
+| `sync-exhibitions.ts` | Sleeper matchups API | `exhibition_matchups` | When exhibitions occur |
+| `sync-stats.ts` | nflverse GitHub CSV | `nfl_stats` | Weekly during season |
 
----
-
-## Sleeper API Fetch Scripts (`scripts/`)
-
-```
-scripts/
-  fetch-sleeper.ts      # orchestrator — run via npm run fetch
-  lib/
-    sleeper-api.ts      # typed API wrappers (getRosters, getMatchups, getNflState, etc.)
-    transform.ts        # buildSeasonStats() — returns { year, wins, losses, points_for, points_against }
-```
-
-- `npm run fetch` fetches current season only (weeks 1 → `nflState.week` for matchups) + all exhibitions
-- `npm run fetch -- --all` fetches all seasons (weeks 1–17 for non-current seasons) + all exhibitions
-- Writes raw JSON to `src/data/raw/`
-- Merges wins/losses/PF/PA into `results.json` — preserves `playoff` and `finish` fields (manually maintained)
-- `franchise.id` (number) === Sleeper `roster_id` — use this for all regular-season roster_id → franchise lookups
-- Exhibition `roster_id` values do NOT map to `franchise.id` — they're distinct Sleeper league rosters
-- `custom_points` takes precedence over `points` for score display; coalesce null with `|| 0`
+**Player metadata** (run sparingly):
+| Script | Source | Target Table | Cadence |
+|--------|--------|--------------|---------|
+| `sync-players.ts` | Sleeper `/players/nfl` | `players` | A few times per season (≤ 1x/day) |
+| `sync-pids.ts` | DynastyProcess CSV | `player_ids` | Same as sync:players |
 
 ---
 
 ## Scores Page (`/scores`) — Client-Side Data
 
 All matchup data is embedded at build time as a JSON blob via `define:vars`. Client JS handles all filtering and rendering. Key behaviors:
-- Season default: latest year whose matchup file is non-empty (`Object.keys(data).length > 0`)
+- Season default: latest year with matchup data
 - Week default: max week present in that season's data (use numeric comparison — string sort breaks for weeks 1–9)
 - Matchup grouping: skip entries where `matchup_id` is null/falsy (bye teams in playoff weeks cause `NaN` keys which crash rendering)
-- Dynasty Bowl banner: Week 17 only; matched by resolving each team's effective abbr against `seasons.json dynasty_bowl.winner/loser`
+- Dynasty Bowl banner: Week 17 only; matched by resolving each team's effective abbr against `seasons` table conference champion fields
 
 ---
 
@@ -289,7 +306,29 @@ Example: `/games/2025/15-bkb-low` (BKB vs. LOW, week 15)
 
 Astro's `getStaticPaths` runs in an isolated scope — module-level variables are NOT accessible inside it. All data loading (`import.meta.glob`, imports) must be re-initialized inside the function body. Vite deduplicates actual file reads at build time so there is no performance cost.
 
+---
+
+## Historical Matchup Lookup (`src/lib/get-historical-matchups.ts`)
+
+Queries the `scdfl.matchups` table at build time to find historical instances of two teams playing. Used by `/spotlight-games/[slug].astro` to populate the "Historical Results" table.
+
+- `getHistoricalMatchups(teamAAbbr, teamBAbbr)` resolves abbreviations to roster IDs via `franchises`, then queries `matchups`
+- Returns array of matchups sorted newest-first (year desc, week desc)
+- Each result includes: `year`, `week`, `teamAScore`, `teamBScore`
+- Handles bye weeks correctly (null `matchup_id` entries are excluded by the query)
+
+---
+
+## Supabase Query Patterns
+
+All build-time queries use the client at `src/lib/supabase.ts` with `.schema('scdfl')`.
+
+**Important:** Supabase JS client silently caps results at 1,000 rows. For large tables (`matchups`: ~580, `transactions`: ~5,700, `nfl_stats`: ~95,000), always set an explicit `.limit()` or paginate. Small tables (`franchises`: ~22, `seasons`: ~6) are fine with defaults.
+
+**Reserved word quoting:** The `"to"` and `"from"` columns in `franchises` are SQL reserved words. Always quote them in raw SQL. The Supabase JS client handles this automatically when using `.eq('to', null)` etc.
+
+---
 
 ## Closing Claude Code Sessions
 
-In most cases, if development is being done with AI assistance, all CLAUDE.md files should be reviewed, updated, and/or created to reflect the recent changes in the project. If work is being done in a focused environment, i.e. subdirectory, a CLAUDE.md file should be initialized or updated. The user will generally prompt this behavior. 
+In most cases, if development is being done with AI assistance, all CLAUDE.md files should be reviewed, updated, and/or created to reflect the recent changes in the project. If work is being done in a focused environment, i.e. subdirectory, a CLAUDE.md file should be initialized or updated. The user will generally prompt this behavior.

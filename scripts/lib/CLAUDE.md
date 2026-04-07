@@ -1,437 +1,224 @@
-# CLAUDE.md — Sleeper API Integration
+# CLAUDE.md — Supabase Sync Scripts
 
-Data fetching and transformation pipeline for the SCDFL site. Converts raw Sleeper Fantasy Football API responses into the JSON shapes consumed by the static site.
+Data sync pipeline for the SCDFL site. Standalone TypeScript scripts that fetch from the Sleeper API (and other external sources) and upsert directly into Supabase (schema `scdfl`).
 
 ---
 
 ## Usage
 
+All scripts are run via `npx tsx` and configured as npm scripts in the root `package.json`.
+
 ```bash
-npm run fetch              # Fetch current season only (uses config.json `current: true`)
-npm run fetch -- --all     # Fetch all seasons defined in config.json
-npm run fetch -- --players # Fetch Sleeper player database → player-id-map.json (once yearly)
+# Routine syncs — run weekly during the NFL season
+npm run sync              # all 7 routine syncs sequentially
+npm run sync:results      # npx tsx scripts/lib/sync-results.ts
+npm run sync:matchups     # npx tsx scripts/lib/sync-matchups.ts
+npm run sync:rosters      # npx tsx scripts/lib/sync-rosters.ts
+npm run sync:transactions # npx tsx scripts/lib/sync-transactions.ts
+npm run sync:drafts       # npx tsx scripts/lib/sync-drafts.ts
+npm run sync:exhibitions  # npx tsx scripts/lib/sync-exhibitions.ts
+npm run sync:stats        # npx tsx scripts/lib/sync-stats.ts
+
+# Player metadata — run sparingly (heavyweight external calls)
+npm run sync:players      # npx tsx scripts/lib/sync-players.ts
+npm run sync:pids         # npx tsx scripts/lib/sync-pids.ts
+npm run sync:player-meta  # sync:players then sync:pids sequentially
 ```
-
-**Regular fetch commands** (`npm run fetch` / `--all`):
-- Fetch roster, matchup, transaction, and draft pick data from Sleeper's public API (no authentication required)
-- Write raw responses to `src/data/raw/` for inspection
-- Transform and merge processed stats into `src/data/results.json`
-- Preserve manually-maintained `playoff` and `finish` fields in results.json
-- Fetch draft picks for all draft IDs in `draft-config.json`
-- Fetch and enrich exhibition matchup data from `exhibition-config.json`
-
-**Transactional data** (fetched automatically with regular fetches):
-- Waiver claims, free agent pickups, trades — one file per season, per week
-- Stored in `src/data/raw/{year}-transactions.json` as a week-keyed object
-
-**Draft pick data** (fetched automatically if entries exist in `draft-config.json`):
-- All draft picks from specified drafts; includes player, roster, and position data
-- Stored in `src/data/raw/{year}-{type}-draft.json` as an array of pick objects
-- `draft_slot` maps to `draft-slots.json` for original franchise assignments
-- `roster_id` in pick data indicates which team actually made the pick (after trades)
-
-**Exhibition matchup data** (fetched automatically if entries exist in `exhibition-config.json`):
-- Each exhibition reads `exhibition-config.json` for metadata (league_id, team slugs, display names, members)
-- Calls `getMatchups(league_id, week)` to fetch raw matchup data
-- Filters to only the roster_ids specified in config (`team_a_id`, `team_b_id`)
-- Enriches with config metadata and saves to `src/data/raw/exhibitions.json`
-- Upserts by (year + week + league_id) to support updates
-
-**Player fetch** (`npm run fetch -- --players`):
-- Fetches Sleeper's `/players/nfl` endpoint (~5MB, contains all ~20k+ players)
-- Extracts player ID → ESPN ID mapping (used for headshot URLs), plus full name and position
-- Writes to `src/data/player-id-map.json` — checked into repo, regenerated once per year (after NFL draft) to pick up rookies
 
 ---
 
-## Files
+## Environment
 
-| File | Purpose |
-|------|---------|
-| `fetch-sleeper.ts` | Orchestrator — handles season selection, API calls, data merging, player ID mapping, transaction/draft fetching |
-| `sleeper-api.ts` | Typed API wrappers — `getRosters()`, `getMatchups()`, `getTransactions()`, `getDraftPicks()`, etc. |
-| `transform.ts` | Statistics transformation — rosters → per-franchise season stats |
+All scripts use `dotenv/config` and require:
+- `SUPABASE_URL` — Supabase project URL
+- `SUPABASE_SERVICE_KEY` — service role key (NOT the anon key; needed for write access)
+
+These are distinct from the Astro build-time env vars (`SUPABASE_ANON_KEY`) used by `src/lib/supabase.ts`.
+
+---
+
+## Scripts
+
+### `sync-results.ts`
+
+**Source:** Sleeper `/league/{league_id}/rosters` endpoint (one call per season)
+**Target:** `scdfl.results`
+**Upsert key:** `(sleeper_id, year)`
+
+Fetches all seasons from `scdfl.seasons`, calls the Sleeper rosters endpoint for each, and extracts win/loss/points stats per franchise. Points are assembled from Sleeper's split integer+decimal format (`fpts` + `fpts_decimal`).
+
+**Fields written:** `sleeper_id`, `year`, `wins`, `losses`, `ties`, `points_for`, `points_against`
+**Fields NOT written (manual):** `playoff`, `seed`, `finish` — preserved across upserts by Supabase's upsert semantics (only specified columns are updated)
+
+---
+
+### `sync-matchups.ts`
+
+**Source:** Sleeper `/league/{league_id}/matchups/{week}` endpoint (weeks 1–17 per season)
+**Target:** `scdfl.matchups`
+**Upsert key:** `(year, week, matchup_id)`
+
+The most complex sync script. For each season:
+1. Fetches all 17 weeks of matchup data from Sleeper
+2. Pairs roster entries by `matchup_id` (lower `roster_id` is always `_a`)
+3. Classifies game type:
+   - Weeks 1–`regular_season_weeks`: `game_type = 0` (regular season)
+   - Playoff weeks: uses seed data from `scdfl.results` to track a "winners alive" set
+     - Both teams in winners bracket → `game_type = 1` (playoff)
+     - Otherwise → `game_type = -1` (consolation)
+4. Resolves scores: `custom_points` takes precedence over `points`; unplayed games (0 points, no starters) → `null`
+
+**Starters data:** `starters_a[]`, `starter_points_a[]`, `starters_b[]`, `starter_points_b[]` are stored as PostgreSQL arrays for lineup display on game recap pages.
+
+---
+
+### `sync-rosters.ts`
+
+**Source:** Sleeper `/league/{league_id}/rosters` endpoint (current season only)
+**Target:** `scdfl.rosters`
+**Write strategy:** Full replace (DELETE all → INSERT)
+
+Fetches the most recent season from `scdfl.seasons` (by `MAX(year)`), calls the Sleeper rosters endpoint, and flattens `roster.players[]` into one row per `(player_id, sleeper_id)`.
+
+**Prerequisite:** `scdfl.players` must be populated first (`sync:players`) — FK constraint on `player_id`.
+
+**Note:** This is current-snapshot only. There is no historical roster table. If a page needs historical rosters, that requires a different approach.
+
+---
+
+### `sync-transactions.ts`
+
+**Source:** Sleeper `/league/{league_id}/transactions/{week}` endpoint (weeks 1–17 per season)
+**Target:** `scdfl.transactions`
+**Upsert key:** `(transaction_id, roster_id, action, asset, player_id, pick_season, pick_round, pick_original_roster_id)`
+
+Explodes each Sleeper transaction into one row per asset movement per team side:
+- `adds` map → rows with `action = 'add'`
+- `drops` map → rows with `action = 'drop'`
+- `draft_picks` → rows with `asset = 'pick'` (includes `pick_season`, `pick_round`, `pick_original_roster_id`)
+
+Trades produce multiple rows grouped by `transaction_id`. Commissioner reversals are new transactions with new IDs — they don't modify existing rows.
+
+---
+
+### `sync-drafts.ts`
+
+**Source:** Sleeper `/draft/{draft_id}` (metadata) + `/draft/{draft_id}/picks` (picks)
+**Target:** `scdfl.draft_results`
+**Upsert key:** `(draft_id, pick_no)`
+**Config:** Reads draft IDs from `scdfl.drafts` table (manually maintained)
+
+For each draft:
+1. Fetches draft metadata to get `slot_to_roster_id` mapping (resolves `draft_slot` → `original_roster_id`)
+2. Fetches all picks
+3. Shapes each pick into: `draft_id`, `pick_no`, `round`, `draft_slot`, `roster_id` (who picked), `original_roster_id` (who originally held the slot), `player_id`
+
+This replaces the old `draft-slots.json` + `draft-config.json` + raw draft JSON approach. The `original_roster_id` field captures slot ownership directly in `draft_results`.
+
+---
+
+### `sync-exhibitions.ts`
+
+**Source:** Sleeper `/league/{league_id}/matchups/{week}` endpoint (per exhibition)
+**Target:** `scdfl.exhibition_matchups`
+**Upsert key:** `exhibition_id` (one-to-one with `scdfl.exhibitions`)
+**Config:** Reads exhibition configuration from `scdfl.exhibitions` table (manually maintained)
+
+For each exhibition config row:
+1. Calls `getMatchups(league_id, week)` on the exhibition's Sleeper league
+2. Filters to only the two roster entries matching `team_id_a` and `team_id_b` (exhibition leagues have many empty placeholder slots)
+3. Pairs team A and team B, extracts scores + starters
+4. Upserts into `exhibition_matchups`
+
+**Note:** Exhibition `roster_id` values do NOT map to `franchises.id` — they belong to separate Sleeper leagues. The `exhibitions` config table provides the team identity mapping.
+
+---
+
+### `sync-stats.ts`
+
+**Source:** nflverse GitHub releases (`stats_player_week_{year}.csv`)
+**Target:** `scdfl.nfl_stats`
+**Upsert key:** `(gsis_id, season, week)`
+
+Fetches weekly NFL player stats CSVs from the nflverse-data GitHub repository for each year in `scdfl.seasons`. Parses CSV, extracts rushing/passing/receiving/kicking/IDP stats, and upserts in batches of 500.
+
+Preserves both REG and POST season_type rows. Gracefully skips future seasons (nflverse returns "Not found"). Safe for re-runs and mid-season refreshes.
+
+**Row count:** ~95,000 rows across all seasons. Always uses batched upserts.
+
+---
+
+### `sync-players.ts`
+
+**Source:** Sleeper `/players/nfl` endpoint (~5MB JSON payload, ~20k+ players)
+**Target:** `scdfl.players`
+**Upsert key:** `player_id`
+
+Fetches the full Sleeper player database and upserts all players in batches of 500. This is a heavyweight call — **Sleeper requests it be called no more than once per day.**
+
+Run cadence: a few times per season. Always run this before `sync:pids` (FK dependency).
+
+---
+
+### `sync-pids.ts`
+
+**Source:** DynastyProcess player ID crosswalk CSV (GitHub)
+**Target:** `scdfl.player_ids`
+**Upsert key:** `sleeper_id`
+
+Supplements the Sleeper player data with platform IDs from DynastyProcess: ESPN, MFL, FantasyPros, PFF, PFR, KTC, Rotowire, Yahoo, GSIS. The `gsis_id` field is critical — it's the join key to `nfl_stats`.
+
+Only upserts rows where `sleeper_id` exists in `scdfl.players` (FK enforced). Run after `sync:players`.
 
 ---
 
 ## Data Flow
 
 ```
-Sleeper API (public, no auth)
-         ↓
-    getRosters()      [gets one endpoint per season]
-         ↓
-    saveRaw()         [writes to src/data/raw/{year}-rosters.json]
-         ↓
-buildSeasonStats()    [extract wins/losses/PF/PA per franchise]
-         ↓
- loadResults()        [load existing src/data/results.json]
-         ↓
-   mergeStats()       [upsert season, preserve playoff/finish fields]
-         ↓
-  saveResults()       [write back to src/data/results.json]
+External Sources                    Supabase (scdfl schema)
+─────────────────                   ──────────────────────
+Sleeper /rosters      ──→  sync-results.ts       ──→  results
+Sleeper /matchups     ──→  sync-matchups.ts      ──→  matchups
+Sleeper /rosters      ──→  sync-rosters.ts       ──→  rosters
+Sleeper /transactions ──→  sync-transactions.ts  ──→  transactions
+Sleeper /draft        ──→  sync-drafts.ts        ──→  draft_results
+Sleeper /matchups     ──→  sync-exhibitions.ts   ──→  exhibition_matchups
+nflverse CSV          ──→  sync-stats.ts         ──→  nfl_stats
+Sleeper /players/nfl  ──→  sync-players.ts       ──→  players
+DynastyProcess CSV    ──→  sync-pids.ts          ──→  player_ids
 ```
+
+All scripts read season/config data from Supabase (`scdfl.seasons`, `scdfl.drafts`, `scdfl.exhibitions`) rather than from local JSON config files.
 
 ---
 
 ## Key Mapping: Sleeper `roster_id` → Franchise
 
-**Rule for regular seasons:** `franchises.json` `id` (number) === Sleeper `roster_id` (number)
+**Regular seasons:** `franchises.id` (integer) === Sleeper `roster_id` (1–14). Direct positional mapping.
 
-In `transform.ts`:
-```ts
-const rosterMap = new Map<number, string>();
-for (const f of franchises) {
-  map.set(f.id, f.abbr);  // roster_id → abbr
-}
-```
-
-Every roster returned by `getRosters()` has a `roster_id` (1–14). This directly maps to the corresponding franchise's `id` field. No user_id matching needed — it's positional.
-
-**Rule for exhibitions:** `exhibition-config.json` `team_*_id` does NOT match `franchise.id`
-
-Exhibition rosters live in separate Sleeper leagues and have their own roster IDs. The config provides explicit mappings:
-- `team_a_id`, `team_b_id` — Sleeper roster IDs within the exhibition league (e.g., 1, 2, 3)
-- `team_a_members[]`, `team_b_members[]` — franchise abbreviations for display + logo lookup
-- No roster ID → franchise lookup needed; config metadata is complete
+**Exhibitions:** `exhibitions.team_id_a` / `team_id_b` are Sleeper roster_ids within the *exhibition* league, NOT franchise IDs. The `team_a_members[]` / `team_b_members[]` arrays provide the franchise abbreviation mapping.
 
 ---
 
-## Fields Written by fetch-sleeper.ts
+## Deprecated Scripts
 
-Into `results.json`, **per season, per franchise:**
+The following files in `scripts/` are from the pre-Supabase era and are no longer used:
 
-| Field | Source | Notes |
-|-------|--------|-------|
-| `year` | season config | e.g., 2024 |
-| `wins` | `roster.settings.wins` | Computed by Sleeper |
-| `losses` | `roster.settings.losses` | Computed by Sleeper |
-| `points_for` | `roster.settings.fpts` + `fpts_decimal` | Combined, coalesced to 0 if null |
-| `points_against` | `roster.settings.fpts_against` + `fpts_against_decimal` | Combined, coalesced to 0 if null |
+| File | Replaced By |
+|------|-------------|
+| `fetch-sleeper.ts` | Individual `sync-*.ts` scripts |
+| `lib/sleeper-api.ts` | Inline fetch calls in each sync script |
+| `lib/transform.ts` | `sync-results.ts` handles its own transformation |
 
-### Fields NOT written by the script
-
-| Field | Management | Notes |
-|-------|------------|-------|
-| `playoff` | Manual in results.json | Playoff seed, consolation bracket, etc. |
-| `finish` | Manual in results.json | Final placement, dynasty bowl outcome, etc. |
-
-If these fields already exist in `results.json`, they are **never overwritten** — the script always preserves them.
-
----
-
-## Points Calculation
-
-Sleeper splits points into integer and decimal components:
-- `fpts`: integer part (e.g., 174)
-- `fpts_decimal`: decimal part (e.g., 52 → 0.52)
-
-Combined in `sleeperPoints()`:
-```ts
-export function sleeperPoints(integer: number, decimal: number): number {
-  return parseFloat(`${integer}.${String(decimal).padStart(2, '0')}`);
-}
-// sleeperPoints(174, 52) → 174.52
-```
-
-Both are coalesced with `|| 0` to handle nulls (e.g., season not yet complete).
-
----
-
-## Raw JSON Structure
-
-### `{year}-rosters.json`
-
-Array of Sleeper rosters per league. Kept as-is from the API for inspection and potential future use (e.g., player lineup data in v2).
-
-```json
-[
-  {
-    "roster_id": 1,
-    "owner_id": "...",
-    "league_id": "...",
-    "settings": {
-      "wins": 8,
-      "losses": 2,
-      "fpts": 1245,
-      "fpts_decimal": 67,
-      "fpts_against": 1198,
-      "fpts_against_decimal": 43
-    },
-    "players": [...],
-    "starters": [...],
-    ...
-  },
-  ...
-]
-```
-
-### `{year}-transactions.json`
-
-Week-keyed object containing arrays of transactions per week (week 1–17). Each transaction represents a waiver claim, free agent pickup, or trade.
-
-```json
-{
-  "1": [
-    {
-      "status": "complete",
-      "type": "waiver",
-      "metadata": { "notes": "Your waiver claim was processed successfully!" },
-      "created": 1730235793770,
-      "settings": { "seq": 1, "waiver_bid": 0 },
-      "leg": 1,
-      "draft_picks": [],
-      "creator": "722626997460733952",
-      "transaction_id": "1157096420542025728",
-      "adds": { "10935": 2 },
-      "drops": null,
-      "consenter_ids": [2],
-      "roster_ids": [2],
-      "status_updated": 1730271991477,
-      "waiver_budget": []
-    },
-    {
-      "status": "complete",
-      "type": "trade",
-      "metadata": null,
-      "created": 1730225356038,
-      "settings": { "is_counter": 1 },
-      "leg": 1,
-      "draft_picks": [
-        {
-          "round": 3,
-          "season": "2026",
-          "league_id": null,
-          "roster_id": 8,
-          "owner_id": 1,
-          "previous_owner_id": 8
-        }
-      ],
-      "creator": "724464389268324352",
-      "transaction_id": "1157052641520787456",
-      "adds": { "19": 8 },
-      "drops": { "19": 1 },
-      "consenter_ids": [1, 8],
-      "roster_ids": [1, 8],
-      "status_updated": 1730225826495,
-      "waiver_budget": []
-    }
-  ],
-  "2": [...],
-  ...
-}
-```
-
-**Schema (TypeScript):**
-```ts
-interface SleeperTransaction {
-  status: string;                                     // 'complete', 'pending', 'failed'
-  type: string;                                       // 'waiver', 'trade', 'free_agent'
-  metadata: { notes?: string } | null;               // transaction notes (waivers only)
-  created: number;                                    // unix timestamp (ms)
-  settings: {
-    seq?: number;                                     // waiver sequence (waivers only)
-    waiver_bid?: number;                              // waiver bid amount (waivers only)
-    is_counter?: number;                              // trade counter flag (trades only)
-  } | null;
-  leg: number;                                        // week number (1–17)
-  draft_picks: Array<{
-    round: number;
-    season: string;
-    league_id: string | null;
-    roster_id: number;
-    owner_id: number;
-    previous_owner_id: number;
-  }>;
-  creator: string;                                    // user_id who initiated
-  transaction_id: string;                             // unique transaction ID
-  adds: Record<string, number> | null;               // player_id → roster_id
-  drops: Record<string, number> | null;              // player_id → roster_id (null if no drops)
-  consenter_ids: number[];                            // roster_ids who consented (trades)
-  roster_ids: number[];                               // affected roster_ids
-  status_updated: number;                             // unix timestamp (ms) of last status update
-  waiver_budget: unknown[];                           // always empty in observed data
-}
-```
-
----
-
-## Config Structure (`config.json`)
-
-```json
-{
-  "platform": "sleeper",
-  "current_season": 2026,
-  "seasons": [
-    {
-      "year": 2021,
-      "league_id": "721099701297950720",
-      "current": false
-    },
-    ...
-    {
-      "year": 2026,
-      "league_id": "1312945374800920576",
-      "current": true
-    }
-  ]
-}
-```
-
-- `seasons`: Array of all league seasons with their Sleeper league IDs
-- `current: true`: One season only — marks the active league for `npm run fetch`
-- `league_id`: Required to fetch; if missing, season is skipped
-
----
-
-## Player ID Map (`player-id-map.json`)
-
-Generated by `npm run fetch -- --players`. Maps Sleeper player IDs to ESPN metadata for headshot display.
-
-```json
-{
-  "6872": {
-    "espn_id": "4035671",
-    "full_name": "Justin Jefferson",
-    "position": "WR"
-  },
-  ...
-}
-```
-
-**Schema:**
-- `espn_id` (optional): ESPN player ID, used to construct CDN URL. Absent for players not yet mapped by ESPN (practice squad, international, very recent signings)
-- `full_name`: Sleeper's player name string
-- `position`: NFL position (WR, QB, RB, TE, K, DEF, etc.)
-
-**Storage & Refresh:**
-- Checked into git — included in static builds
-- Refresh once per year (typically post-NFL draft, ~April) to capture rookie class
-- ~200–300 KB; includes all players regardless of ESPN linkage (ensures names display even if headshots unavailable)
-
-**Usage on pages:**
-Pages import `player-id-map.json` and use the `espn_id` to construct headshot URLs:
-```ts
-const espnHeadshotUrl = (playerId: string) => {
-  const espnId = playerIdMap[playerId]?.espn_id;
-  return espnId
-    ? `https://a.espncdn.com/i/headshots/nfl/players/full/${espnId}.png`
-    : null;
-};
-```
-
-The ESPN CDN is external; images include `onerror` fallback to gracefully degrade if headshots are unavailable.
-
----
-
-## Draft Pick Data (`{year}-{type}-draft.json`)
-
-Array of all picks from a draft. Each pick includes player, roster assignment, and metadata.
-
-**Schema (TypeScript):**
-```ts
-interface SleeperDraftPickResult {
-  player_id: string;                        // Sleeper player ID
-  picked_by: string;                        // user_id of manager who made the pick
-  roster_id: string;                        // roster_id of team that made the pick (after trades)
-  round: number;                            // draft round (1-indexed)
-  draft_slot: number;                       // column on draftboard (1–14); maps to draft-slots.json
-  pick_no: number;                          // overall pick number (1-indexed)
-  metadata: {
-    first_name: string;
-    last_name: string;
-    position: string;                       // e.g., 'QB', 'RB', 'WR', 'IDP'
-    team: string;                           // NFL team (e.g., 'CHI', 'SF')
-    player_id: string;                      // duplicate of player_id field
-    sport: string;                          // 'nfl'
-    status?: string;                        // e.g., 'Active', 'Injured Reserve'
-    injury_status?: string;                 // injury designation
-    news_updated?: string;                  // unix timestamp (ms)
-    number?: string;                        // jersey number
-    [key: string]: unknown;
-  };
-  is_keeper: boolean | null;                // if pick was kept from previous season
-  draft_id: string;                         // draft ID (same for all picks in file)
-}
-```
-
-**Key fields for reconstruction:**
-- `draft_slot` + `draft-slots.json` → original franchise that held the pick
-- `roster_id` → which team actually made the pick (after potential trades)
-- `round`, `pick_no` → pick sequencing
-
----
-
-## Capabilities
-
-### Current
-
-- ✅ Fetch rosters endpoint (win/loss/points stats per season)
-- ✅ Fetch transactions endpoint (waivers, free agents, trades per week per season)
-- ✅ Fetch draft picks endpoint (all picks with player/roster metadata)
-- ✅ Player ID → ESPN ID mapping (`player-id-map.json`)
-- ✅ Player headshot integration (ESPN CDN, with fallback for unmapped players)
-- ❌ No full player-level lineups or scoring breakdowns yet
-- ❌ Manual maintenance of `playoff` and `finish` fields in results.json
-
-### Future Roadmap
-
-- Fetch matchups endpoint for each week/season
-- Display full lineups + scoring breakdowns on game recap pages
-- Derive player-level scoring from Sleeper API
-- Transaction history display on franchise pages
-- Draft board visualization (original vs. final roster assignment)
+These files wrote to local JSON files in `src/data/` and `src/data/raw/`. The new sync scripts write directly to Supabase.
 
 ---
 
 ## Debugging
 
-To inspect raw API responses:
-1. Run `npm run fetch` or `npm run fetch -- --all`
-2. Check `src/data/raw/{year}-rosters.json`
-3. Look for `roster_id`, `settings.wins`, `settings.fpts`, etc.
-
 Common issues:
-- **Missing `franchise found for roster_id X`**: Check `franchises.json` — ensure all roster_ids 1–14 have corresponding `id` fields
-- **Null `points_against`**: Handled by `|| 0` coalescing in `sleeperPoints()`; indicates season not yet complete
-- **League ID mismatch**: Verify `config.json` `league_id` matches the actual Sleeper league
-
----
-
-## Exhibition Data (`exhibitions.json`)
-
-Enriched exhibition matchup data written by `fetch-sleeper.ts`. Format combines config metadata + raw Sleeper API response.
-
-**Schema:**
-```ts
-interface Exhibition {
-  year: number;
-  week: number;
-  slug: string;                    // URL slug: "04-bkbwpg-nfdnny"
-  league_id: string;               // Sleeper league ID (not a standard season league)
-  exhib_type: 'tagteam' | 'onevsall';
-  team_a: {
-    id: number;                    // Sleeper roster_id (in exhibition league)
-    slug: string;                  // config.team_a_slug
-    display_name: string;          // config.team_a_display_name
-    members: string[];             // config.team_a_members (franchise abbrs)
-    score: number;                 // custom_points ?? points ?? 0
-    starters: string[];            // player IDs in starting order
-    starters_points: number[];      // points per starter in order
-    players_points: Record<string, number>;  // full player ID → points map
-  };
-  team_b: { /* same structure */ };
-}
-```
-
-**Generation:**
-1. Read all exhibition entries from `exhibition-config.json`
-2. For each: call `getMatchups(league_id, week)`
-3. Filter raw matchup array to entries where `roster_id === team_a_id` or `team_b_id`
-4. Extract one entry per team, combine with config metadata
-5. Build slug: `[week_zero_padded]-[team_a_slug_lower]-[team_b_slug_lower]` (alphabetized)
-6. Load existing `exhibitions.json`, upsert by (year + week + league_id), write back
-
-**Starters order:**
-- Starters arrive from the API in display order (no era remapping needed like regular seasons)
-- `mapExhibitionStartersToSlots()` in `src/lib/lineup.ts` maps to `ROSTER_SLOTS_TAGTEAM` (30 slots) or `ROSTER_SLOTS_ONEVSALL` (14 slots)
+- **FK violation on `rosters` insert**: Run `sync:players` first to populate the `players` table
+- **FK violation on `player_ids`**: Same — `sync:pids` requires `players` to be populated
+- **Sleeper 429 / rate limit**: Space out calls; `sync:players` especially should be ≤ 1x/day
+- **nflverse "Not found"**: Normal for future seasons — `sync:stats` skips gracefully
+- **Supabase 1,000 row cap**: The sync scripts use the service key client, but large reads still need explicit `.limit()` or pagination
