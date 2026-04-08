@@ -1,6 +1,9 @@
 # build output
 dist/
 
+# Claude inputs
+**/CLAUDE.md
+
 # Debug scripts - used locally only
 scripts/debug/
 
