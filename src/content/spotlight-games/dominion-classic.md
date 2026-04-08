@@ -1,0 +1,1 @@
+ The league's premier Canadian civic rivalry. Toronto and Vancouver — separated by over 2700 miles — meet in a battle of Canada's two largest cities, each believing they lay claim to the cultural mecca of the Great White North. The name invokes the historical Dominion of Canada, and the annual meeting of the Hogs and Mounties all but decide who reigns supreme over that Dominion. 

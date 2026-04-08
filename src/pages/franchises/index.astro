@@ -1,33 +1,77 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import franchises from '../../data/franchises.json';
-import seasons from '../../data/seasons.json';
+import { supabase } from '../../lib/supabase';
 
-// Build allAbbrs map: franchise abbr -> all historical abbrs (current + predecessor)
-const allAbbrsMap: Record<string, string[]> = {};
-for (const f of franchises) {
-  const pred = 'predecessor_abbr' in f && f.predecessor_abbr ? [f.predecessor_abbr as string] : [];
-  allAbbrsMap[f.abbr] = [f.abbr, ...pred];
-}
+// ── Fetch active franchises ───────────────────────────────────────────────
+const { data: activeFranchises, error: fErr } = await supabase
+  .schema('scdfl')
+  .from('franchises')
+  .select('sleeper_id, abbr, name, owner, conf, colors')
+  .is('to', null)
+  .order('abbr');
+
+if (fErr || !activeFranchises) throw new Error(`Franchises query failed: ${fErr?.message || 'No data returned'}`);
+
+// ── Fetch all franchise identities (for historical abbr → sleeper_id mapping) ─
+const { data: allIdentities, error: aiErr } = await supabase
+  .schema('scdfl')
+  .from('franchises')
+  .select('sleeper_id, abbr, "from", "to"');
+
+if (aiErr) throw new Error(`All identities query failed: ${aiErr.message}`);
+
+// Map: abbr → sleeper_id (covers historical abbrs too)
+const sleeperIdByAbbr = new Map(allIdentities.map(f => [f.abbr, f.sleeper_id]));
+
+// ── Fetch seasons (for conf champion attribution) ─────────────────────────
+const { data: seasonRows, error: sErr } = await supabase
+  .schema('scdfl')
+  .from('seasons')
+  .select('year, scc_champion, hcc_champion');
+
+if (sErr) throw new Error(`Seasons query failed: ${sErr.message}`);
+
+// ── Fetch championship matchups (week 17, game_type = 1) ──────────────────
+const { data: champMatchups, error: cmErr } = await supabase
+  .schema('scdfl')
+  .from('matchups')
+  .select('year, roster_id_a, roster_id_b, score_a, score_b')
+  .eq('week', 17)
+  .eq('game_type', 1);
+
+if (cmErr) throw new Error(`Championship matchups query failed: ${cmErr.message}`);
+
+// ── Build accolade counts (attributed to active franchise via sleeper_id) ─
+const activeBySleeperId = new Map(activeFranchises.map(f => [f.sleeper_id, f]));
 
 const champCounts: Record<string, number> = {};
 const runnerUpCounts: Record<string, number> = {};
 const confTitleCounts: Record<string, number> = {};
 
-for (const f of franchises) {
-  const abbrs = allAbbrsMap[f.abbr];
-  for (const season of seasons) {
-    if (abbrs.includes(season.dynasty_bowl.winner)) champCounts[f.abbr] = (champCounts[f.abbr] || 0) + 1;
-    if (abbrs.includes(season.dynasty_bowl.loser)) runnerUpCounts[f.abbr] = (runnerUpCounts[f.abbr] || 0) + 1;
-    const confChamp = f.conference === 'SCC' ? season.scc_champion : season.hcc_champion;
-    if (abbrs.includes(confChamp)) confTitleCounts[f.abbr] = (confTitleCounts[f.abbr] || 0) + 1;
+// Championships & runner-ups from matchup results
+for (const m of champMatchups ?? []) {
+  const aWins = m.score_a > m.score_b;
+  const winnerSleeperId = String(aWins ? m.roster_id_a : m.roster_id_b);
+  const loserSleeperId = String(aWins ? m.roster_id_b : m.roster_id_a);
+  const winner = activeBySleeperId.get(winnerSleeperId);
+  const loser = activeBySleeperId.get(loserSleeperId);
+  if (winner) champCounts[winner.abbr] = (champCounts[winner.abbr] || 0) + 1;
+  if (loser) runnerUpCounts[loser.abbr] = (runnerUpCounts[loser.abbr] || 0) + 1;
+}
+
+// Conference titles from seasons
+for (const s of seasonRows ?? []) {
+  for (const confAbbr of [s.scc_champion, s.hcc_champion]) {
+    if (!confAbbr) continue;
+    const sleeperId = sleeperIdByAbbr.get(confAbbr);
+    if (!sleeperId) continue;
+    const active = activeBySleeperId.get(sleeperId);
+    if (active) confTitleCounts[active.abbr] = (confTitleCounts[active.abbr] || 0) + 1;
   }
 }
 
-const sccFranchises = franchises.filter(f => f.conference === 'SCC')
-                                .sort((a, b) => a.abbr > b.abbr ? 1 : -1);
-const hccFranchises = franchises.filter(f => f.conference === 'HCC')
-                                .sort((a, b) => a.abbr > b.abbr ? 1 : -1);
+const sccFranchises = activeFranchises.filter(f => f.conf === 'SCC');
+const hccFranchises = activeFranchises.filter(f => f.conf === 'HCC');
 ---
 
 <Layout title="Franchises" description="All 14 franchises of the Sixth City Dynasty Football League.">
@@ -91,7 +135,7 @@ const hccFranchises = franchises.filter(f => f.conference === 'HCC')
                       const champs = champCounts[franchise.abbr] || 0;
                       const runnerUps = runnerUpCounts[franchise.abbr] || 0;
                       const confTitles = confTitleCounts[franchise.abbr] || 0;
-                      const confColor = franchise.conference === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
+                      const confColor = franchise.conf === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
                       if (champs + runnerUps + confTitles === 0) return null;
                       return (
                         <div style="display: flex; gap: 1px; flex-shrink: 0; justify-content: flex-end;">
@@ -163,7 +207,7 @@ const hccFranchises = franchises.filter(f => f.conference === 'HCC')
                       const champs = champCounts[franchise.abbr] || 0;
                       const runnerUps = runnerUpCounts[franchise.abbr] || 0;
                       const confTitles = confTitleCounts[franchise.abbr] || 0;
-                      const confColor = franchise.conference === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
+                      const confColor = franchise.conf === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
                       if (champs + runnerUps + confTitles === 0) return null;
                       return (
                         <div style="display: flex; gap: 1px; flex-shrink: 0; justify-content: flex-end;">

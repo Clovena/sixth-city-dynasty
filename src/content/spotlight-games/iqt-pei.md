@@ -1,0 +1,1 @@
+ The crown jewel of Rivalry Week: the league philanthropists and the men who want them destroyed. 

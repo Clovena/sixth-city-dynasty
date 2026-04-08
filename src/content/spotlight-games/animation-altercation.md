@@ -1,0 +1,1 @@
+ A clash of rivals rooted in animated fictional universes. Sarnia refers to a more obscure yet beloved moment in the world of Spongebob, while New New York overtly draws from Futurama's 31st-century world. The Bowl Game name is inspired by Fox's legendary 'Animation Domination' Sunday block, and the matchup itself gives two familiar foes a spotlight at the highest level. 

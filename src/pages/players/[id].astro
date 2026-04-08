@@ -1,0 +1,533 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { supabase } from '../../lib/supabase';
+import { ROSTER_SLOTS } from '../../lib/roster-slots';
+
+// ── Static paths: one page per rostered player ─────────────────────────────
+export async function getStaticPaths() {
+  const { supabase: sb } = await import('../../lib/supabase');
+  const { data: rows } = await sb.schema('scdfl').rpc('get_started_player_ids');
+
+  return (rows ?? []).map((r: { player_id: string }) => ({ params: { id: r.player_id } }));
+}
+
+const { id: pid } = Astro.params;
+
+// ── Player data from Supabase ───────────────────────────────────────────────
+const { data: playerRow, error: pErr } = await supabase
+  .schema('scdfl').from('v_players')
+  .select('player_id, first_name, last_name, position, fantasy_positions, team, status, age, years_exp, height, weight, college, espn_id')
+  .eq('player_id', pid)
+  .single();
+
+if (pErr || !playerRow) {
+  return Astro.redirect('/franchises');
+}
+
+const player = {
+  id: playerRow.player_id,
+  name: `${playerRow.first_name ?? ''} ${playerRow.last_name ?? ''}`.trim(),
+  position: playerRow.position ?? '—',
+  nflTeam: playerRow.team ?? '—',
+  age: playerRow.age,
+  yearsExp: playerRow.years_exp,
+  status: playerRow.status,
+  height: playerRow.height,
+  weight: playerRow.weight,
+  college: playerRow.college,
+  espnId: playerRow.espn_id,
+};
+
+// ── Dynasty team from Supabase (current roster snapshot) ────────────────────
+const { data: rosterRow } = await supabase
+  .schema('scdfl').from('rosters')
+  .select('sleeper_id')
+  .eq('player_id', pid)
+  .limit(1)
+  .single();
+
+let dynastyTeam: { abbr: string; name: string; color: string; conf: string } | null = null;
+
+if (rosterRow) {
+  const { data: franchise } = await supabase
+    .schema('scdfl').from('franchises')
+    .select('abbr, name, conf, colors')
+    .eq('sleeper_id', String(rosterRow.sleeper_id))
+    .is('to', null)
+    .single();
+
+  if (franchise) {
+    dynastyTeam = {
+      abbr: franchise.abbr,
+      name: franchise.name,
+      color: franchise.colors?.[0] ?? 'var(--color-border)',
+      conf: franchise.conf,
+    };
+  }
+}
+
+// ── Draft info from Supabase ───────────────────────────────────────────────
+let draftInfo: { year: number; pick: string; draftedByAbbr: string; draftedByActiveAbbr: string } | null = null;
+
+const { data: draftRow } = await supabase
+  .schema('scdfl').from('draft_results')
+  .select('draft_id, round, pick_no, roster_id')
+  .eq('player_id', pid)
+  .limit(1)
+  .single();
+
+if (draftRow) {
+  const { data: draftMeta } = await supabase
+    .schema('scdfl').from('drafts')
+    .select('year')
+    .eq('draft_id', draftRow.draft_id)
+    .single();
+
+  if (draftMeta) {
+    const { data: drafter } = await supabase
+      .schema('scdfl').from('franchises')
+      .select('abbr')
+      .eq('id', draftRow.roster_id)
+      .lte('from', draftMeta.year)
+      .or(`to.gte.${draftMeta.year},to.is.null`)
+      .single();
+
+    // Also fetch the current active abbr for linking
+    const { data: activeFranchise } = await supabase
+      .schema('scdfl').from('franchises')
+      .select('abbr')
+      .eq('id', draftRow.roster_id)
+      .is('to', null)
+      .single();
+
+    draftInfo = {
+      year: draftMeta.year,
+      pick: `${draftRow.round}.${String(draftRow.pick_no).padStart(2, '0')}`,
+      draftedByAbbr: drafter?.abbr ?? '—',
+      draftedByActiveAbbr: activeFranchise?.abbr ?? '—',
+    };
+  }
+}
+
+// ── Accolades & Medals from Supabase ───────────────────────────────────────
+const { data: medalRows } = await supabase
+  .schema('scdfl').from('v_medals')
+  .select('year, position')
+  .eq('player_id', pid);
+
+const { data: accoladeRows } = await supabase
+  .schema('scdfl').from('accolades')
+  .select('year, award_desc')
+  .eq('player_id', pid);
+
+const posColorMap = Object.fromEntries(
+  ROSTER_SLOTS.map(s => [s.position, s.colorVar])
+);
+// v_medals uses NFL positions (K), roster-slots uses fantasy positions (PK)
+posColorMap['K'] = posColorMap['PK'] ?? 'grey';
+
+const accolades = [
+  ...(medalRows ?? []).map((m: { year: number; position: string }) => ({
+    year: m.year,
+    label: `${m.position} Medalist`,
+    icon: '&#9650;',
+    color: `var(--color-${posColorMap[m.position] ?? 'white'})`,
+  })),
+  ...(accoladeRows ?? []).map((a: { year: number; award_desc: string }) => ({
+    year: a.year,
+    label: a.award_desc,
+    icon: '&#11042;',
+    color: 'var(--color-gold)',
+  })),
+].sort((a, b) => a.year - b.year);
+
+// ── Season stats from Supabase ─────────────────────────────────────────────
+const { data: statsRows } = await supabase
+  .schema('scdfl').from('v_player_season_stats')
+  .select('*')
+  .eq('player_id', pid)
+  .order('year', { ascending: true });
+
+const statsByYear = (statsRows ?? []).map(r => ({
+  year: r.year as number,
+  gs: r.games_started as number,
+  fpts: Number(r.fpts),
+  // passing
+  passAtt: r.pass_att as number,
+  passComp: r.pass_comp as number,
+  passYds: r.pass_yds as number,
+  passTds: r.pass_tds as number,
+  // rushing
+  rushAtt: r.rush_att as number,
+  rushYds: r.rush_yds as number,
+  rushTds: r.rush_tds as number,
+  // receiving
+  rec: r.receptions as number,
+  recYds: r.rec_yds as number,
+  recTds: r.rec_tds as number,
+  // kicking
+  fgAtt: r.fg_att as number,
+  fgMade: r.fg_made as number,
+  fgYds: r.fg_yds as number,
+  // IDP
+  soloTkl: r.solo_tkl as number,
+  asstTkl: r.asst_tkl as number,
+  tfl: Number(r.tfl),
+  qbHit: r.qb_hit as number,
+  passDefended: r.pass_defended as number,
+  sack: Number(r.sack),
+  interception: r.interception as number,
+  forcedFumble: r.forced_fumble as number,
+  fumbleRecovery: r.fumble_recovery as number,
+  idpTd: r.idp_td as number,
+}));
+
+// ── Position group for conditional column display ──────────────────────────
+type PosGroup = 'qb' | 'skill' | 'k' | 'idp';
+const posGroup: PosGroup = (['DL', 'LB', 'DB'].includes(player.position) ? 'idp'
+  : player.position === 'K' ? 'k'
+  : player.position === 'QB' ? 'qb'
+  : 'skill') as PosGroup;
+
+// ── Career totals ──────────────────────────────────────────────────────────
+const sum = (fn: (r: typeof statsByYear[0]) => number) => statsByYear.reduce((s, r) => s + fn(r), 0);
+const careerTotals = {
+  gs: sum(r => r.gs),
+  fpts: sum(r => r.fpts),
+  passAtt: sum(r => r.passAtt), passComp: sum(r => r.passComp),
+  passYds: sum(r => r.passYds), passTds: sum(r => r.passTds),
+  rushAtt: sum(r => r.rushAtt), rushYds: sum(r => r.rushYds), rushTds: sum(r => r.rushTds),
+  rec: sum(r => r.rec), recYds: sum(r => r.recYds), recTds: sum(r => r.recTds),
+  fgAtt: sum(r => r.fgAtt), fgMade: sum(r => r.fgMade), fgYds: sum(r => r.fgYds),
+  soloTkl: sum(r => r.soloTkl), asstTkl: sum(r => r.asstTkl), tfl: sum(r => r.tfl),
+  qbHit: sum(r => r.qbHit), passDefended: sum(r => r.passDefended), sack: sum(r => r.sack),
+  interception: sum(r => r.interception), forcedFumble: sum(r => r.forcedFumble),
+  fumbleRecovery: sum(r => r.fumbleRecovery), idpTd: sum(r => r.idpTd),
+};
+
+const headshotUrl = player.espnId
+  ? `https://a.espncdn.com/i/headshots/nfl/players/full/${player.espnId}.png`
+  : '/images/player-placeholder.png';
+---
+
+<Layout title={player.name} description={`Player profile for ${player.name} — SCDFL dynasty football.`}>
+
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+
+    <!-- Player hero band -->
+    <div class="player-hero" style={`border-left: 4px solid ${dynastyTeam?.color ?? 'var(--color-border)'}; border-bottom: 1px solid var(--color-border); padding: 3rem 0 2.5rem 2rem; margin-top: 3rem;`}>
+
+      <div class="player-hero-inner" style="display: flex; align-items: flex-start; gap: 2rem; flex-wrap: wrap;">
+        <!-- Headshot -->
+        <div style="flex-shrink: 0; width: 120px; height: 120px; border-radius: 50%; overflow: hidden; background-color: var(--color-surface); border: 2px solid var(--color-border);">
+          <img
+            src={headshotUrl}
+            alt={`${player.name} headshot`}
+            width="120"
+            height="120"
+            style="object-fit: cover; width: 100%; height: 100%;"
+            onerror="this.src='/images/player-placeholder.png';this.onerror=null;"
+          />
+        </div>
+
+        <!-- Name & meta -->
+        <div style="flex: 1; min-width: 260px;">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
+            <span style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted);">{player.position} &bull; {player.nflTeam}</span>
+          </div>
+          <h1 style="font-family: var(--font-display); font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 700; line-height: 1.1; color: var(--color-text-primary); margin: 0;">
+            {player.name}
+          </h1>
+
+          <!-- Dynasty team link -->
+          {dynastyTeam ? (
+            <div style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.6rem;">
+              <img
+                src={`/images/logos/${dynastyTeam.abbr}.png`}
+                alt={dynastyTeam.name}
+                width="24"
+                height="24"
+                style="object-fit: contain;"
+                onerror="this.style.display='none'"
+              />
+              <a href={`/franchises/${dynastyTeam.abbr}`} style="font-size: 0.85rem; font-weight: 600; color: var(--color-gold);">
+                {dynastyTeam.name}
+              </a>
+            </div>
+          ) : (
+            <p style="margin-top: 0.75rem; font-size: 0.8rem; color: var(--color-text-muted); font-style: italic;">Free Agent</p>
+          )}
+        </div>
+
+        <!-- Bio details -->
+        <div class="player-bio-grid" style="display: grid; grid-template-columns: repeat(3, auto); gap: 1.5rem 2rem; flex-shrink: 0; align-self: center;">
+          {player.college && (
+            <div>
+              <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">College</p>
+              <p style="font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{player.college}</p>
+            </div>
+          )}
+          <div>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Age</p>
+            <p style="font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{player.age ?? '—'}</p>
+          </div>
+          <div>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Experience</p>
+            <p style="font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{player.yearsExp != null ? `${player.yearsExp} yr${player.yearsExp !== 1 ? 's' : ''}` : '—'}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Accolades -->
+    {accolades.length > 0 && (
+      <div style="display: flex; align-items: center; gap: 1.5rem; padding: 0.75rem 0; border-bottom: 1px solid var(--color-border); margin-top: 1rem; flex-wrap: wrap;">
+        <p class="section-label" style="margin-bottom: 0;">Accolades</p>
+        <div style="display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;">
+          {accolades.map(a => (
+            <span style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--color-text-secondary);">
+              <span style={`font-size: 1rem; color: ${a.color};`} set:html={a.icon} />
+              <span>{a.year} {a.label}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    )}
+
+    <!-- Main content area -->
+    <div class="player-layout-grid" style="display: grid; grid-template-columns: 1fr 300px; gap: 3rem; margin-top: 3rem; align-items: start;">
+
+      <!-- Stats column -->
+      <div>
+        <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin-bottom: 1.25rem; color: var(--color-text-primary);">Season Stats</h2>
+
+        <div style="overflow-x: auto;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th style="text-align: center;">GS</th>
+                <th style="text-align: right;">FPTS</th>
+                {posGroup === 'qb' && (<>
+                  <th style="text-align: center;">Comp</th>
+                  <th style="text-align: center;">Att</th>
+                  <th style="text-align: right;">Pass Yds</th>
+                  <th style="text-align: center;">Pass TD</th>
+                  <th style="text-align: center;">Rush</th>
+                  <th style="text-align: right;">Rush Yds</th>
+                  <th style="text-align: center;">Rush TD</th>
+                </>)}
+                {posGroup === 'skill' && (<>
+                  <th style="text-align: center;">Rush</th>
+                  <th style="text-align: right;">Rush Yds</th>
+                  <th style="text-align: center;">Rush TD</th>
+                  <th style="text-align: center;">Rec</th>
+                  <th style="text-align: right;">Rec Yds</th>
+                  <th style="text-align: center;">Rec TD</th>
+                </>)}
+                {posGroup === 'k' && (<>
+                  <th style="text-align: center;">FG Att</th>
+                  <th style="text-align: center;">FG Made</th>
+                  <th style="text-align: right;">FG Yds</th>
+                </>)}
+                {posGroup === 'idp' && (<>
+                  <th style="text-align: center;">Solo</th>
+                  <th style="text-align: center;">Ast</th>
+                  <th style="text-align: right;">TFL</th>
+                  <th style="text-align: center;">QB Hit</th>
+                  <th style="text-align: center;">PD</th>
+                  <th style="text-align: right;">Sack</th>
+                  <th style="text-align: center;">INT</th>
+                  <th style="text-align: center;">FF</th>
+                  <th style="text-align: center;">FR</th>
+                  <th style="text-align: center;">TD</th>
+                </>)}
+              </tr>
+            </thead>
+            <tbody>
+              {statsByYear.map(row => (
+                <tr>
+                  <td style="font-weight: 600;">{row.year}</td>
+                  <td style="text-align: center;">{row.gs}</td>
+                  <td style="text-align: right; font-weight: 600; color: var(--color-gold);">{row.fpts.toFixed(2)}</td>
+                  {posGroup === 'qb' && (<>
+                    <td style="text-align: center;">{row.passComp}</td>
+                    <td style="text-align: center;">{row.passAtt}</td>
+                    <td style="text-align: right;">{row.passYds.toLocaleString()}</td>
+                    <td style="text-align: center;">{row.passTds}</td>
+                    <td style="text-align: center;">{row.rushAtt}</td>
+                    <td style="text-align: right;">{row.rushYds}</td>
+                    <td style="text-align: center;">{row.rushTds}</td>
+                  </>)}
+                  {posGroup === 'skill' && (<>
+                    <td style="text-align: center;">{row.rushAtt}</td>
+                    <td style="text-align: right;">{row.rushYds.toLocaleString()}</td>
+                    <td style="text-align: center;">{row.rushTds}</td>
+                    <td style="text-align: center;">{row.rec}</td>
+                    <td style="text-align: right;">{row.recYds.toLocaleString()}</td>
+                    <td style="text-align: center;">{row.recTds}</td>
+                  </>)}
+                  {posGroup === 'k' && (<>
+                    <td style="text-align: center;">{row.fgAtt}</td>
+                    <td style="text-align: center;">{row.fgMade}</td>
+                    <td style="text-align: right;">{row.fgYds}</td>
+                  </>)}
+                  {posGroup === 'idp' && (<>
+                    <td style="text-align: center;">{row.soloTkl}</td>
+                    <td style="text-align: center;">{row.asstTkl}</td>
+                    <td style="text-align: right;">{row.tfl}</td>
+                    <td style="text-align: center;">{row.qbHit}</td>
+                    <td style="text-align: center;">{row.passDefended}</td>
+                    <td style="text-align: right;">{row.sack}</td>
+                    <td style="text-align: center;">{row.interception}</td>
+                    <td style="text-align: center;">{row.forcedFumble}</td>
+                    <td style="text-align: center;">{row.fumbleRecovery}</td>
+                    <td style="text-align: center;">{row.idpTd}</td>
+                  </>)}
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td style="font-weight: 700; border-top: 2px solid var(--color-border);">Career</td>
+                <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.gs}</td>
+                <td style="text-align: right; font-weight: 700; color: var(--color-gold); border-top: 2px solid var(--color-border);">{careerTotals.fpts.toFixed(2)}</td>
+                {posGroup === 'qb' && (<>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passComp}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passAtt}</td>
+                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passYds.toLocaleString()}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passTds}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushAtt}</td>
+                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushYds}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushTds}</td>
+                </>)}
+                {posGroup === 'skill' && (<>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushAtt}</td>
+                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushYds.toLocaleString()}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushTds}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rec}</td>
+                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.recYds.toLocaleString()}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.recTds}</td>
+                </>)}
+                {posGroup === 'k' && (<>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fgAtt}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fgMade}</td>
+                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fgYds}</td>
+                </>)}
+                {posGroup === 'idp' && (<>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.soloTkl}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.asstTkl}</td>
+                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.tfl.toFixed(1)}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.qbHit}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passDefended}</td>
+                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.sack.toFixed(1)}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.interception}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.forcedFumble}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fumbleRecovery}</td>
+                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.idpTd}</td>
+                </>)}
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="player-sidebar">
+        <!-- Player info card -->
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem 1.5rem;">
+          <p class="section-label" style="margin-bottom: 0.75rem;">Player Info</p>
+          <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 0.75rem; color: var(--color-text-muted);">Position</span>
+              <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.position}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 0.75rem; color: var(--color-text-muted);">NFL Team</span>
+              <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.nflTeam}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline;">
+              <span style="font-size: 0.75rem; color: var(--color-text-muted);">Dynasty Team</span>
+              {dynastyTeam
+                ? <a href={`/franchises/${dynastyTeam.abbr}`} style="font-size: 0.85rem; font-weight: 600;">{dynastyTeam.abbr}</a>
+                : <span style="font-size: 0.85rem; color: var(--color-text-muted); font-style: italic;">None</span>
+              }
+            </div>
+            {player.college && (
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">College</span>
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.college}</span>
+              </div>
+            )}
+            {player.age != null && (
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Age</span>
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.age}</span>
+              </div>
+            )}
+            {player.yearsExp != null && (
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Experience</span>
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.yearsExp} yr{player.yearsExp !== 1 ? 's' : ''}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <!-- Dynasty draft card -->
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem 1.5rem; margin-top: 1rem;">
+          <p class="section-label" style="margin-bottom: 0.75rem;">Dynasty Draft</p>
+          {draftInfo ? (
+            <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Year</span>
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{draftInfo.year}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Pick</span>
+                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{draftInfo.pick}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: baseline;">
+                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Drafted By</span>
+                {draftInfo.draftedByAbbr !== '—'
+                  ? <a href={`/franchises/${draftInfo.draftedByActiveAbbr}`} style="font-size: 0.85rem; font-weight: 600;">{draftInfo.draftedByAbbr}</a>
+                  : <span style="font-size: 0.85rem; color: var(--color-text-muted);">—</span>
+                }
+              </div>
+            </div>
+          ) : (
+            <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">Undrafted</p>
+          )}
+        </div>
+
+        <!-- Transaction history card (placeholder) -->
+        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem 1.5rem; margin-top: 1rem;">
+          <p class="section-label" style="margin-bottom: 0.75rem;">Transaction History</p>
+          <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">Coming soon</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</Layout>
+
+<style>
+  @media (max-width: 768px) {
+    .player-layout-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .player-bio-grid {
+      grid-template-columns: repeat(2, auto) !important;
+    }
+
+    .player-hero-inner {
+      gap: 1.25rem !important;
+    }
+
+    .player-sidebar {
+      margin-top: 0;
+    }
+  }
+</style>

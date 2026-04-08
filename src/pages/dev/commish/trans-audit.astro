@@ -1,11 +1,47 @@
 ---
 import Layout from '../../../layouts/Layout.astro';
-import franchisesJson from '../../../data/franchises.json';
+import { supabase } from '../../../lib/supabase';
 
-// ── Load all transaction files at build time ───────────────────────────────
-const transactionGlob = import.meta.glob('/src/data/raw/*-transactions.json', { eager: true });
+// ── Fetch franchise data from Supabase ──────────────────────────────────────
+const { data: franchisesRows, error: franchisesError } = await supabase
+  .schema('scdfl')
+  .from('franchises')
+  .select('id, name, abbr')
+  .is('to', null)
+  .order('id');
 
-// Type: compact transaction record
+if (franchisesError) throw new Error(`Franchises query failed: ${franchisesError.message}`);
+
+// ── Fetch transaction data from Supabase (paginated) ────────────────────────
+type TxRow = {
+  transaction_id: string;
+  year: number;
+  week: number;
+  type: string;
+  status: string;
+  roster_id: number;
+};
+
+const PAGE_SIZE = 1000;
+const allTxRows: TxRow[] = [];
+let offset = 0;
+
+while (true) {
+  const { data: page, error } = await supabase
+    .schema('scdfl')
+    .from('transactions')
+    .select('transaction_id, year, week, type, status, roster_id')
+    .range(offset, offset + PAGE_SIZE - 1);
+
+  if (error) throw new Error(`Transactions query failed: ${error.message}`);
+  allTxRows.push(...page);
+  if (page.length < PAGE_SIZE) break;
+  offset += PAGE_SIZE;
+}
+
+// ── Group rows by transaction_id to reconstruct per-transaction records ─────
+// The Supabase table has one row per asset movement; the client JS expects one
+// record per transaction with a roster_ids array of all involved franchises.
 type TxRecord = {
   week: number;
   type: string;
@@ -13,32 +49,37 @@ type TxRecord = {
   roster_ids: number[];
 };
 
-// Build transactions by year: { [year]: TxRecord[] }
 type TxData = Record<string, TxRecord[]>;
 const txData: TxData = {};
 
-for (const [path, mod] of Object.entries(transactionGlob)) {
-  const m = path.match(/(\d{4})-transactions/);
-  if (!m) continue;
-  const year = m[1];
-  const raw = (mod as { default: Record<string, any[]> }).default;
+// First pass: group rows by transaction_id
+const txGroupMap = new Map<string, { year: number; week: number; type: string; status: string; rosterIds: Set<number> }>();
 
-  txData[year] = [];
-
-  // raw is keyed by week (as strings): { "1": [...], "2": [...], ... }
-  for (const [weekStr, txList] of Object.entries(raw)) {
-    if (!Array.isArray(txList)) continue;
-    const week = Number(weekStr);
-
-    for (const tx of txList) {
-      txData[year].push({
-        week,
-        type: tx.type,
-        status: tx.status,
-        roster_ids: tx.roster_ids || [],
-      });
-    }
+for (const row of allTxRows) {
+  const existing = txGroupMap.get(row.transaction_id);
+  if (existing) {
+    existing.rosterIds.add(row.roster_id);
+  } else {
+    txGroupMap.set(row.transaction_id, {
+      year: row.year,
+      week: row.week,
+      type: row.type,
+      status: row.status,
+      rosterIds: new Set([row.roster_id]),
+    });
   }
+}
+
+// Second pass: build txData keyed by year
+for (const group of txGroupMap.values()) {
+  const yearKey = String(group.year);
+  if (!txData[yearKey]) txData[yearKey] = [];
+  txData[yearKey].push({
+    week: group.week,
+    type: group.type,
+    status: group.status,
+    roster_ids: Array.from(group.rosterIds),
+  });
 }
 
 // ── Franchise lookup: id → { name, abbr } ──────────────────────────────────
@@ -49,7 +90,7 @@ type FranchiseEntry = {
 };
 const franchiseMap: Record<number, FranchiseEntry> = {};
 const franchiseList: FranchiseEntry[] = [];
-for (const f of franchisesJson) {
+for (const f of franchisesRows) {
   franchiseMap[f.id] = {
     id: f.id,
     name: f.name,

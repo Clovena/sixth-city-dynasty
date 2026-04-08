@@ -1,28 +1,80 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import seasons from '../data/seasons.json';
-import franchises from '../data/franchises.json';
+import { supabase } from '../lib/supabase';
 
-// Last 3 dynasty bowls, most recent first
-const recentBowls = seasons.slice().reverse().slice(0, 3);
+// ── Fetch all franchise identities (including historical) ─────────────────
+const { data: allFranchises, error: fErr } = await supabase
+  .schema('scdfl')
+  .from('franchises')
+  .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"');
 
-// Unique champions
+if (fErr || !allFranchises) throw new Error(`Franchises query failed: ${fErr?.message || 'No data returned'}`);
+
+const activeFranchises = allFranchises.filter(f => f.to === null);
+const activeBySleeperId = new Map(activeFranchises.map(f => [f.sleeper_id, f]));
+
+function franchiseForYear(sleeperId: string, yr: number) {
+  return activeFranchises.find(f =>
+    f.sleeper_id === sleeperId && f.from <= yr && (f.to === null || f.to >= yr)
+  );
+}
+
+// ── Fetch championship matchups (week 17, game_type = 1) ──────────────────
+const { data: champMatchups, error: cmErr } = await supabase
+  .schema('scdfl')
+  .from('matchups')
+  .select('year, roster_id_a, roster_id_b, score_a, score_b')
+  .eq('week', 17)
+  .eq('game_type', 1)
+  .order('year', { ascending: false });
+
+if (cmErr) throw new Error(`Championship matchups query failed: ${cmErr.message}`);
+
+// ── Roman numeral helper ──────────────────────────────────────────────────
+function toRoman(n: number): string {
+  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
+  const syms = ['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
+  let result = '';
+  for (let i = 0; i < vals.length; i++) {
+    while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
+  }
+  return result;
+}
+
+// ── Build recent dynasty bowls (last 3) ───────────────────────────────────
+type BowlDisplay = {
+  year: number;
+  label: string;
+  winner: typeof allFranchises[0] | undefined;
+  loser: typeof allFranchises[0] | undefined;
+};
+
+const recentBowls: BowlDisplay[] = [];
+for (const m of champMatchups.slice(0, 3)) {
+  const aWins = m.score_a > m.score_b;
+  const winnerSleeperId = String(aWins ? m.roster_id_a : m.roster_id_b);
+  const loserSleeperId = String(aWins ? m.roster_id_b : m.roster_id_a);
+  recentBowls.push({
+    year: m.year,
+    label: `Dynasty Bowl ${toRoman(m.year - 2020)}`,
+    winner: franchiseForYear(winnerSleeperId, m.year),
+    loser: franchiseForYear(loserSleeperId, m.year),
+  });
+}
+
+// ── Unique champions (attributed to current identity) ─────────────────────
 const champSet = new Set<string>();
-for (const s of seasons) {
-  const key = s.dynasty_bowl.winner === 'MTL' ? 'SAR' : s.dynasty_bowl.winner;
-  champSet.add(key);
+for (const m of champMatchups) {
+  const aWins = m.score_a > m.score_b;
+  const winnerSleeperId = String(aWins ? m.roster_id_a : m.roster_id_b);
+  const active = activeBySleeperId.get(winnerSleeperId);
+  if (active) champSet.add(active.abbr);
 }
 const totalChampions = champSet.size;
 
-const sccFranchises = franchises.filter(f => f.conference === 'SCC')
-                                .sort((a, b) => a.abbr > b.abbr ? 1 : -1);
-const hccFranchises = franchises.filter(f => f.conference === 'HCC')
-                                .sort((a, b) => a.abbr > b.abbr ? 1 : -1);
+// Total completed dynasty bowls
+const totalBowls = champMatchups.length;
 
-function getFranchise(abbr: string) {
-  if (abbr === 'MTL') return franchises.find(f => f.abbr === 'SAR');
-  return franchises.find(f => f.abbr === abbr);
-}
 ---
 
 <Layout title="SCDFL" description="Sixth City Dynasty Fantasy Football League. 14 franchises, 5 seasons, 4 champions. Est. 2021.">
@@ -50,7 +102,7 @@ function getFranchise(abbr: string) {
           { label: 'Franchises', value: '14' },
           { label: 'Seasons Completed', value: '5' },
           { label: 'Champions', value: String(totalChampions) },
-          { label: 'Dynasty Bowls', value: String(seasons.length) },
+          { label: 'Dynasty Bowls', value: String(totalBowls) },
         ].map((stat, i) => (
           <div style={`padding: 1.1rem 1.75rem; ${i !== 0 ? 'border-left: 1px solid var(--color-border);' : ''} background-color: var(--color-surface);`}>
             <p style="font-family: var(--font-display); font-size: 2rem; font-weight: 700; color: var(--color-text-primary); line-height: 1; margin: 0;">{stat.value}</p>
@@ -93,15 +145,15 @@ function getFranchise(abbr: string) {
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 1px; background-color: var(--color-border);">
-        {recentBowls.map(season => {
-          const winner = getFranchise(season.dynasty_bowl.winner);
-          const loser = getFranchise(season.dynasty_bowl.loser);
+        {recentBowls.map(bowl => {
+          const winner = bowl.winner;
+          const loser = bowl.loser;
           return (
             <div class="dynasty-bowl-row" style="background-color: var(--color-surface); padding: 1.5rem 1.75rem; display: grid; grid-template-columns: 80px 1fr 1fr; gap: 2rem; align-items: center;">
 
               <div>
-                <p style="font-family: var(--font-display); font-size: 1.75rem; font-weight: 700; color: var(--color-gold); line-height: 1; margin: 0;">{season.year}</p>
-                <p style="font-size: 0.7rem; color: var(--color-text-muted); margin: 0.2rem 0 0;">{season.dynasty_bowl.label}</p>
+                <p style="font-family: var(--font-display); font-size: 1.75rem; font-weight: 700; color: var(--color-gold); line-height: 1; margin: 0;">{bowl.year}</p>
+                <p style="font-size: 0.7rem; color: var(--color-text-muted); margin: 0.2rem 0 0;">{bowl.label}</p>
               </div>
 
               <div style={`border-left: 3px solid ${winner?.colors[0]}; padding-left: 1.25rem; display: flex; align-items: center; gap: 0.9rem;`}>

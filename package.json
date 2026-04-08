@@ -8,15 +8,30 @@
     "preview": "astro preview",
     "astro": "astro",
     "fetch": "tsx scripts/fetch-sleeper.ts",
-    "fetch-players": "tsx scripts/fetch-sleeper.ts --players"
+    "fetch-players": "tsx scripts/fetch-sleeper.ts --players",
+
+    "sync:results": "npx tsx scripts/lib/sync-results.ts",
+    "sync:matchups": "npx tsx scripts/lib/sync-matchups.ts",
+    "sync:rosters":  "npx tsx scripts/lib/sync-rosters.ts", 
+    "sync:transactions":  "npx tsx scripts/lib/sync-transactions.ts", 
+    "sync:drafts": "npx tsx scripts/lib/sync-drafts.ts",
+    "sync:exhibitions": "npx tsx scripts/lib/sync-exhibitions.ts",
+    "sync:stats": "npx tsx scripts/lib/sync-stats.ts",
+    "sync": "npm run sync:results && npm run sync:matchups && npm run sync:rosters && npm run sync:transactions && npm run sync:drafts && npm run sync:exhibitions && npm run sync:stats",
+    
+    "sync:players": "npx tsx scripts/lib/sync-players.ts",
+    "sync:pids": "npx tsx scripts/lib/sync-pids.ts",
+    "sync:player-meta": "npm run sync:players && npm run sync:pids"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.101.1",
     "@tailwindcss/vite": "^4.2.1",
     "astro": "^5.17.1",
     "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
     "@types/node": "^25.4.0",
+    "dotenv": "^17.4.0",
     "tsx": "^4.21.0"
   },
   "optionalDependencies": {

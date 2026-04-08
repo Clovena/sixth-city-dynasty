@@ -1,0 +1,1 @@
+ Two SCC welterweights who are desperate for glory. 

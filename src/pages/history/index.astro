@@ -1,43 +1,131 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import seasons from '../../data/seasons.json';
-import franchises from '../../data/franchises.json';
+import { supabase } from '../../lib/supabase';
 
-// Build championship record per franchise (accounting for MTL -> SAR)
+// ── Fetch seasons ──────────────────────────────────────────────────────────
+const { data: seasonRows, error: sErr } = await supabase
+  .schema('scdfl')
+  .from('seasons')
+  .select('year, scc_champion, hcc_champion')
+  .order('year');
+
+if (sErr) throw new Error(`Seasons query failed: ${sErr.message}`);
+
+// ── Fetch all franchise identities (including historical) ──────────────────
+const { data: allFranchises, error: fErr } = await supabase
+  .schema('scdfl')
+  .from('franchises')
+  .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"');
+
+if (fErr || !allFranchises) throw new Error(`Franchises query failed: ${fErr?.message || 'No data returned'}`);
+
+const franchises = allFranchises;
+const activeFranchises = franchises.filter(f => f.to === null);
+const activeBySleeperId = new Map(activeFranchises.map(f => [f.sleeper_id, f]));
+
+// Resolve franchise identity for a given year
+function franchiseForYear(sleeperId: string, yr: number) {
+  return franchises.find(f =>
+    f.sleeper_id === sleeperId && f.from <= yr && (f.to === null || f.to >= yr)
+  );
+}
+
+// Resolve franchise identity by abbr for a given year
+function franchiseByAbbrForYear(abbr: string, yr: number) {
+  return franchises.find(f =>
+    f.abbr === abbr && f.from <= yr && (f.to === null || f.to >= yr)
+  );
+}
+
+// ── Fetch championship matchups (week 17, game_type = 1) ───────────────────
+const { data: champMatchups, error: cmErr } = await supabase
+  .schema('scdfl')
+  .from('matchups')
+  .select('year, roster_id_a, roster_id_b, score_a, score_b')
+  .eq('week', 17)
+  .eq('game_type', 1);
+
+if (cmErr) throw new Error(`Championship matchups query failed: ${cmErr.message}`);
+
+// ── Roman numeral helper ───────────────────────────────────────────────────
+function toRoman(n: number): string {
+  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
+  const syms = ['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
+  let result = '';
+  for (let i = 0; i < vals.length; i++) {
+    while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
+  }
+  return result;
+}
+
+// ── Build per-season display data ──────────────────────────────────────────
+type FranchiseDisplay = { abbr: string; name: string; owner: string; conf: string };
+
+type SeasonDisplay = {
+  year: number;
+  dynasty_bowl_label: string;
+  scc: FranchiseDisplay | null;
+  hcc: FranchiseDisplay | null;
+  champion: FranchiseDisplay | null;
+  runnerUp: FranchiseDisplay | null;
+  championSleeperId: string | null;
+};
+
+const seasons: SeasonDisplay[] = [];
+
+for (const s of seasonRows) {
+  const champMatch = champMatchups.find(m => m.year === s.year);
+  // Skip seasons with no championship matchup (e.g. in-progress season)
+  if (!champMatch) continue;
+
+  const bowlNum = s.year - 2020;
+
+  // SCC/HCC champions — join by abbr for the year
+  const sccF = franchiseByAbbrForYear(s.scc_champion, s.year);
+  const hccF = franchiseByAbbrForYear(s.hcc_champion, s.year);
+
+  // Dynasty Bowl winner/loser from week 17 matchup scores
+  const aWins = champMatch.score_a > champMatch.score_b;
+  const winnerSleeperId = String(aWins ? champMatch.roster_id_a : champMatch.roster_id_b);
+  const loserSleeperId = String(aWins ? champMatch.roster_id_b : champMatch.roster_id_a);
+  const winnerF = franchiseForYear(winnerSleeperId, s.year);
+  const loserF = franchiseForYear(loserSleeperId, s.year);
+
+  const toDisplay = (f: typeof allFranchises[0] | undefined): FranchiseDisplay | null =>
+    f ? { abbr: f.abbr, name: f.name, owner: f.owner, conf: f.conf } : null;
+
+  seasons.push({
+    year: s.year,
+    dynasty_bowl_label: `Dynasty Bowl ${toRoman(bowlNum)}`,
+    scc: toDisplay(sccF),
+    hcc: toDisplay(hccF),
+    champion: toDisplay(winnerF),
+    runnerUp: toDisplay(loserF),
+    championSleeperId: winnerSleeperId,
+  });
+}
+
+// ── Build championship record per franchise (attributed to current identity) ─
 const championshipMap: Record<string, { count: number; years: number[] }> = {};
 
 for (const season of seasons) {
-  const winner = season.dynasty_bowl.winner;
-  // MTL is SAR's predecessor; attribute to SAR
-  const key = winner === 'MTL' ? 'SAR' : winner;
+  if (!season.championSleeperId) continue;
+  const active = activeBySleeperId.get(season.championSleeperId);
+  if (!active) continue;
+  const key = active.abbr;
   if (!championshipMap[key]) championshipMap[key] = { count: 0, years: [] };
   championshipMap[key].count++;
   championshipMap[key].years.push(season.year);
 }
 
-// Sort franchises by earliest championship year asc
-const rollOfHonor = franchises
+const rollOfHonor = activeFranchises
   .filter(f => championshipMap[f.abbr])
   .map(f => ({ ...f, ...championshipMap[f.abbr] }))
   .sort((a, b) => Math.min(...a.years) - Math.min(...b.years));
 
-// HCC/SCC counts
-const hccWins = seasons.filter(s => {
-  const w = s.dynasty_bowl.winner;
-  const winnerFranchise = franchises.find(f => f.abbr === w || (w === 'MTL' && f.abbr === 'SAR'));
-  return winnerFranchise?.conference === 'HCC';
-}).length;
-const sccWins = seasons.length - hccWins;
-
-// Helper to get franchise name from abbr (with MTL alias)
-function getFranchise(abbr: string) {
-  if (abbr === 'MTL') return franchises.find(f => f.abbr === 'SAR');
-  return franchises.find(f => f.abbr === abbr);
-}
-function getDisplayName(abbr: string) {
-  if (abbr === 'MTL') return 'MTL (SAR)';
-  return abbr;
-}
+// ── Conference win counts ──────────────────────────────────────────────────
+const hccWins = seasons.filter(s => s.champion?.conf === 'HCC').length;
+const sccWins = seasons.filter(s => s.champion?.conf === 'SCC').length;
 ---
 
 <Layout title="League History" description="Season-by-season history, dynasty bowl results, and franchise records for the Sixth City Dynasty Football League.">
@@ -90,47 +178,41 @@ function getDisplayName(abbr: string) {
             </tr>
           </thead>
           <tbody>
-            {seasons.slice().reverse().map(season => {
-              const sccFranchise = getFranchise(season.scc_champion);
-              const hccFranchise = getFranchise(season.hcc_champion);
-              const winnerFranchise = getFranchise(season.dynasty_bowl.winner);
-              const loserFranchise = getFranchise(season.dynasty_bowl.loser);
-              return (
-                <tr
-                  onclick={`window.location='/history/${season.year}'`}
-                  style="cursor: pointer;"
-                  class="history-row"
-                >
-                  <td style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-gold);">{season.year}</td>
-                  <td class="col-hide-mobile">
-                    <span style="color: var(--color-text-primary);">
-                      {getDisplayName(season.scc_champion)}
-                    </span>
-                    <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{sccFranchise?.name}</span>
-                  </td>
-                  <td class="col-hide-mobile">
-                    <span style="color: var(--color-text-primary);">
-                      {season.hcc_champion}
-                    </span>
-                    <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{hccFranchise?.name}</span>
-                  </td>
-                  <td class="col-hide-mobile" style="font-size: 0.85rem; color: var(--color-text-secondary);">{season.dynasty_bowl.label}</td>
-                  <td class="winner-cell">
-                    <span style="color: var(--color-gold);">
-                      {getDisplayName(season.dynasty_bowl.winner)}
-                    </span>
-                    <span style="display: block; font-size: 0.75rem; font-weight: 400; color: var(--color-gold-dim);">{winnerFranchise?.name}</span>
-                  </td>
-                  <td class="col-hide-mobile">
-                    <span style="color: var(--color-text-secondary);">
-                      {season.dynasty_bowl.loser}
-                    </span>
-                    <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{loserFranchise?.name}</span>
-                  </td>
-                  <td class="col-see-more">See more &#8594;</td>
-                </tr>
-              );
-            })}
+            {seasons.slice().reverse().map(season => (
+              <tr
+                onclick={`window.location='/history/${season.year}'`}
+                style="cursor: pointer;"
+                class="history-row"
+              >
+                <td style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-gold);">{season.year}</td>
+                <td class="col-hide-mobile">
+                  <span style="color: var(--color-text-primary);">
+                    {season.scc?.name}
+                  </span>
+                  <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{season.scc?.owner}</span>
+                </td>
+                <td class="col-hide-mobile">
+                  <span style="color: var(--color-text-primary);">
+                    {season.hcc?.name}
+                  </span>
+                  <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{season.hcc?.owner}</span>
+                </td>
+                <td class="col-hide-mobile" style="font-size: 0.85rem; color: var(--color-text-secondary);">{season.dynasty_bowl_label}</td>
+                <td class="winner-cell">
+                  <span style="color: var(--color-gold);">
+                    {season.champion?.name}
+                  </span>
+                  <span style="display: block; font-size: 0.75rem; font-weight: 400; color: var(--color-gold-dim);">{season.champion?.owner}</span>
+                </td>
+                <td class="col-hide-mobile">
+                  <span style="color: var(--color-text-secondary);">
+                    {season.runnerUp?.name}
+                  </span>
+                  <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{season.runnerUp?.owner}</span>
+                </td>
+                <td class="col-see-more">See more &#8594;</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
@@ -150,7 +232,12 @@ function getDisplayName(abbr: string) {
       </div>
     </div>
     <p style="font-size: 0.8rem; color: var(--color-text-muted); text-align: center; margin-top: 0.75rem;">
-      HCC leads the all-time Dynasty Bowl series {hccWins}–{sccWins}. TOR (2024) is the only SCC franchise to claim a championship.
+      {hccWins > sccWins
+        ? `HCC leads the all-time Dynasty Bowl series ${hccWins}–${sccWins}.`
+        : sccWins > hccWins
+        ? `SCC leads the all-time Dynasty Bowl series ${sccWins}–${hccWins}.`
+        : `The all-time Dynasty Bowl series is tied ${hccWins}–${sccWins}.`}
+      {' '}TOR (2024) is the only SCC franchise to claim a championship.
     </p>
 
     <!-- Roll of Honor -->
@@ -174,7 +261,7 @@ function getDisplayName(abbr: string) {
                 <a href={`/franchises/${franchise.abbr}`} style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-text-primary);">
                   {franchise.name}
                 </a>
-                <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{franchise.abbr} &bull; {franchise.owner} &bull; <span class={`label-badge badge-${franchise.conference.toLowerCase()}`}>{franchise.conference}</span></span>
+                <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{franchise.abbr} &bull; {franchise.owner} &bull; <span class={`label-badge badge-${franchise.conf.toLowerCase()}`}>{franchise.conf}</span></span>
               </div>
             </div>
             <div style="text-align: right;">

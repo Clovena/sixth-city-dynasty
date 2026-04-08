@@ -1,73 +1,127 @@
 ---
 import { getCollection } from 'astro:content';
 import Layout from '../layouts/Layout.astro';
-import config from '../data/config.json';
-import franchisesJson from '../data/franchises.json';
-import seasonsJson from '../data/seasons.json';
-import exhibitionsJson from '../data/raw/exhibitions.json';
+import { supabase } from '../lib/supabase';
 
-// ── Load all matchup files at build time ────────────────────────────────────
-const matchupGlob = import.meta.glob('/src/data/raw/*-matchups.json', { eager: true });
+// ── Fetch seasons ──────────────────────────────────────────────────────────
+const { data: seasonRows, error: sErr } = await supabase
+  .schema('scdfl')
+  .from('seasons')
+  .select('year')
+  .order('year');
 
-// Compact form: strip players/starters/player_points arrays — keep only what the UI needs
-type MatchupEntry = { roster_id: number; matchup_id: number; score: number };
-const matchupsData: Record<string, Record<string, MatchupEntry[]>> = {};
+if (sErr) throw new Error(`Seasons query failed: ${sErr.message}`);
 
-for (const [path, mod] of Object.entries(matchupGlob)) {
-  const m = path.match(/(\d{4})-matchups/);
-  if (!m) continue;
-  const year = m[1];
-  const raw = (mod as { default: Record<string, any[]> }).default;
-  const weeks: Record<string, MatchupEntry[]> = {};
-  for (const [week, entries] of Object.entries(raw)) {
-    weeks[week] = entries.map(e => ({
-      roster_id: e.roster_id,
-      matchup_id: e.matchup_id,
-      score: e.custom_points != null ? e.custom_points : e.points,
-    }));
-  }
-  matchupsData[year] = weeks;
-}
+// ── Fetch all franchise identities (including historical) ──────────────────
+const { data: allFranchises, error: fErr } = await supabase
+  .schema('scdfl')
+  .from('franchises')
+  .select('sleeper_id, abbr, name, conf, colors, "from", "to"');
 
-// ── Franchise lookup: roster_id (= f.id) → { name, abbr } ──────────────────
-type FranchiseEntry = {
-  name: string;
-  abbr: string;
-  founded: number;
-  predecessorAbbr: string | null;
-  rebrands: Array<{ year: number; name: string }>;
-};
-const franchiseMap: Record<number, FranchiseEntry> = {};
-for (const f of franchisesJson) {
-  franchiseMap[f.id] = {
-    name: f.name,
-    abbr: f.abbr,
-    founded: f.founded,
-    predecessorAbbr: ('predecessor_abbr' in f ? (f as any).predecessor_abbr : null) ?? null,
-    rebrands: (f.rebrands ?? []) as Array<{ year: number; name: string }>,
-  };
-}
+if (fErr || !allFranchises) throw new Error(`Franchises query failed: ${fErr?.message || 'No data returned'}`);
+
+// ── Fetch all matchups (compact: only fields needed for scores UI) ─────────
+const { data: matchupRows, error: mErr } = await supabase
+  .schema('scdfl')
+  .from('matchups')
+  .select('year, week, matchup_id, game_type, roster_id_a, roster_id_b, score_a, score_b')
+  .limit(1000);
+
+if (mErr) throw new Error(`Matchups query failed: ${mErr.message}`);
+
+// ── Fetch exhibitions with scores ──────────────────────────────────────────
+const { data: exhibRows, error: eErr } = await supabase
+  .schema('scdfl')
+  .from('exhibitions')
+  .select('id, year, week, team_a_slug, team_a_display_name, team_a_members, team_b_slug, team_b_display_name, team_b_members, exhibition_matchups(score_a, score_b)');
+
+if (eErr) throw new Error(`Exhibitions query failed: ${eErr.message}`);
 
 // ── Recap slug set: "year/slug" keys for matchups that have recap content ────
 const allRecaps = await getCollection('recaps');
 const recapSlugsArr: string[] = allRecaps.map(r => r.id); // e.g. "2024/04-bkb-tor"
 
-// ── Dynasty Bowl lookup: year → { winner, loser, label } ────────────────────
+// ── Build franchise identity map for client: sleeper_id → array of identities
+type FranchiseIdentity = {
+  abbr: string;
+  name: string;
+  from: number;
+  to: number | null;
+};
+const franchiseIdentities: Record<string, FranchiseIdentity[]> = {};
+for (const f of allFranchises) {
+  const key = f.sleeper_id;
+  if (!franchiseIdentities[key]) franchiseIdentities[key] = [];
+  franchiseIdentities[key].push({
+    abbr: f.abbr,
+    name: f.name,
+    from: f.from,
+    to: f.to,
+  });
+}
+
+// ── Build matchups data for client: { year: { week: [matchup, ...] } } ─────
+type ClientMatchup = {
+  matchup_id: number;
+  game_type: number;
+  roster_id_a: number;
+  roster_id_b: number;
+  score_a: number;
+  score_b: number;
+};
+const matchupsData: Record<string, Record<string, ClientMatchup[]>> = {};
+for (const m of matchupRows ?? []) {
+  const yr = String(m.year);
+  const wk = String(m.week);
+  if (!matchupsData[yr]) matchupsData[yr] = {};
+  if (!matchupsData[yr][wk]) matchupsData[yr][wk] = [];
+  matchupsData[yr][wk].push({
+    matchup_id: m.matchup_id,
+    game_type: m.game_type,
+    roster_id_a: m.roster_id_a,
+    roster_id_b: m.roster_id_b,
+    score_a: m.score_a ?? 0,
+    score_b: m.score_b ?? 0,
+  });
+}
+
+// ── Dynasty Bowl lookup: derived from week 17 game_type=1 matchups ──────────
+function toRoman(n: number): string {
+  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
+  const syms = ['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
+  let result = '';
+  for (let i = 0; i < vals.length; i++) {
+    while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
+  }
+  return result;
+}
+
 const dynastyBowls: Record<string, { winner: string; loser: string; label: string }> = {};
-for (const s of seasonsJson) {
-  dynastyBowls[String(s.year)] = {
-    winner: s.dynasty_bowl.winner,
-    loser: s.dynasty_bowl.loser,
-    label: s.dynasty_bowl.label,
+for (const m of matchupRows ?? []) {
+  if (m.week !== 17 || m.game_type !== 1) continue;
+  const aWins = m.score_a > m.score_b;
+  const winnerSleeperId = String(aWins ? m.roster_id_a : m.roster_id_b);
+  const loserSleeperId = String(aWins ? m.roster_id_b : m.roster_id_a);
+  // Find franchise abbr for the championship year
+  const winnerIdentity = franchiseIdentities[winnerSleeperId]?.find(
+    f => f.from <= m.year && (f.to === null || f.to >= m.year)
+  );
+  const loserIdentity = franchiseIdentities[loserSleeperId]?.find(
+    f => f.from <= m.year && (f.to === null || f.to >= m.year)
+  );
+  dynastyBowls[String(m.year)] = {
+    winner: winnerIdentity?.abbr ?? '',
+    loser: loserIdentity?.abbr ?? '',
+    label: `Dynasty Bowl ${toRoman(m.year - 2020)}`,
   };
 }
 
-// ── Determine default season (latest year with data) ────────────────────────
-const sortedSeasons = [...config.seasons].sort((a, b) => b.year - a.year);
+// ── Determine seasons list (descending) ─────────────────────────────────────
+const sortedSeasons = (seasonRows ?? []).map(s => s.year).sort((a: number, b: number) => b - a);
 
 const defaultSeasonYear = sortedSeasons
-  .find(s => Object.keys(matchupsData[String(s.year)] ?? {}).length > 0)
-  ?.year ?? sortedSeasons[0].year;
+  .find((yr: number) => Object.keys(matchupsData[String(yr)] ?? {}).length > 0)
+  ?? sortedSeasons[0];
 
 // ── Determine default week (max numeric week in default season) ──────────────
 const defaultWeekNum = Math.max(
@@ -86,17 +140,22 @@ type ExhibEntry = {
   membersA: string[];
   membersB: string[];
 };
-const exhibitionsData: ExhibEntry[] = (exhibitionsJson as any[]).map((e: any) => ({
-  year: e.year,
-  week: e.week,
-  slug: e.slug,
-  displayNameA: e.team_a.display_name,
-  displayNameB: e.team_b.display_name,
-  scoreA: e.team_a.score,
-  scoreB: e.team_b.score,
-  membersA: e.team_a.members,
-  membersB: e.team_b.members,
-}));
+const exhibitionsData: ExhibEntry[] = (exhibRows ?? []).map((e: any) => {
+  const scores = e.exhibition_matchups?.[0] ?? { score_a: 0, score_b: 0 };
+  const [slugA, slugB] = [e.team_a_slug.toLowerCase(), e.team_b_slug.toLowerCase()].sort();
+  const weekPad = String(e.week).padStart(2, '0');
+  return {
+    year: e.year,
+    week: e.week,
+    slug: `${weekPad}-${slugA}-${slugB}`,
+    displayNameA: e.team_a_display_name,
+    displayNameB: e.team_b_display_name,
+    scoreA: scores.score_a ?? 0,
+    scoreB: scores.score_b ?? 0,
+    membersA: e.team_a_members,
+    membersB: e.team_b_members,
+  };
+});
 ---
 
 <Layout title="Scores" description="Week-by-week matchup scores for every season of the Sixth City Dynasty Football League.">
@@ -118,13 +177,13 @@ const exhibitionsData: ExhibEntry[] = (exhibitionsJson as any[]).map((e: any) =>
       <div style="display: flex; flex-direction: column; gap: 0.4rem;">
         <label for="season-select" style="font-family: var(--font-body); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted);">Season</label>
         <select id="season-select" style="font-family: var(--font-body); font-size: 0.9rem; color: var(--color-text-primary); background-color: var(--color-surface); border: 1px solid var(--color-border); border-radius: 4px; padding: 0.5rem 2rem 0.5rem 0.75rem; appearance: none; -webkit-appearance: none; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22 viewBox=%220 0 10 6%22><path d=%22M0 0l5 6 5-6z%22 fill=%22%23888%22/></svg>'); background-repeat: no-repeat; background-position: right 0.6rem center; cursor: pointer; min-width: 140px;">
-          {sortedSeasons.map(s => (
+          {sortedSeasons.map((yr: number) => (
             <option
-              value={s.year}
-              selected={s.year === defaultSeasonYear}
-              disabled={Object.keys(matchupsData[String(s.year)] ?? {}).length === 0}
+              value={yr}
+              selected={yr === defaultSeasonYear}
+              disabled={Object.keys(matchupsData[String(yr)] ?? {}).length === 0}
             >
-              {s.year} Season{Object.keys(matchupsData[String(s.year)] ?? {}).length === 0 ? ' (no data)' : ''}
+              {yr} Season{Object.keys(matchupsData[String(yr)] ?? {}).length === 0 ? ' (no data)' : ''}
             </option>
           ))}
         </select>
@@ -265,7 +324,7 @@ const exhibitionsData: ExhibEntry[] = (exhibitionsJson as any[]).map((e: any) =>
   }
 </style>
 
-<script define:vars={{ matchupsData, franchiseMap, dynastyBowls, recapSlugsArr, defaultSeasonYear, defaultWeekNum, exhibitionsData }}>
+<script define:vars={{ matchupsData, franchiseIdentities, dynastyBowls, recapSlugsArr, defaultSeasonYear, defaultWeekNum, exhibitionsData, sortedSeasons }}>
   const seasonSelect = document.getElementById('season-select');
   const weekSelect = document.getElementById('week-select');
   const grid = document.getElementById('scores-grid');
@@ -276,6 +335,14 @@ const exhibitionsData: ExhibEntry[] = (exhibitionsJson as any[]).map((e: any) =>
     const pad = String(week).padStart(2, '0');
     const [t1, t2] = [abbrA.toLowerCase(), abbrB.toLowerCase()].sort();
     return `${pad}-${t1}-${t2}`;
+  }
+
+  // ── Franchise identity lookup for a given year ──────────────────────────
+  function getFranchise(sleeperId, year) {
+    const identities = franchiseIdentities[String(sleeperId)];
+    if (!identities) return { abbr: 'UNKNOWN', name: `Roster ${sleeperId}` };
+    return identities.find(f => f.from <= year && (f.to === null || f.to >= year))
+      ?? identities[identities.length - 1]; // fallback to latest identity
   }
 
   // ── Populate week dropdown for a given season ────────────────────────────
@@ -332,55 +399,43 @@ const exhibitionsData: ExhibEntry[] = (exhibitionsJson as any[]).map((e: any) =>
       <p class="section-label" style="margin-bottom:0.5rem;">Regular Season</p>`;
     }
 
-    // Standard matchups
-    const entries = matchupsData[String(year)]?.[String(week)] ?? [];
+    // Standard matchups — each row is already one game (both teams)
+    const matchups = matchupsData[String(year)]?.[String(week)] ?? [];
 
-    if (entries.length === 0 && yearExhibs.length === 0) {
+    if (matchups.length === 0 && yearExhibs.length === 0) {
       grid.innerHTML = '<p class="no-data">No data available for this selection.</p>';
       return;
     }
 
-    // Group by matchup_id — skip null/0 entries (bye teams in playoff weeks)
-    const grouped = {};
-    for (const entry of entries) {
-      if (!entry.matchup_id) continue;
-      if (!grouped[entry.matchup_id]) grouped[entry.matchup_id] = [];
-      grouped[entry.matchup_id].push(entry);
-    }
-
-    const matchupIds = Object.keys(grouped)
-      .map(Number)
-      .filter(n => n > 0 && !isNaN(n))
-      .sort((a, b) => a - b);
+    // Filter out invalid matchup_ids and sort
+    const validMatchups = matchups
+      .filter(m => m.matchup_id && m.matchup_id > 0)
+      .sort((a, b) => a.matchup_id - b.matchup_id);
 
     html += '<div class="matchups-grid">';
-    for (const mid of matchupIds) {
-      const [teamA, teamB] = grouped[mid];
-      if (!teamA || !teamB) continue;
+    for (const m of validMatchups) {
+      const fA = getFranchise(m.roster_id_a, year);
+      const fB = getFranchise(m.roster_id_b, year);
 
-      const scoreA = teamA.score;
-      const scoreB = teamB.score;
-      const aWins = scoreA > scoreB;
-      const bWins = scoreB > scoreA;
-
-      const fA = franchiseMap[teamA.roster_id] ?? { name: `Roster ${teamA.roster_id}`, abbr: 'UNKNOWN', founded: 2021, predecessorAbbr: null, rebrands: [] };
-      const fB = franchiseMap[teamB.roster_id] ?? { name: `Roster ${teamB.roster_id}`, abbr: 'UNKNOWN', founded: 2021, predecessorAbbr: null, rebrands: [] };
+      const aWins = m.score_a > m.score_b;
+      const bWins = m.score_b > m.score_a;
 
       // Check for Dynasty Bowl banner (Week 17 only)
       let banner = '';
       if (week === 17) {
         const db = dynastyBowls[String(year)];
         if (db) {
-          const abbrA = getEffectiveAbbr(fA, year);
-          const abbrB = getEffectiveAbbr(fB, year);
-          if ((abbrA === db.winner || abbrA === db.loser) &&
-              (abbrB === db.winner || abbrB === db.loser)) {
+          if ((fA.abbr === db.winner || fA.abbr === db.loser) &&
+              (fB.abbr === db.winner || fB.abbr === db.loser)) {
             banner = `<div class="dynasty-bowl-banner">${db.label}</div>`;
           }
         }
       }
 
-      const slug = makeSlug(week, fA.abbr, fB.abbr);
+      // Slug uses effective abbrs for URL — look up identity for given year
+      const activeA = getFranchise(m.roster_id_a, year);
+      const activeB = getFranchise(m.roster_id_b, year);
+      const slug = makeSlug(week, activeA.abbr, activeB.abbr);
       const gameUrl = `/games/${year}/${slug}`;
       const hasRecap = recapSlugs.has(`${year}/${slug}`);
 
@@ -389,8 +444,8 @@ const exhibitionsData: ExhibEntry[] = (exhibitionsJson as any[]).map((e: any) =>
           ${banner}
           <div class="matchup-body">
             <div class="matchup-teams">
-              ${teamRow(fA, scoreA, aWins, bWins, year)}
-              ${teamRow(fB, scoreB, bWins, aWins, year)}
+              ${teamRow(fA, m.score_a, aWins, bWins)}
+              ${teamRow(fB, m.score_b, bWins, aWins)}
             </div>
             ${hasRecap ? `<div class="recap-btn">Recap&nbsp;→</div>` : ''}
           </div>
@@ -401,32 +456,16 @@ const exhibitionsData: ExhibEntry[] = (exhibitionsJson as any[]).map((e: any) =>
     grid.innerHTML = html;
   }
 
-  function getEffectiveAbbr(franchise, year) {
-    if (franchise.founded !== 2021 && year < franchise.founded) {
-      return franchise.predecessorAbbr ?? franchise.abbr;
-    }
-    return franchise.abbr;
-  }
-
-  function teamRow(franchise, score, isWinner, isLoser, year) {
+  function teamRow(franchise, score, isWinner, isLoser) {
     const cls = isWinner ? 'winner' : isLoser ? 'loser' : 'tied';
-
-    // Adopted teams (founded != 2021) use predecessor identity in pre-adoption seasons
-    let name = franchise.name;
-    let logoAbbr = franchise.abbr;
-    if (franchise.founded !== 2021 && year < franchise.founded) {
-      const rebrand = franchise.rebrands.find(r => r.year === year);
-      if (rebrand) name = rebrand.name;
-      if (franchise.predecessorAbbr) logoAbbr = franchise.predecessorAbbr;
-    }
 
     return `
       <div class="team-row ${cls}">
         <img class="team-logo"
-             src="/images/logos/${logoAbbr}.png"
-             alt="${name}"
+             src="/images/logos/${franchise.abbr}.png"
+             alt="${franchise.name}"
              onerror="this.style.display='none'" />
-        <span class="team-name">${name}</span>
+        <span class="team-name">${franchise.name}</span>
         <span class="team-score">${score.toFixed(2)}</span>
       </div>`;
   }

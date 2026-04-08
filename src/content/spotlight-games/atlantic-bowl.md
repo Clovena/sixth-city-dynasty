@@ -1,0 +1,2 @@
+ A long-standing feud set against the backdrop of the Atlantic. The Blowers and Islanders represent provinces separated by the frigid water and wind-swept coasts of the St Lawrence Gulf. PEI has been a consistent HCC presence; NFD has had their ups and downs but are always a thrill to follow. The Atlantic Bowl returns for another year of maritime bragging rights. 
+ 

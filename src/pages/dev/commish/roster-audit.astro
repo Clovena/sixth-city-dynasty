@@ -1,37 +1,44 @@
 ---
 import Layout from '../../../layouts/Layout.astro';
-import franchisesJson from '../../../data/franchises.json';
+import { supabase } from '../../../lib/supabase';
 
-// ── Load all matchup files at build time ────────────────────────────────────
-const matchupGlob = import.meta.glob('/src/data/raw/*-matchups.json', { eager: true });
+// ── Fetch franchise data from Supabase ──────────────────────────────────────
+const { data: franchisesRows, error: franchisesError } = await supabase
+  .schema('scdfl')
+  .from('franchises')
+  .select('id, name, abbr')
+  .is('to', null)
+  .order('id');
 
+if (franchisesError) throw new Error(`Franchises query failed: ${franchisesError.message}`);
+
+// ── Fetch matchup data from Supabase ────────────────────────────────────────
+const { data: matchupRows, error: matchupsError } = await supabase
+  .schema('scdfl')
+  .from('matchups')
+  .select('year, week, matchup_id, roster_id_a, roster_id_b, starters_a, starters_b')
+  .not('matchup_id', 'is', null)
+  .order('year')
+  .order('week')
+  .limit(5000);
+
+if (matchupsError) throw new Error(`Matchups query failed: ${matchupsError.message}`);
+
+// ── Build compact starters structure ────────────────────────────────────────
 // Type: { [year]: { [week]: { [roster_id]: string[] } } }
-// Compact form: only starters arrays, keyed by roster_id per week
 type StartersData = Record<string, Record<string, Record<number, string[]>>>;
 const startersData: StartersData = {};
 
-// Build the compact starters structure
-for (const [path, mod] of Object.entries(matchupGlob)) {
-  const m = path.match(/(\d{4})-matchups/);
-  if (!m) continue;
-  const year = m[1];
-  const raw = (mod as { default: Record<string, any[]> }).default;
+for (const row of matchupRows) {
+  const year = String(row.year);
+  const week = String(row.week);
 
-  if (!startersData[year]) {
-    startersData[year] = {};
-  }
+  if (!startersData[year]) startersData[year] = {};
+  if (!startersData[year][week]) startersData[year][week] = {};
 
-  for (const [week, entries] of Object.entries(raw)) {
-    if (!Array.isArray(entries)) continue;
-    startersData[year][week] = {};
-
-    for (const entry of entries) {
-      // Skip bye entries (null matchup_id) — no meaningful starters to audit
-      if (!entry.matchup_id) continue;
-
-      startersData[year][week][entry.roster_id] = entry.starters || [];
-    }
-  }
+  // Each matchup row contains both teams — unpack into per-roster entries
+  startersData[year][week][row.roster_id_a] = row.starters_a || [];
+  startersData[year][week][row.roster_id_b] = row.starters_b || [];
 }
 
 // ── Franchise lookup: roster_id → { name, abbr } ──────────────────────────
@@ -42,7 +49,7 @@ type FranchiseEntry = {
 };
 const franchiseMap: Record<number, FranchiseEntry> = {};
 const franchiseList: FranchiseEntry[] = [];
-for (const f of franchisesJson) {
+for (const f of franchisesRows) {
   franchiseMap[f.id] = {
     id: f.id,
     name: f.name,
