@@ -5,13 +5,9 @@ import { supabase } from '../../lib/supabase';
 // ── Static paths: one page per rostered player ─────────────────────────────
 export async function getStaticPaths() {
   const { supabase: sb } = await import('../../lib/supabase');
-  const { data: rows } = await sb.schema('scdfl').from('v_player_season_stats')
-    .select('player_id')
-    .limit(10000);
+  const { data: rows } = await sb.schema('scdfl').rpc('get_started_player_ids');
 
-  // Deduplicate by creating a Set, then map back to params
-  const uniqueIds = [...new Set((rows ?? []).map(r => r.player_id))];
-  return uniqueIds.map(id => ({ params: { id } }));
+  return (rows ?? []).map((r: { player_id: string }) => ({ params: { id: r.player_id } }));
 }
 
 const { id: pid } = Astro.params;
