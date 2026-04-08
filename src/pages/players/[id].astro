@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
+import { ROSTER_SLOTS } from '../../lib/roster-slots';
 
 // ── Static paths: one page per rostered player ─────────────────────────────
 export async function getStaticPaths() {
@@ -108,8 +109,37 @@ if (draftRow) {
   }
 }
 
-// ── Accolades (placeholder — to be replaced with real data later) ───────────
-const accolades: { year: number; label: string; icon: string; color: string }[] = [];
+// ── Accolades & Medals from Supabase ───────────────────────────────────────
+const { data: medalRows } = await supabase
+  .schema('scdfl').from('v_medals')
+  .select('year, position')
+  .eq('player_id', pid);
+
+const { data: accoladeRows } = await supabase
+  .schema('scdfl').from('accolades')
+  .select('year, award_desc')
+  .eq('player_id', pid);
+
+const posColorMap = Object.fromEntries(
+  ROSTER_SLOTS.map(s => [s.position, s.colorVar])
+);
+// v_medals uses NFL positions (K), roster-slots uses fantasy positions (PK)
+posColorMap['K'] = posColorMap['PK'] ?? 'grey';
+
+const accolades = [
+  ...(medalRows ?? []).map((m: { year: number; position: string }) => ({
+    year: m.year,
+    label: `${m.position} Medalist`,
+    icon: '&#9650;',
+    color: `var(--color-${posColorMap[m.position] ?? 'white'})`,
+  })),
+  ...(accoladeRows ?? []).map((a: { year: number; award_desc: string }) => ({
+    year: a.year,
+    label: a.award_desc,
+    icon: '&#11042;',
+    color: 'var(--color-gold)',
+  })),
+].sort((a, b) => a.year - b.year);
 
 // ── Season stats from Supabase ─────────────────────────────────────────────
 const { data: statsRows } = await supabase
@@ -319,7 +349,7 @@ const headshotUrl = player.espnId
                 <tr>
                   <td style="font-weight: 600;">{row.year}</td>
                   <td style="text-align: center;">{row.gs}</td>
-                  <td style="text-align: right; font-weight: 600; color: var(--color-gold);">{row.fpts.toFixed(1)}</td>
+                  <td style="text-align: right; font-weight: 600; color: var(--color-gold);">{row.fpts.toFixed(2)}</td>
                   {posGroup === 'qb' && (<>
                     <td style="text-align: center;">{row.passComp}</td>
                     <td style="text-align: center;">{row.passAtt}</td>
@@ -361,7 +391,7 @@ const headshotUrl = player.espnId
               <tr>
                 <td style="font-weight: 700; border-top: 2px solid var(--color-border);">Career</td>
                 <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.gs}</td>
-                <td style="text-align: right; font-weight: 700; color: var(--color-gold); border-top: 2px solid var(--color-border);">{careerTotals.fpts.toFixed(1)}</td>
+                <td style="text-align: right; font-weight: 700; color: var(--color-gold); border-top: 2px solid var(--color-border);">{careerTotals.fpts.toFixed(2)}</td>
                 {posGroup === 'qb' && (<>
                   <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passComp}</td>
                   <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passAtt}</td>
@@ -409,10 +439,6 @@ const headshotUrl = player.espnId
           <p class="section-label" style="margin-bottom: 0.75rem;">Player Info</p>
           <div style="display: flex; flex-direction: column; gap: 0.6rem;">
             <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <span style="font-size: 0.75rem; color: var(--color-text-muted);">Sleeper ID</span>
-              <span style="font-size: 0.85rem; color: var(--color-text-secondary); font-family: monospace;">{player.id}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
               <span style="font-size: 0.75rem; color: var(--color-text-muted);">Position</span>
               <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.position}</span>
             </div>
@@ -443,18 +469,6 @@ const headshotUrl = player.espnId
               <div style="display: flex; justify-content: space-between; align-items: baseline;">
                 <span style="font-size: 0.75rem; color: var(--color-text-muted);">Experience</span>
                 <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.yearsExp} yr{player.yearsExp !== 1 ? 's' : ''}</span>
-              </div>
-            )}
-            {player.height && (
-              <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Height</span>
-                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.height}</span>
-              </div>
-            )}
-            {player.weight && (
-              <div style="display: flex; justify-content: space-between; align-items: baseline;">
-                <span style="font-size: 0.75rem; color: var(--color-text-muted);">Weight</span>
-                <span style="font-size: 0.85rem; color: var(--color-text-secondary);">{player.weight} lbs</span>
               </div>
             )}
           </div>
