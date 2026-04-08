@@ -1,6 +1,7 @@
 # SCDFL Site — Task Board
 
 ## TODO
+1. If player undrafted, replace with first waiver claim / FA add 
 1. More content 
     - Game recaps
     - Better rivalry blurbs
@@ -9,7 +10,6 @@
     - Color refactoring to surface and glow
     - Season recap brackets on mobile
     - Franchises arranged as 2-3-2 on desktop, not 3-3-1
-    - Transaction explorer mobile layout
 
 ## Dev
 - Consolation bracket
@@ -52,3 +52,5 @@
 - Supabase migration
 - Remove various locations of hardcoding logic to convert between SAR and MTL
 - Player profile pages, a la pro-football-reference
+- Mobile display for player pages
+- Replace accolades key on franchise pages with actual accolades mimicking player pages

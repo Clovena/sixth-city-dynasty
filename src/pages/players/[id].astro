@@ -212,7 +212,7 @@ const headshotUrl = player.espnId
 
 <Layout title={player.name} description={`Player profile for ${player.name} — SCDFL dynasty football.`}>
 
-  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+  <div class="player-page-wrap" style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
 
     <!-- Player hero band -->
     <div class="player-hero" style={`border-left: 4px solid ${dynastyTeam?.color ?? 'var(--color-border)'}; border-bottom: 1px solid var(--color-border); padding: 3rem 0 2.5rem 2rem; margin-top: 3rem;`}>
@@ -301,7 +301,7 @@ const headshotUrl = player.espnId
       <div>
         <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin-bottom: 1.25rem; color: var(--color-text-primary);">Season Stats</h2>
 
-        <div style="overflow-x: auto;">
+        <div class="stats-table-wrap" style="overflow-x: auto;">
           <table class="data-table">
             <thead>
               <tr>
@@ -309,38 +309,38 @@ const headshotUrl = player.espnId
                 <th style="text-align: center;">GS</th>
                 <th style="text-align: right;">FPTS</th>
                 {posGroup === 'qb' && (<>
-                  <th style="text-align: center;">Comp</th>
-                  <th style="text-align: center;">Att</th>
-                  <th style="text-align: right;">Pass Yds</th>
-                  <th style="text-align: center;">Pass TD</th>
-                  <th style="text-align: center;">Rush</th>
-                  <th style="text-align: right;">Rush Yds</th>
-                  <th style="text-align: center;">Rush TD</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Comp</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Att</th>
+                  <th class="col-hide-mobile" style="text-align: right;">Pass Yds</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Pass TD</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Rush</th>
+                  <th class="col-hide-mobile" style="text-align: right;">Rush Yds</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Rush TD</th>
                 </>)}
                 {posGroup === 'skill' && (<>
-                  <th style="text-align: center;">Rush</th>
-                  <th style="text-align: right;">Rush Yds</th>
-                  <th style="text-align: center;">Rush TD</th>
-                  <th style="text-align: center;">Rec</th>
-                  <th style="text-align: right;">Rec Yds</th>
-                  <th style="text-align: center;">Rec TD</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Rush</th>
+                  <th class="col-hide-mobile" style="text-align: right;">Rush Yds</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Rush TD</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Rec</th>
+                  <th class="col-hide-mobile" style="text-align: right;">Rec Yds</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Rec TD</th>
                 </>)}
                 {posGroup === 'k' && (<>
-                  <th style="text-align: center;">FG Att</th>
-                  <th style="text-align: center;">FG Made</th>
-                  <th style="text-align: right;">FG Yds</th>
+                  <th class="col-hide-mobile" style="text-align: center;">FG Att</th>
+                  <th class="col-hide-mobile" style="text-align: center;">FG Made</th>
+                  <th class="col-hide-mobile" style="text-align: right;">FG Yds</th>
                 </>)}
                 {posGroup === 'idp' && (<>
-                  <th style="text-align: center;">Solo</th>
-                  <th style="text-align: center;">Ast</th>
-                  <th style="text-align: right;">TFL</th>
-                  <th style="text-align: center;">QB Hit</th>
-                  <th style="text-align: center;">PD</th>
-                  <th style="text-align: right;">Sack</th>
-                  <th style="text-align: center;">INT</th>
-                  <th style="text-align: center;">FF</th>
-                  <th style="text-align: center;">FR</th>
-                  <th style="text-align: center;">TD</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Solo</th>
+                  <th class="col-hide-mobile" style="text-align: center;">Ast</th>
+                  <th class="col-hide-mobile" style="text-align: right;">TFL</th>
+                  <th class="col-hide-mobile" style="text-align: center;">QB Hit</th>
+                  <th class="col-hide-mobile" style="text-align: center;">PD</th>
+                  <th class="col-hide-mobile" style="text-align: right;">Sack</th>
+                  <th class="col-hide-mobile" style="text-align: center;">INT</th>
+                  <th class="col-hide-mobile" style="text-align: center;">FF</th>
+                  <th class="col-hide-mobile" style="text-align: center;">FR</th>
+                  <th class="col-hide-mobile" style="text-align: center;">TD</th>
                 </>)}
               </tr>
             </thead>
@@ -351,38 +351,38 @@ const headshotUrl = player.espnId
                   <td style="text-align: center;">{row.gs}</td>
                   <td style="text-align: right; font-weight: 600; color: var(--color-gold);">{row.fpts.toFixed(2)}</td>
                   {posGroup === 'qb' && (<>
-                    <td style="text-align: center;">{row.passComp}</td>
-                    <td style="text-align: center;">{row.passAtt}</td>
-                    <td style="text-align: right;">{row.passYds.toLocaleString()}</td>
-                    <td style="text-align: center;">{row.passTds}</td>
-                    <td style="text-align: center;">{row.rushAtt}</td>
-                    <td style="text-align: right;">{row.rushYds}</td>
-                    <td style="text-align: center;">{row.rushTds}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.passComp}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.passAtt}</td>
+                    <td class="col-hide-mobile" style="text-align: right;">{row.passYds.toLocaleString()}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.passTds}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.rushAtt}</td>
+                    <td class="col-hide-mobile" style="text-align: right;">{row.rushYds}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.rushTds}</td>
                   </>)}
                   {posGroup === 'skill' && (<>
-                    <td style="text-align: center;">{row.rushAtt}</td>
-                    <td style="text-align: right;">{row.rushYds.toLocaleString()}</td>
-                    <td style="text-align: center;">{row.rushTds}</td>
-                    <td style="text-align: center;">{row.rec}</td>
-                    <td style="text-align: right;">{row.recYds.toLocaleString()}</td>
-                    <td style="text-align: center;">{row.recTds}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.rushAtt}</td>
+                    <td class="col-hide-mobile" style="text-align: right;">{row.rushYds.toLocaleString()}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.rushTds}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.rec}</td>
+                    <td class="col-hide-mobile" style="text-align: right;">{row.recYds.toLocaleString()}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.recTds}</td>
                   </>)}
                   {posGroup === 'k' && (<>
-                    <td style="text-align: center;">{row.fgAtt}</td>
-                    <td style="text-align: center;">{row.fgMade}</td>
-                    <td style="text-align: right;">{row.fgYds}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.fgAtt}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.fgMade}</td>
+                    <td class="col-hide-mobile" style="text-align: right;">{row.fgYds}</td>
                   </>)}
                   {posGroup === 'idp' && (<>
-                    <td style="text-align: center;">{row.soloTkl}</td>
-                    <td style="text-align: center;">{row.asstTkl}</td>
-                    <td style="text-align: right;">{row.tfl}</td>
-                    <td style="text-align: center;">{row.qbHit}</td>
-                    <td style="text-align: center;">{row.passDefended}</td>
-                    <td style="text-align: right;">{row.sack}</td>
-                    <td style="text-align: center;">{row.interception}</td>
-                    <td style="text-align: center;">{row.forcedFumble}</td>
-                    <td style="text-align: center;">{row.fumbleRecovery}</td>
-                    <td style="text-align: center;">{row.idpTd}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.soloTkl}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.asstTkl}</td>
+                    <td class="col-hide-mobile" style="text-align: right;">{row.tfl}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.qbHit}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.passDefended}</td>
+                    <td class="col-hide-mobile" style="text-align: right;">{row.sack}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.interception}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.forcedFumble}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.fumbleRecovery}</td>
+                    <td class="col-hide-mobile" style="text-align: center;">{row.idpTd}</td>
                   </>)}
                 </tr>
               ))}
@@ -393,38 +393,38 @@ const headshotUrl = player.espnId
                 <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.gs}</td>
                 <td style="text-align: right; font-weight: 700; color: var(--color-gold); border-top: 2px solid var(--color-border);">{careerTotals.fpts.toFixed(2)}</td>
                 {posGroup === 'qb' && (<>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passComp}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passAtt}</td>
-                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passYds.toLocaleString()}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passTds}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushAtt}</td>
-                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushYds}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushTds}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passComp}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passAtt}</td>
+                  <td class="col-hide-mobile" style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passYds.toLocaleString()}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passTds}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushAtt}</td>
+                  <td class="col-hide-mobile" style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushYds}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushTds}</td>
                 </>)}
                 {posGroup === 'skill' && (<>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushAtt}</td>
-                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushYds.toLocaleString()}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushTds}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rec}</td>
-                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.recYds.toLocaleString()}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.recTds}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushAtt}</td>
+                  <td class="col-hide-mobile" style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushYds.toLocaleString()}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rushTds}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.rec}</td>
+                  <td class="col-hide-mobile" style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.recYds.toLocaleString()}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.recTds}</td>
                 </>)}
                 {posGroup === 'k' && (<>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fgAtt}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fgMade}</td>
-                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fgYds}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fgAtt}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fgMade}</td>
+                  <td class="col-hide-mobile" style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fgYds}</td>
                 </>)}
                 {posGroup === 'idp' && (<>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.soloTkl}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.asstTkl}</td>
-                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.tfl.toFixed(1)}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.qbHit}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passDefended}</td>
-                  <td style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.sack.toFixed(1)}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.interception}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.forcedFumble}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fumbleRecovery}</td>
-                  <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.idpTd}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.soloTkl}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.asstTkl}</td>
+                  <td class="col-hide-mobile" style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.tfl.toFixed(1)}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.qbHit}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passDefended}</td>
+                  <td class="col-hide-mobile" style="text-align: right; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.sack.toFixed(1)}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.interception}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.forcedFumble}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.fumbleRecovery}</td>
+                  <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.idpTd}</td>
                 </>)}
               </tr>
             </tfoot>
@@ -514,12 +514,24 @@ const headshotUrl = player.espnId
 
 <style>
   @media (max-width: 768px) {
+    .player-page-wrap {
+      padding: 0 1rem !important;
+      overflow-x: hidden;
+    }
+
+    .player-hero {
+      padding: 2rem 0 1.5rem 1rem !important;
+      margin-top: 1.5rem !important;
+    }
+
     .player-layout-grid {
       grid-template-columns: 1fr !important;
+      gap: 1.5rem !important;
     }
 
     .player-bio-grid {
       grid-template-columns: repeat(2, auto) !important;
+      gap: 1rem 1.5rem !important;
     }
 
     .player-hero-inner {
@@ -528,6 +540,15 @@ const headshotUrl = player.espnId
 
     .player-sidebar {
       margin-top: 0;
+    }
+
+    /* Hide position-specific stat columns, keep Year / GS / FPTS */
+    .col-hide-mobile {
+      display: none !important;
+    }
+
+    .stats-table-wrap {
+      overflow-x: hidden;
     }
   }
 </style>
