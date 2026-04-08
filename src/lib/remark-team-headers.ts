@@ -13,9 +13,7 @@
  */
 
 import type { Root, Paragraph, Node } from 'mdast';
-import franchises from '../data/franchises.json';
-
-const franchiseByName = new Map(franchises.map(f => [f.name, f]));
+import { createClient } from '@supabase/supabase-js';
 
 function extractText(node: Node): string {
   if ('value' in node) return (node as { value: string }).value;
@@ -39,9 +37,11 @@ function isEmParagraph(node: Node): node is Paragraph {
   );
 }
 
+type Franchise = { abbr: string; name: string; colors: string[] };
+
 /** Find all franchise matches in the combined text, sorted by position of appearance. */
-function findMatches(combined: string) {
-  const found: { position: number; franchise: typeof franchises[0] }[] = [];
+function findMatches(combined: string, franchiseByName: Map<string, Franchise>) {
+  const found: { position: number; franchise: Franchise }[] = [];
   for (const [name, f] of franchiseByName) {
     const pos = combined.indexOf(name);
     if (pos !== -1) found.push({ position: pos, franchise: f });
@@ -51,7 +51,21 @@ function findMatches(combined: string) {
 }
 
 export function remarkTeamHeaders() {
-  return (tree: Root) => {
+  return async (tree: Root) => {
+    const supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_ANON_KEY!
+    );
+
+    const { data: franchises, error } = await supabase
+      .schema('scdfl')
+      .from('franchises')
+      .select('abbr, name, colors')
+      .is('to', null);
+
+    if (error || !franchises) throw new Error(`Franchises query failed: ${error?.message || 'No data returned'}`);
+
+    const franchiseByName = new Map<string, Franchise>(franchises.map((f: Franchise) => [f.name, f]));
     const children = tree.children as Node[];
     let i = 0;
 
@@ -67,7 +81,7 @@ export function remarkTeamHeaders() {
       const emText = hasNextEm ? extractText((next as Paragraph).children[0]) : '';
 
       const combined = `${strongText} ${emText}`;
-      const matches = findMatches(combined);
+      const matches = findMatches(combined, franchiseByName);
 
       if (matches.length === 0) { i++; continue; }
 

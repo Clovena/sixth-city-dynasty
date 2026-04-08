@@ -1,13 +1,97 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import spotlightGames from '../../data/spotlight_games.json';
-import franchises from '../../data/franchises.json';
+import { supabase } from '../../lib/supabase';
+import fs from 'node:fs';
+import path from 'node:path';
 
-const bowlGames = spotlightGames.filter(bg => bg.type === "bowl-game");
-const rivalryGames = spotlightGames.filter(rg => rg.type === "rivalry");
+// ── Determine current season year ───────────────────────────────────────────
+const { data: seasonRows, error: sError } = await supabase
+  .schema('scdfl')
+  .from('seasons')
+  .select('year')
+  .order('year', { ascending: false })
+  .limit(1);
+
+if (sError) throw new Error(`Seasons query failed: ${sError.message}`);
+const currentYear = seasonRows[0].year;
+
+// ── Get active spotlight game slugs (those with an entry for current year) ──
+const { data: activeSlugsRows, error: asError } = await supabase
+  .schema('scdfl')
+  .from('spotlight_game_years')
+  .select('slug')
+  .eq('year', currentYear);
+
+if (asError) throw new Error(`Active slugs query failed: ${asError.message}`);
+const activeSlugs = new Set(activeSlugsRows.map(r => r.slug));
+
+// ── Fetch all year rows for active games (needed for year_established) ──────
+const { data: gameYearRows, error: gyError } = await supabase
+  .schema('scdfl')
+  .from('spotlight_game_years')
+  .select('slug, year, spotlight_games(slug, name, type, team_a, team_b)')
+  .in('slug', Array.from(activeSlugs));
+
+if (gyError) throw new Error(`Spotlight game years query failed: ${gyError.message}`);
+
+// Group by slug to compute year_established = min(year) and flatten game data
+type SpotlightGame = {
+  slug: string;
+  name: string;
+  type: string;
+  team_a: string;
+  team_b: string;
+  year_established: number;
+  description: string;
+};
+
+const gameMap = new Map<string, SpotlightGame>();
+for (const row of gameYearRows) {
+  const game = row.spotlight_games as unknown as { slug: string; name: string; type: string; team_a: string; team_b: string };
+  const existing = gameMap.get(row.slug);
+  if (existing) {
+    existing.year_established = Math.min(existing.year_established, row.year);
+  } else {
+    gameMap.set(row.slug, {
+      slug: game.slug,
+      name: game.name,
+      type: game.type,
+      team_a: game.team_a,
+      team_b: game.team_b,
+      year_established: row.year,
+      description: '',
+    });
+  }
+}
+
+// Load descriptions from markdown files
+const contentDir = path.resolve('src/content/spotlight-games');
+for (const game of gameMap.values()) {
+  const mdPath = path.join(contentDir, `${game.slug}.md`);
+  try {
+    game.description = fs.readFileSync(mdPath, 'utf-8').trim();
+  } catch {
+    // No file for this slug — leave description empty
+  }
+}
+
+const spotlightGames = Array.from(gameMap.values());
+const bowlGames = spotlightGames.filter(bg => bg.type === 'bowl-game');
+const rivalryGames = spotlightGames.filter(rg => rg.type === 'rivalry');
+
+// ── Fetch active franchises from Supabase ───────────────────────────────────
+const { data: franchiseRows, error: fError } = await supabase
+  .schema('scdfl')
+  .from('franchises')
+  .select('abbr, name, colors')
+  .is('to', null);
+
+if (fError) throw new Error(`Franchises query failed: ${fError.message}`);
+
+const franchiseByAbbr = new Map(franchiseRows.map(f => [f.abbr, f]));
 
 function getFranchise(abbr: string) {
-  return franchises.find(f => f.abbr === abbr);
+  return franchiseByAbbr.get(abbr);
 }
 ---
 

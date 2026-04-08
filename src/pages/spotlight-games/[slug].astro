@@ -1,22 +1,106 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import spotlightGames from '../../data/spotlight_games.json';
-import franchises from '../../data/franchises.json';
 import { getHistoricalMatchups } from '../../lib/get-historical-matchups';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export async function getStaticPaths() {
-  return spotlightGames.map(sg => ({ params: { slug: sg.slug } }));
+  const { createClient } = await import('@supabase/supabase-js');
+  const sb = createClient(
+    import.meta.env.SUPABASE_URL,
+    import.meta.env.SUPABASE_ANON_KEY
+  );
+
+  // Determine current season year
+  const { data: seasonRows, error: sError } = await sb
+    .schema('scdfl')
+    .from('seasons')
+    .select('year')
+    .order('year', { ascending: false })
+    .limit(1);
+
+  if (sError) throw new Error(`Seasons query failed: ${sError.message}`);
+  const currentYear = seasonRows[0].year;
+
+  // Get active spotlight game slugs (those with an entry for current year)
+  const { data: activeSlugsRows, error: asError } = await sb
+    .schema('scdfl')
+    .from('spotlight_game_years')
+    .select('slug')
+    .eq('year', currentYear);
+
+  if (asError) throw new Error(`Active slugs query failed: ${asError.message}`);
+  const activeSlugs = new Set(activeSlugsRows.map(r => r.slug));
+
+  // Fetch all year rows for active games (needed for year_established)
+  const { data: gameYearRows, error: gyError } = await sb
+    .schema('scdfl')
+    .from('spotlight_game_years')
+    .select('slug, year, spotlight_games(slug, name, type, team_a, team_b)')
+    .in('slug', Array.from(activeSlugs));
+
+  if (gyError) throw new Error(`Spotlight game years query failed: ${gyError.message}`);
+
+  // Group by slug to compute year_established
+  type GameData = {
+    slug: string;
+    name: string;
+    type: string;
+    team_a: string;
+    team_b: string;
+    year_established: number;
+    description: string;
+  };
+
+  const gameMap = new Map<string, GameData>();
+  for (const row of gameYearRows) {
+    const game = row.spotlight_games as unknown as { slug: string; name: string; type: string; team_a: string; team_b: string };
+    const existing = gameMap.get(row.slug);
+    if (existing) {
+      existing.year_established = Math.min(existing.year_established, row.year);
+    } else {
+      gameMap.set(row.slug, {
+        slug: game.slug,
+        name: game.name,
+        type: game.type,
+        team_a: game.team_a,
+        team_b: game.team_b,
+        year_established: row.year,
+        description: '',
+      });
+    }
+  }
+
+  // Load descriptions from markdown files
+  const contentDir = path.resolve('src/content/spotlight-games');
+  for (const game of gameMap.values()) {
+    const mdPath = path.join(contentDir, `${game.slug}.md`);
+    try {
+      game.description = fs.readFileSync(mdPath, 'utf-8').trim();
+    } catch {
+      // No file — leave empty
+    }
+  }
+
+  // Fetch active franchises
+  const { data: franchiseRows, error: fError } = await sb
+    .schema('scdfl')
+    .from('franchises')
+    .select('id, abbr, name, owner, conf, colors')
+    .is('to', null);
+
+  if (fError) throw new Error(`Franchises query failed: ${fError.message}`);
+
+  return Array.from(gameMap.values()).map(game => ({
+    params: { slug: game.slug },
+    props: { game, franchises: franchiseRows },
+  }));
 }
 
-const { slug } = Astro.params;
-const game = spotlightGames.find(sg => sg.slug === slug);
+const { game, franchises } = Astro.props;
 
-if (!game) {
-  return Astro.redirect('/spotlight-games');
-}
-
-const teamA = franchises.find(f => f.abbr === game.team_a);
-const teamB = franchises.find(f => f.abbr === game.team_b);
+const teamA = franchises.find((f: any) => f.abbr === game.team_a);
+const teamB = franchises.find((f: any) => f.abbr === game.team_b);
 const historicalMatchups = await getHistoricalMatchups(game.team_a, game.team_b);
 
 // Helper function to build game recap URL
@@ -59,11 +143,11 @@ function buildGameUrl(year: number, week: number, teamA: string, teamB: string):
         <a href={`/franchises/${teamA?.abbr}`} style="text-decoration: none; display: block;">
           <div style={`padding: 2rem; border-left: 4px solid ${teamA?.colors[0]}; border-right: 1px solid var(--color-border);`}>
             <img src={`/images/logos/${game.team_a}.png`} alt="" width="48" height="48" style="object-fit: contain; margin-bottom: 0.75rem; display: block;" onerror="this.style.display='none'" />
-            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.4rem;">{teamA?.abbr} &bull; <span class={`label-badge badge-${teamA?.conference.toLowerCase()}`}>{teamA?.conference}</span></p>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.4rem;">{teamA?.abbr} &bull; <span class={`label-badge badge-${teamA?.conf.toLowerCase()}`}>{teamA?.conf}</span></p>
             <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.2;">{teamA?.name}</h2>
             <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0;">Owner: {teamA?.owner}</p>
             <div style="display: flex; gap: 5px; margin-top: 0.75rem;">
-              {teamA?.colors.map(c => (
+              {teamA?.colors.map((c: string) => (
                 <span style={`display: inline-block; width: 14px; height: 14px; background-color: ${c}; border-radius: 50%;`}></span>
               ))}
             </div>
@@ -81,11 +165,11 @@ function buildGameUrl(year: number, week: number, teamA: string, teamB: string):
         <a href={`/franchises/${teamB?.abbr}`} style="text-decoration: none; display: block;">
           <div class="matchup-team-b-inner" style={`padding: 2rem; border-right: 4px solid ${teamB?.colors[0]}; --team-b-color: ${teamB?.colors[0]};`}>
             <img src={`/images/logos/${game.team_b}.png`} alt="" width="48" height="48" style="object-fit: contain; margin-bottom: 0.75rem; display: block;" onerror="this.style.display='none'" />
-            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.4rem;">{teamB?.abbr} &bull; <span class={`label-badge badge-${teamB?.conference.toLowerCase()}`}>{teamB?.conference}</span></p>
+            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.4rem;">{teamB?.abbr} &bull; <span class={`label-badge badge-${teamB?.conf.toLowerCase()}`}>{teamB?.conf}</span></p>
             <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.2;">{teamB?.name}</h2>
             <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0;">Owner: {teamB?.owner}</p>
             <div style="display: flex; gap: 5px; margin-top: 0.75rem;">
-              {teamB?.colors.map(c => (
+              {teamB?.colors.map((c: string) => (
                 <span style={`display: inline-block; width: 14px; height: 14px; background-color: ${c}; border-radius: 50%;`}></span>
               ))}
             </div>

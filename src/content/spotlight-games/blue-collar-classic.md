@@ -1,0 +1,1 @@
+ An unlikely pairing united by a working-class ethos. Iqaluit toils on the fishing docks in the extreme north; Choccolocco (Alabama) grinds away on the railroad tracks in the deep south. Both franchises represent proud industrial heritages; both franchises have moments of success in the HCC; and both franchises are trying to claw their way back to an ever-elusive former glory. 

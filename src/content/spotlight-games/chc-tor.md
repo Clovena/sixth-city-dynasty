@@ -1,0 +1,1 @@
+ Ownership shared a graduate school campus, but never shared so much as a lunch. 

@@ -1,40 +1,101 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import seasons from '../../data/seasons.json';
-import franchises from '../../data/franchises.json';
-import results from '../../data/results.json';
-import draftConfig from '../../data/draft-config.json';
-import draftSlotsData from '../../data/draft-slots.json';
-import exhibitionsJson from '../../data/raw/exhibitions.json';
+import { supabase } from '../../lib/supabase';
 import { getEntry, render } from 'astro:content';
 
-export function getStaticPaths() {
-  return seasons.map(s => ({ params: { year: String(s.year) } }));
+// ── Fetch all season years for static paths ────────────────────────────────
+
+export async function getStaticPaths() {
+  const { supabase: sb } = await import('../../lib/supabase');
+  const { data: rows } = await sb.schema('scdfl').from('seasons').select('year');
+  return (rows ?? []).map(s => ({ params: { year: String(s.year) } }));
 }
 
 const { year } = Astro.params;
 const yearNum = parseInt(year);
-const season = seasons.find(s => s.year === yearNum)!;
+
+// ── Fetch season data ──────────────────────────────────────────────────────
+
+const { data: seasonRow, error: sErr } = await supabase
+  .schema('scdfl')
+  .from('seasons')
+  .select('year, scc_champion, hcc_champion, playoff_teams')
+  .eq('year', yearNum)
+  .single();
+
+if (sErr) throw new Error(`Season query failed: ${sErr.message}`);
+
+// ── Fetch franchise identities for this year ───────────────────────────────
+
+const { data: yearFranchises, error: yfErr } = await supabase
+  .schema('scdfl')
+  .from('franchises')
+  .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"')
+  .lte('from', yearNum)
+  .or(`to.gte.${yearNum},to.is.null`);
+
+if (yfErr) throw new Error(`Year franchises query failed: ${yfErr.message}`);
+
+// Active franchises (current identity) for linking
+const { data: activeFranchises, error: afErr } = await supabase
+  .schema('scdfl')
+  .from('franchises')
+  .select('id, sleeper_id, abbr, name, owner, conf, colors')
+  .is('to', null);
+
+if (afErr) throw new Error(`Active franchises query failed: ${afErr.message}`);
+
+// Maps: sleeper_id → year-appropriate identity, and sleeper_id → active identity
+const yearIdentityBySleeperId = new Map(yearFranchises.map(f => [f.sleeper_id, f]));
+const activeBySleeperId = new Map(activeFranchises.map(f => [f.sleeper_id, f]));
+
+// ── Fetch results for this year ────────────────────────────────────────────
+
+const { data: resultRows, error: rErr } = await supabase
+  .schema('scdfl')
+  .from('results')
+  .select('sleeper_id, year, wins, losses, points_for, points_against, playoff, seed, finish')
+  .eq('year', yearNum);
+
+if (rErr) throw new Error(`Results query failed: ${rErr.message}`);
 
 // ── Exhibition data ─────────────────────────────────────────────────────────
 
-const yearExhibitions = (exhibitionsJson as any[]).filter((e: any) => e.year === yearNum);
+const { data: exhibRows, error: exErr } = await supabase
+  .schema('scdfl')
+  .from('exhibitions')
+  .select(`
+    id, year, week, exhib_type,
+    team_a_slug, team_a_display_name, team_a_members,
+    team_b_slug, team_b_display_name, team_b_members,
+    exhibition_matchups(score_a, score_b)
+  `)
+  .eq('year', yearNum);
+
+if (exErr) throw new Error(`Exhibitions query failed: ${exErr.message}`);
+
+const yearExhibitions = (exhibRows ?? []).map(e => {
+  const match = (e.exhibition_matchups as any)?.[0] ?? e.exhibition_matchups ?? {};
+  const slugParts = [e.team_a_slug, e.team_b_slug].sort((a: string, b: string) => a.localeCompare(b)).map((s: string) => s.toLowerCase());
+  const slug = `${String(e.week).padStart(2, '0')}-${slugParts[0]}-${slugParts[1]}`;
+  return {
+    year: e.year,
+    week: e.week,
+    slug,
+    exhib_type: e.exhib_type,
+    team_a: { display_name: e.team_a_display_name, members: e.team_a_members, score: match.score_a ?? 0 },
+    team_b: { display_name: e.team_b_display_name, members: e.team_b_members, score: match.score_b ?? 0 },
+  };
+});
 
 // ── Franchise helpers ───────────────────────────────────────────────────────
 
-function getEffectiveAbbr(franchise: typeof franchises[0], yr: number): string {
-  if (franchise.founded !== 2021 && yr < franchise.founded) {
-    return franchise.predecessor_abbr ?? franchise.abbr;
-  }
-  return franchise.abbr;
+function getEffectiveAbbr(sleeperId: string): string {
+  return yearIdentityBySleeperId.get(sleeperId)?.abbr ?? activeBySleeperId.get(sleeperId)?.abbr ?? '???';
 }
 
-function getEffectiveName(franchise: typeof franchises[0], yr: number): string {
-  if (franchise.founded !== 2021 && yr < franchise.founded) {
-    const rebrand = franchise.rebrands?.find(r => r.year === yr);
-    return rebrand?.name ?? franchise.name;
-  }
-  return franchise.name;
+function getActiveAbbr(sleeperId: string): string {
+  return activeBySleeperId.get(sleeperId)?.abbr ?? '???';
 }
 
 // ── Position color mapping ──────────────────────────────────────────────────
@@ -50,6 +111,20 @@ const POSITION_COLOR_MAP: Record<string, string> = {
   CB: 'pink', S: 'pink', SS: 'pink', FS: 'pink', DB: 'pink',
 };
 
+// ── Roman numeral helper ───────────────────────────────────────────────────
+
+function toRoman(n: number): string {
+  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
+  const syms = ['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
+  let result = '';
+  for (let i = 0; i < vals.length; i++) {
+    while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
+  }
+  return result;
+}
+
+const dynastyBowlLabel = `Dynasty Bowl ${toRoman(yearNum - 2020)}`;
+
 // ── Standings ───────────────────────────────────────────────────────────────
 
 const FINISH_ORDER: Record<string, number> = {
@@ -59,7 +134,8 @@ const FINISH_ORDER: Record<string, number> = {
   'First round': 4,
 };
 
-function finishSortKey(finish: string): number {
+function finishSortKey(finish: string | null): number {
+  if (!finish) return 999;
   if (FINISH_ORDER[finish] !== undefined) return FINISH_ORDER[finish];
   const m = finish.match(/^(\d+)/);
   return m ? 100 + parseInt(m[1]) : 999;
@@ -76,43 +152,34 @@ type StandingsRow = {
   points_for: number;
   points_against: number;
   playoff: boolean;
-  finish: string;
+  finish: string | null;
   seed: number;
   roster_id: number;
 };
 
-const resultsTyped = results as Record<string, Array<{
-  year: number;
-  wins: number;
-  losses: number;
-  points_for: number;
-  points_against: number;
-  playoff: boolean | string;
-  finish: string;
-  seed: number;
-}>>;
-
 const allRows: StandingsRow[] = [];
 
-for (const franchise of franchises) {
-  const s = resultsTyped[franchise.abbr]?.find(r => r.year === yearNum);
-  if (!s) continue;
-  if (s.wins === 0 && s.losses === 0 && !s.finish) continue;
+for (const r of resultRows) {
+  if (r.wins === 0 && r.losses === 0 && !r.finish) continue;
+
+  const yearIdentity = yearIdentityBySleeperId.get(r.sleeper_id);
+  const activeIdentity = activeBySleeperId.get(r.sleeper_id);
+  if (!yearIdentity && !activeIdentity) continue;
 
   allRows.push({
-    abbr: franchise.abbr,
-    effectiveAbbr: getEffectiveAbbr(franchise, yearNum),
-    name: franchise.name,
-    effectiveName: getEffectiveName(franchise, yearNum),
-    conference: franchise.conference,
-    wins: s.wins,
-    losses: s.losses,
-    points_for: s.points_for,
-    points_against: s.points_against,
-    playoff: Boolean(s.playoff),
-    finish: s.finish,
-    seed: s.seed ?? 0,
-    roster_id: franchise.id,
+    abbr: activeIdentity?.abbr ?? yearIdentity!.abbr,
+    effectiveAbbr: yearIdentity?.abbr ?? activeIdentity!.abbr,
+    name: activeIdentity?.name ?? yearIdentity!.name,
+    effectiveName: yearIdentity?.name ?? activeIdentity!.name,
+    conference: activeIdentity?.conf ?? yearIdentity!.conf,
+    wins: r.wins,
+    losses: r.losses,
+    points_for: r.points_for,
+    points_against: r.points_against,
+    playoff: Boolean(r.playoff),
+    finish: r.finish,
+    seed: r.seed ?? 0,
+    roster_id: parseInt(r.sleeper_id),
   });
 }
 
@@ -132,8 +199,7 @@ const hccRows = sortStandings(allRows.filter(r => r.conference === 'HCC'));
 
 // ── Playoff bracket ─────────────────────────────────────────────────────────
 
-const is8Team = season.playoff_format.includes('8-team');
-const teamCount = is8Team ? 8 : 7;
+const is8Team = (seasonRow.playoff_teams ?? 7) >= 8;
 
 const playoffTeams = allRows.filter(r => r.seed > 0);
 
@@ -144,19 +210,24 @@ function getBySeed(seed: number): StandingsRow | null {
   return playoffTeams.find(r => r.seed === seed) ?? null;
 }
 
-// Week 15 first-round matchup data
-const matchupFiles = import.meta.glob<{ default: Record<string, any[]> }>('../../data/raw/*-matchups.json');
-const matchupMod = await matchupFiles[`../../data/raw/${yearNum}-matchups.json`]?.();
-const week15: any[] = (matchupMod?.default ?? {})['15'] ?? [];
+// Playoff matchup data from Supabase (game_type = 1)
+const { data: playoffMatchups, error: pmErr } = await supabase
+  .schema('scdfl')
+  .from('matchups')
+  .select('week, matchup_id, roster_id_a, roster_id_b, score_a, score_b')
+  .eq('year', yearNum)
+  .eq('game_type', 1);
 
-// Group week 15 by matchup_id
+if (pmErr) throw new Error(`Playoff matchups query failed: ${pmErr.message}`);
+
+// Group week 15 matchups for first-round winner resolution
 const matchupById = new Map<number, { roster_id: number; score: number }[]>();
-for (const entry of week15) {
-  if (entry.matchup_id == null) continue;
-  const score = (entry.custom_points ?? entry.points) || 0;
-  const list = matchupById.get(entry.matchup_id) ?? [];
-  list.push({ roster_id: entry.roster_id, score });
-  matchupById.set(entry.matchup_id, list);
+for (const m of (playoffMatchups ?? []).filter(m => m.week === 15)) {
+  // Each row is already a pair (roster_id_a vs roster_id_b)
+  matchupById.set(m.matchup_id, [
+    { roster_id: m.roster_id_a, score: m.score_a ?? 0 },
+    { roster_id: m.roster_id_b, score: m.score_b ?? 0 },
+  ]);
 }
 
 // Build slug for game recap link: [week]-[abbr1]-[abbr2] (alphabetized, lowercased)
@@ -204,8 +275,17 @@ const leftSemiBottom = getMatchupWinner(leftBottom[0], leftBottom[1]);
 const rightSemiTop   = getMatchupWinner(rightTop[0], rightTop[1]);
 const rightSemiBottom= getMatchupWinner(rightBottom[0], rightBottom[1]);
 
-const champion = allRows.find(r => r.finish === 'Champion');
-const runnerUp = allRows.find(r => r.finish === 'Runner-up');
+// Derive champion/runner-up from week 17 championship matchup
+const champMatch = (playoffMatchups ?? []).find(m => m.week === 17);
+let champion: StandingsRow | undefined;
+let runnerUp: StandingsRow | undefined;
+if (champMatch) {
+  const aWins = champMatch.score_a > champMatch.score_b;
+  const winnerRosterId = aWins ? champMatch.roster_id_a : champMatch.roster_id_b;
+  const loserRosterId = aWins ? champMatch.roster_id_b : champMatch.roster_id_a;
+  champion = allRows.find(r => r.roster_id === winnerRosterId);
+  runnerUp = allRows.find(r => r.roster_id === loserRosterId);
+}
 
 // ── Draft boards ────────────────────────────────────────────────────────────
 
@@ -219,6 +299,7 @@ type DraftCell = {
 };
 
 type DraftBoard = {
+  draft_id: number;
   type: string;
   numRounds: number;
   numSlots: number;
@@ -228,37 +309,59 @@ type DraftBoard = {
 
 const draftBoards: DraftBoard[] = [];
 
-const draftFiles = import.meta.glob<{ default: any[] }>('../../data/raw/*-*-draft.json');
-const yearDraftEntries = draftConfig.drafts.filter(d => d.year === yearNum);
+// Fetch drafts for this year
+const { data: draftRows, error: dErr } = await supabase
+  .schema('scdfl')
+  .from('drafts')
+  .select('draft_id, year, type')
+  .eq('year', yearNum);
 
-for (const entry of yearDraftEntries) {
-  const filePath = `../../data/raw/${entry.year}-${entry.type}-draft.json`;
-  const mod = await draftFiles[filePath]?.();
-  if (!mod) continue;
+if (dErr) throw new Error(`Drafts query failed: ${dErr.message}`);
 
-  const picks: any[] = mod.default;
-  if (!picks.length) continue;
+for (const draft of (draftRows ?? [])) {
+  // Fetch all picks for this draft with player info
+  const { data: pickRows, error: pErr } = await supabase
+    .schema('scdfl')
+    .from('draft_results')
+    .select('pick_no, round, draft_slot, roster_id, original_roster_id, player_id, players(first_name, last_name, fantasy_positions)')
+    .eq('draft_id', draft.draft_id)
+    .order('pick_no')
+    .limit(500);
 
-  const draftId = picks[0].draft_id;
-  const slots = (draftSlotsData as Record<string, { slot: number; original_franchise_id: number }[]>)[draftId] ?? [];
-  const numSlots = slots.length || 14;
-  const numRounds = Math.max(...picks.map(p => p.round));
+  if (pErr) throw new Error(`Draft results query failed: ${pErr.message}`);
+  if (!pickRows?.length) continue;
 
-  const slotMap = new Map(slots.map(s => [s.slot, s.original_franchise_id]));
-  const rosterMap = new Map(franchises.map(f => [f.id, f]));
+  const numRounds = Math.max(...pickRows.map(p => p.round));
+  // Derive numSlots from distinct draft_slot values
+  const slotSet = new Set(pickRows.map(p => p.draft_slot));
+  const numSlots = Math.max(...slotSet);
+
+  // Build roster_id → franchise map for header + trade display
+  const rosterIdToSleeperId = new Map(activeFranchises.map(f => [parseInt(f.sleeper_id), f.sleeper_id]));
 
   // Organize picks by round and draft_slot
   const pickGrid = new Map<number, Map<number, any>>();
-  for (const pick of picks) {
+  for (const pick of pickRows) {
     if (!pickGrid.has(pick.round)) pickGrid.set(pick.round, new Map());
     pickGrid.get(pick.round)!.set(pick.draft_slot, pick);
   }
 
-  // Build column headers
-  const headers = slots.map(s => {
-    const f = rosterMap.get(s.original_franchise_id);
-    return { slot: s.slot, abbr: f ? getEffectiveAbbr(f, yearNum) : '???' };
-  });
+  // Build column headers from original_roster_id per slot
+  // Use first pick in each slot to determine the original owner
+  const headers: { slot: number; abbr: string }[] = [];
+  for (let s = 1; s <= numSlots; s++) {
+    let originalRosterId: number | null = null;
+    for (let r = 1; r <= numRounds; r++) {
+      const pick = pickGrid.get(r)?.get(s);
+      if (pick?.original_roster_id != null) {
+        originalRosterId = pick.original_roster_id;
+        break;
+      }
+    }
+    const sleeperId = originalRosterId != null ? String(originalRosterId) : null;
+    const abbr = sleeperId ? getEffectiveAbbr(sleeperId) : '???';
+    headers.push({ slot: s, abbr });
+  }
 
   // Build grid rows
   const grid: (DraftCell | null)[][] = [];
@@ -271,24 +374,28 @@ for (const entry of yearDraftEntries) {
         continue;
       }
 
-      const position = (pick.metadata?.position ?? '').toUpperCase();
-      const colorVar = POSITION_COLOR_MAP[position] ?? 'white';
+      const player = pick.players as any;
+      const fantasyPositions: string[] = player?.fantasy_positions ?? [];
+      const position = fantasyPositions.join(',').toUpperCase();
+      const firstPos = (fantasyPositions[0] ?? '').toUpperCase();
+      const colorVar = POSITION_COLOR_MAP[firstPos] ?? 'white';
       const pickLabel = `${pick.round}.${String(pick.pick_no).padStart(2, '0')}`;
-      const playerName = `${pick.metadata?.first_name ?? ''} ${pick.metadata?.last_name ?? ''}`.trim();
+      const playerName = `${player?.first_name ?? ''} ${player?.last_name ?? ''}`.trim();
 
-      const originalId = slotMap.get(pick.draft_slot) ?? null;
-      const isTrade = originalId !== null && pick.roster_id !== originalId;
-      const tradeToAbbr = isTrade && rosterMap.has(pick.roster_id)
-        ? getEffectiveAbbr(rosterMap.get(pick.roster_id)!, yearNum)
-        : null;
+      const isTrade = pick.original_roster_id != null && pick.roster_id !== pick.original_roster_id;
+      const tradeToSleeperId = isTrade ? String(pick.roster_id) : null;
+      const tradeToAbbr = tradeToSleeperId ? getEffectiveAbbr(tradeToSleeperId) : null;
 
       row.push({ playerName, position, colorVar, pickLabel, isTrade, tradeToAbbr });
     }
     grid.push(row);
   }
 
-  draftBoards.push({ type: entry.type, numRounds, numSlots, headers, grid });
+  draftBoards.push({ draft_id: draft.draft_id, type: draft.type, numRounds, numSlots, headers, grid });
 }
+
+// Sort draft boards by draft_id ascending
+draftBoards.sort((a, b) => a.draft_id - b.draft_id);
 
 // ── Season summary markdown ──────────────────────────────────────────────────
 
@@ -298,7 +405,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
 <Layout
   title={`${yearNum} Season`}
-  description={`${yearNum} SCDFL season recap: standings, playoff bracket, and ${season.dynasty_bowl.label} results.`}
+  description={`${yearNum} SCDFL season recap: standings, playoff bracket, and ${dynastyBowlLabel} results.`}
 >
   <div style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 0;">
 
@@ -314,9 +421,9 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
       <p class="section-label">Season Archive</p>
       <h1 class="page-title">{yearNum} Season</h1>
       <p style="font-size: 0.9rem; color: var(--color-text-muted); margin-top: 0.5rem;">
-        {season.dynasty_bowl.label} &bull;
-        Won by <strong style="color: var(--color-text-primary);">{season.dynasty_bowl.winner === 'MTL' ? 'MTL (SAR)' : season.dynasty_bowl.winner}</strong>
-        {' '}over <strong style="color: var(--color-text-primary);">{season.dynasty_bowl.loser}</strong>
+        {dynastyBowlLabel} &bull;
+        Won by <strong style="color: var(--color-text-primary);">{champion?.effectiveAbbr}</strong>
+        {' '}over <strong style="color: var(--color-text-primary);">{runnerUp?.effectiveAbbr}</strong>
       </p>
     </div>
 
@@ -344,6 +451,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                 <th>W</th>
                 <th>L</th>
                 <th>PF</th>
+                <th>PA</th>
                 <th style="text-align: right;">Finish</th>
               </tr>
             </thead>
@@ -360,9 +468,10 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                       </a>
                     </div>
                   </td>
-                  <td style="text-align: center;">{row.wins}</td>
-                  <td style="text-align: center;">{row.losses}</td>
-                  <td style="text-align: center; font-size: 0.8rem;">{row.points_for.toFixed(1)}</td>
+                  <td style="text-align: left;">{row.wins}</td>
+                  <td style="text-align: left;">{row.losses}</td>
+                  <td style="text-align: left; font-size: 0.8rem;">{row.points_for.toFixed(2)}</td>
+                  <td style="text-align: left; font-size: 0.8rem;">{row.points_against.toFixed(2)}</td>
                   <td style="text-align: right;">
                     <span style={`font-size: 0.75rem; ${row.finish === 'Champion' ? 'color: var(--color-gold); font-weight: 700;' : row.finish === 'Runner-up' ? 'color: var(--color-text-primary);' : row.playoff ? 'color: var(--color-text-secondary);' : 'color: var(--color-text-muted);'}`}>
                       {row.finish}
@@ -384,6 +493,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                 <th>W</th>
                 <th>L</th>
                 <th>PF</th>
+                <th>PA</th>
                 <th style="text-align: right;">Finish</th>
               </tr>
             </thead>
@@ -400,9 +510,10 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                       </a>
                     </div>
                   </td>
-                  <td style="text-align: center;">{row.wins}</td>
-                  <td style="text-align: center;">{row.losses}</td>
-                  <td style="text-align: center; font-size: 0.8rem;">{row.points_for.toFixed(1)}</td>
+                  <td style="text-align: left;">{row.wins}</td>
+                  <td style="text-align: left;">{row.losses}</td>
+                  <td style="text-align: left; font-size: 0.8rem;">{row.points_for.toFixed(2)}</td>
+                  <td style="text-align: left; font-size: 0.8rem;">{row.points_against.toFixed(2)}</td>
                   <td style="text-align: right;">
                     <span style={`font-size: 0.75rem; ${row.finish === 'Champion' ? 'color: var(--color-gold); font-weight: 700;' : row.finish === 'Runner-up' ? 'color: var(--color-text-primary);' : row.playoff ? 'color: var(--color-text-secondary);' : 'color: var(--color-text-muted);'}`}>
                       {row.finish}
@@ -531,7 +642,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
         <!-- CENTER / FINAL -->
         <div class="bracket-center">
           <div class="bracket-final-label">
-            <p class="section-label" style="text-align: center; margin-bottom: 0.5rem;">{season.dynasty_bowl.label}</p>
+            <p class="section-label" style="text-align: center; margin-bottom: 0.5rem;">{dynastyBowlLabel}</p>
           </div>
           {(() => {
             const slug = buildSlug(champion, runnerUp, 17);
@@ -704,18 +815,11 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
             Draft Board{draftBoards.length > 1 ? 's' : ''}
           </h2>
 
-          {draftBoards.length > 1 && (
-            <div class="draft-tabs">
-              {draftBoards.map((b, i) => (
-                <button class={`draft-tab${i === 0 ? ' active' : ''}`} data-type={b.type}>
-                  {b.type.charAt(0).toUpperCase() + b.type.slice(1)}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {draftBoards.map((board, bi) => (
-            <div class="draft-board" style="margin: auto -5rem;" data-draft-type={board.type} style={bi > 0 ? 'display:none' : ''}>
+          {draftBoards.map((board) => (
+            <div class="draft-board" style="margin: auto -5rem;">
+              {draftBoards.length > 1 && (
+                <h3 class="draft-board-label">{board.type.charAt(0).toUpperCase() + board.type.slice(1)} Draft</h3>
+              )}
               <div class="draft-grid" style={`grid-template-columns: 2.5rem repeat(${board.numSlots}, minmax(5rem, 1fr));`}>
                 {/* Header row */}
                 <div class="draft-corner"></div>
@@ -753,19 +857,6 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
   </div>
 </Layout>
 
-<script>
-  document.querySelectorAll<HTMLButtonElement>('.draft-tab').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const section = btn.closest('.draft-section');
-      if (!section) return;
-      section.querySelectorAll('.draft-tab').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      section.querySelectorAll<HTMLElement>('.draft-board').forEach(board => {
-        board.style.display = board.dataset.draftType === btn.dataset.type ? '' : 'none';
-      });
-    });
-  });
-</script>
 
 <style>
   /* ── Season summary ──────────────────────────────── */
@@ -1070,30 +1161,22 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
     margin-top: 2.5rem;
   }
 
-  .draft-tabs {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-  }
-
-  .draft-tab {
-    padding: 0.35rem 1rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    color: var(--color-text-muted);
-    border-radius: 4px;
-    cursor: pointer;
-    font-family: var(--font-body);
-    font-size: 0.85rem;
-  }
-
-  .draft-tab.active {
-    border-color: var(--color-gold);
-    color: var(--color-gold);
-  }
-
   .draft-board {
     /* responsive, no scroll */
+  }
+
+  .draft-board + .draft-board {
+    margin-top: 2.5rem;
+  }
+
+  .draft-board-label {
+    font-family: var(--font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin: 0.75rem 0;
   }
 
   .draft-grid {

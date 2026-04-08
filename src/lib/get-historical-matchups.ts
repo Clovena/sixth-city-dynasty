@@ -1,5 +1,4 @@
-import { glob } from 'astro/loaders';
-import franchises from '../data/franchises.json';
+import { supabase } from './supabase';
 
 interface HistoricalMatchup {
   year: number;
@@ -14,68 +13,48 @@ export async function getHistoricalMatchups(
   teamAAbbr: string,
   teamBAbbr: string
 ): Promise<HistoricalMatchup[]> {
-  const teamA = franchises.find(f => f.abbr === teamAAbbr);
-  const teamB = franchises.find(f => f.abbr === teamBAbbr);
+  // Resolve abbr → sleeper_id (which matches roster_id in matchups)
+  const { data: franchiseRows, error: fError } = await supabase
+    .schema('scdfl')
+    .from('franchises')
+    .select('id, abbr')
+    .is('to', null)
+    .in('abbr', [teamAAbbr, teamBAbbr]);
 
-  if (!teamA || !teamB) {
-    return [];
-  }
+  if (fError || !franchiseRows) return [];
 
-  const teamAId = teamA.id;
-  const teamBId = teamB.id;
-  const results: HistoricalMatchup[] = [];
+  const teamA = franchiseRows.find(f => f.abbr === teamAAbbr);
+  const teamB = franchiseRows.find(f => f.abbr === teamBAbbr);
 
-  // Load all matchup files
-  const matchupFiles = import.meta.glob<Record<string, Array<{
-    roster_id: number;
-    matchup_id: number | null;
-    points: number;
-    custom_points: number | null;
-  }>>>('/src/data/raw/*-matchups.json', { eager: true });
+  if (!teamA || !teamB) return [];
 
-  for (const [path, data] of Object.entries(matchupFiles)) {
-    const yearMatch = path.match(/(\d{4})-matchups\.json/);
-    if (!yearMatch) continue;
+  const idA = teamA.id;
+  const idB = teamB.id;
 
-    const year = parseInt(yearMatch[1]);
-    const matchups = data.default || data;
+  // Fetch all matchups between these two teams
+  const { data: matchupRows, error: mError } = await supabase
+    .schema('scdfl')
+    .from('matchups')
+    .select('year, week, roster_id_a, roster_id_b, score_a, score_b')
+    .not('matchup_id', 'is', null)
+    .or(
+      `and(roster_id_a.eq.${idA},roster_id_b.eq.${idB}),and(roster_id_a.eq.${idB},roster_id_b.eq.${idA})`
+    )
+    .order('year', { ascending: false })
+    .order('week', { ascending: false });
 
-    // Iterate through each week
-    for (const [weekStr, weekData] of Object.entries(matchups)) {
-      const week = parseInt(weekStr);
-      if (!Array.isArray(weekData)) continue;
+  if (mError || !matchupRows) return [];
 
-      // Find entries for both teams in this week
-      const teamAEntry = weekData.find(entry => entry.roster_id === teamAId);
-      const teamBEntry = weekData.find(entry => entry.roster_id === teamBId);
-
-      // Check if they played each other (same matchup_id)
-      if (
-        teamAEntry &&
-        teamBEntry &&
-        teamAEntry.matchup_id === teamBEntry.matchup_id &&
-        teamAEntry.matchup_id !== null
-      ) {
-        const teamAScore = teamAEntry.custom_points ?? teamAEntry.points ?? 0;
-        const teamBScore = teamBEntry.custom_points ?? teamBEntry.points ?? 0;
-
-        results.push({
-          year,
-          week,
-          teamAId,
-          teamBId,
-          teamAScore,
-          teamBScore,
-        });
-      }
-    }
-  }
-
-  // Sort by year descending, then week descending
-  results.sort((a, b) => {
-    if (b.year !== a.year) return b.year - a.year;
-    return b.week - a.week;
+  return matchupRows.map(row => {
+    // Normalize so teamA/teamB scores match the caller's abbr order
+    const aIsFirst = row.roster_id_a === idA;
+    return {
+      year: row.year,
+      week: row.week,
+      teamAId: idA,
+      teamBId: idB,
+      teamAScore: aIsFirst ? (row.score_a || 0) : (row.score_b || 0),
+      teamBScore: aIsFirst ? (row.score_b || 0) : (row.score_a || 0),
+    };
   });
-
-  return results;
 }
