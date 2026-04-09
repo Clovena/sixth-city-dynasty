@@ -1,7 +1,6 @@
 # SCDFL Site — Task Board
 
 ## TODO
-1. If player undrafted, replace with first waiver claim / FA add 
 1. More content 
     - Game recaps
     - Better rivalry blurbs
@@ -54,3 +53,4 @@
 - Player profile pages, a la pro-football-reference
 - Mobile display for player pages
 - Replace accolades key on franchise pages with actual accolades mimicking player pages
+- If player undrafted, replace with first waiver claim / FA add 
