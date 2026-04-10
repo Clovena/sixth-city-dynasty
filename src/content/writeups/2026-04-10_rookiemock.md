@@ -4,7 +4,7 @@ date: 2026-04-10
 type: mock_draft
 ---
 
-The NFL Draft is only two weeks away, and we haven't seen an officialy Zacalytics rookie draft in about a month. Not much intel has surfaced across Sixth City; this is typically a quiet period in the offseason, with the MLB season beginning and the NBA playoffs around the corner. But it's never a bad time to re-assess how the first round might shake out.  
+The NFL Draft is only two weeks away, and we haven't seen an official Zacalytics rookie draft in about a month. Not much intel has surfaced across Sixth City; this is typically a quiet period in the offseason, with the MLB season beginning and the NBA playoffs around the corner. But it's never a bad time to re-assess how the first round might shake out.  
 
 ---
 
