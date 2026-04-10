@@ -290,6 +290,7 @@ if (champMatch) {
 // ── Draft boards ────────────────────────────────────────────────────────────
 
 type DraftCell = {
+  playerId: string | null;
   playerName: string;
   position: string;
   colorVar: string;
@@ -386,7 +387,7 @@ for (const draft of (draftRows ?? [])) {
       const tradeToSleeperId = isTrade ? String(pick.roster_id) : null;
       const tradeToAbbr = tradeToSleeperId ? getEffectiveAbbr(tradeToSleeperId) : null;
 
-      row.push({ playerName, position, colorVar, pickLabel, isTrade, tradeToAbbr });
+      row.push({ playerId: pick.player_id ?? null, playerName, position, colorVar, pickLabel, isTrade, tradeToAbbr });
     }
     grid.push(row);
   }
@@ -834,11 +835,21 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                     <div class="draft-round-label">Rd {ri + 1}</div>
                     {row.map(cell => cell ? (
                       <div class="draft-cell-wrap">
-                        <div class="draft-cell" style={`--cell-surface:var(--color-${cell.colorVar}-surface);--cell-glow:var(--color-${cell.colorVar}-glow);`}>
-                          <span class="cell-player">{cell.playerName}</span>
-                          <span class="cell-pick-no">{cell.pickLabel}</span>
-                          <span class="cell-pos">{cell.position}</span>
-                        </div>
+                        {cell.playerId ? (
+                          <a href={`/players/${cell.playerId}`} class="draft-cell-link">
+                            <div class="draft-cell" style={`--cell-surface:var(--color-${cell.colorVar}-surface);--cell-glow:var(--color-${cell.colorVar}-glow);`}>
+                              <span class="cell-player">{cell.playerName}</span>
+                              <span class="cell-pick-no">{cell.pickLabel}</span>
+                              <span class="cell-pos">{cell.position}</span>
+                            </div>
+                          </a>
+                        ) : (
+                          <div class="draft-cell" style={`--cell-surface:var(--color-${cell.colorVar}-surface);--cell-glow:var(--color-${cell.colorVar}-glow);`}>
+                            <span class="cell-player">{cell.playerName}</span>
+                            <span class="cell-pick-no">{cell.pickLabel}</span>
+                            <span class="cell-pos">{cell.position}</span>
+                          </div>
+                        )}
                         <div class="cell-bar">{cell.isTrade && cell.tradeToAbbr ? `→ ${cell.tradeToAbbr}` : ''}</div>
                       </div>
                     ) : (
@@ -1220,6 +1231,21 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
   .draft-cell-wrap {
     display: flex;
     flex-direction: column;
+  }
+
+  .draft-cell-link {
+    flex: 1;
+    display: flex;
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .draft-cell-link .draft-cell {
+    flex: 1;
+  }
+
+  .draft-cell-link:hover .draft-cell {
+    filter: brightness(1.15);
   }
 
   .draft-cell {
