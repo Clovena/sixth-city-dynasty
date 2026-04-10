@@ -11,7 +11,7 @@ featured: false
 
 After a high-octane championship featuring one of the most successful franchises in DFL history against a rather unexpected Cinderella, it was the Bikini Bottom Stars who prevailed and took home the Borealis Trophy this year.
 
-Bikini Bottom started their off-season back in early March of 2023, making a pair of trades with the Toronto Hogs. BKB acquired Daniel Jones and Jahan Dotson in a move away from Michael Pittman, and the Stars also shed Ryan Tannehill to clear space and accrue future capital. Later in the off-season, Bikini Bottom’s savvy scouting department picked up Minnesota’s Ty Chandler from waivers, and they also went out to nab Matthew Stafford from the Iqaluit Trout.
+Bikini Bottom started their offseason back in early March of 2023, making a pair of trades with the Toronto Hogs. BKB acquired Daniel Jones and Jahan Dotson in a move away from Michael Pittman, and the Stars also shed Ryan Tannehill to clear space and accrue future capital. Later in the offseason, Bikini Bottom’s savvy scouting department picked up Minnesota’s Ty Chandler from waivers, and they also went out to nab Matthew Stafford from the Iqaluit Trout.
 
 The rookie draft was once again quiet for Bikini Bottom, at least in the first round. With their earliest pick coming at the 2.03, the Stars had to rely once again on their scouting department. They left draft week with Zach Charbonnet, Michael Wilson, Evan Hull, and the crown jewel, Puka Nacua.
 
