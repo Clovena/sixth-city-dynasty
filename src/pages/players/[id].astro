@@ -109,6 +109,40 @@ if (draftRow) {
   }
 }
 
+// ── UDFA acquisition info (only for undrafted players) ────────────────────
+let udfaInfo: { type: 'waiver' | 'free_agent'; waiverBid: number | null; acquiredByAbbr: string; acquiredByActiveAbbr: string; date: string } | null = null;
+
+if (!draftInfo) {
+  const { data: firstTx } = await supabase
+    .schema('scdfl').from('transactions')
+    .select('type, waiver_bid, roster_id, transaction_id, created')
+    .eq('player_id', pid)
+    .eq('action', 'add')
+    .eq('asset', 'player')
+    .in('type', ['waiver', 'free_agent'])
+    .order('created', { ascending: true })
+    .limit(1)
+    .single();
+
+  if (firstTx) {
+    const { data: eraFranchise } = await supabase
+      .schema('scdfl').from('franchises')
+      .select('abbr')
+      .eq('id', firstTx.roster_id)
+      .is('to', null)
+      .single();
+
+    const txDate = new Date(Number(firstTx.created));
+    udfaInfo = {
+      type: firstTx.type as 'waiver' | 'free_agent',
+      waiverBid: firstTx.waiver_bid,
+      acquiredByAbbr: eraFranchise?.abbr ?? '—',
+      acquiredByActiveAbbr: eraFranchise?.abbr ?? '—',
+      date: txDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+    };
+  }
+}
+
 // ── Accolades & Medals from Supabase ───────────────────────────────────────
 const { data: medalRows } = await supabase
   .schema('scdfl').from('v_medals')
@@ -147,6 +181,49 @@ const { data: statsRows } = await supabase
   .select('*')
   .eq('player_id', pid)
   .order('year', { ascending: true });
+
+// ── Franchise starts per year (for team logo column) ──────────────────────
+const { data: startsRows } = await supabase
+  .schema('scdfl').from('v_player_starts')
+  .select('year, week, roster_id')
+  .eq('player_id', pid);
+
+const { data: allFranchiseRows } = await supabase
+  .schema('scdfl').from('franchises')
+  .select('id, abbr, "from", "to"');
+
+function franchiseAbbrForId(id: number, year: number): string | null {
+  const row = (allFranchiseRows ?? []).find(
+    f => f.id === id && f.from <= year && (f.to === null || f.to >= year)
+  );
+  return row?.abbr ?? null;
+}
+
+// Build map: year → ordered list of abbrs the player started for
+const teamsByYear = new Map<number, string[]>();
+if (startsRows) {
+  // Group by year+roster_id, track max week per group
+  const grouped = new Map<string, { year: number; rosterId: number; maxWeek: number }>();
+  for (const r of startsRows) {
+    const key = `${r.year}-${r.roster_id}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      if (r.week > existing.maxWeek) existing.maxWeek = r.week;
+    } else {
+      grouped.set(key, { year: r.year, rosterId: r.roster_id, maxWeek: r.week });
+    }
+  }
+  // Sort by maxWeek ascending (earliest team first) within each year
+  const entries = [...grouped.values()];
+  entries.sort((a, b) => a.year - b.year || a.maxWeek - b.maxWeek);
+  for (const e of entries) {
+    const abbr = franchiseAbbrForId(e.rosterId, e.year);
+    if (!abbr) continue;
+    const list = teamsByYear.get(e.year) ?? [];
+    list.push(abbr);
+    teamsByYear.set(e.year, list);
+  }
+}
 
 const statsByYear = (statsRows ?? []).map(r => ({
   year: r.year as number,
@@ -307,6 +384,7 @@ const headshotUrl = player.espnId
               <tr>
                 <th>Year</th>
                 <th style="text-align: center;">GS</th>
+                <th class="col-team-logo" style="text-align: center;">Tms</th>
                 <th style="text-align: right;">FPTS</th>
                 {posGroup === 'qb' && (<>
                   <th class="col-hide-mobile" style="text-align: center;">Comp</th>
@@ -345,10 +423,26 @@ const headshotUrl = player.espnId
               </tr>
             </thead>
             <tbody>
-              {statsByYear.map(row => (
+              {statsByYear.map(row => {
+                const yearTeams = teamsByYear.get(row.year) ?? [];
+                return (
                 <tr>
                   <td style="font-weight: 600;">{row.year}</td>
                   <td style="text-align: center;">{row.gs}</td>
+                  <td class="col-team-logo" style="text-align: center; padding: 0.25rem 0.35rem;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.2rem;">
+                      {yearTeams.map(abbr => (
+                        <img
+                          src={`/images/logos/${abbr}.png`}
+                          alt={abbr}
+                          width="20"
+                          height="20"
+                          style="object-fit: contain;"
+                          onerror="this.style.display='none'"
+                        />
+                      ))}
+                    </div>
+                  </td>
                   <td style="text-align: right; font-weight: 600; color: var(--color-gold);">{row.fpts.toFixed(2)}</td>
                   {posGroup === 'qb' && (<>
                     <td class="col-hide-mobile" style="text-align: center;">{row.passComp}</td>
@@ -385,12 +479,13 @@ const headshotUrl = player.espnId
                     <td class="col-hide-mobile" style="text-align: center;">{row.idpTd}</td>
                   </>)}
                 </tr>
-              ))}
+              )})}
             </tbody>
             <tfoot>
               <tr>
                 <td style="font-weight: 700; border-top: 2px solid var(--color-border);">Career</td>
                 <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.gs}</td>
+                <td class="col-team-logo" style="border-top: 2px solid var(--color-border);"></td>
                 <td style="text-align: right; font-weight: 700; color: var(--color-gold); border-top: 2px solid var(--color-border);">{careerTotals.fpts.toFixed(2)}</td>
                 {posGroup === 'qb' && (<>
                   <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passComp}</td>
@@ -496,7 +591,26 @@ const headshotUrl = player.espnId
               </div>
             </div>
           ) : (
-            <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">Undrafted</p>
+            <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+              {udfaInfo?.type === 'waiver' ? (
+                <>
+                  <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">UDFA; claimed on waivers</p>
+                  <p style="font-size: 0.8rem; color: var(--color-text-secondary); margin: 0;">
+                    ${udfaInfo.waiverBid} by <a href={`/franchises/${udfaInfo.acquiredByActiveAbbr}`} style="font-weight: 600;">{udfaInfo.acquiredByAbbr}</a>
+                  </p>
+                  <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0;">{udfaInfo.date}</p>
+                </>
+              ) : udfaInfo?.type === 'free_agent' ? (
+                <>
+                  <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">
+                    UDFA; acquired by <a href={`/franchises/${udfaInfo.acquiredByActiveAbbr}`} style="font-weight: 600;">{udfaInfo.acquiredByAbbr}</a>
+                  </p>
+                  <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0;">{udfaInfo.date}</p>
+                </>
+              ) : (
+                <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">Undrafted</p>
+              )}
+            </div>
           )}
         </div>
 
@@ -545,6 +659,11 @@ const headshotUrl = player.espnId
     /* Hide position-specific stat columns, keep Year / GS / FPTS */
     .col-hide-mobile {
       display: none !important;
+    }
+
+    .col-team-logo img {
+      width: 16px !important;
+      height: 16px !important;
     }
 
     .stats-table-wrap {

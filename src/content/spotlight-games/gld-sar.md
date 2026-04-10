@@ -1,1 +1,1 @@
- Rivals on the gridiron, both in the AFC North and the SCC. 
+Rivals on the gridiron, both in the AFC North and the SCC. The Sharks and SeaSnakes have each been fighting for respect in their conference, and while they've each had their moments, they largely have been overshadowed by other teams. So if either of them wants to ascend in the SCC, this rivalry game will serve as a barometer in the conference. 

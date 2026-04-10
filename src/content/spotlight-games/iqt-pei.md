@@ -1,1 +1,1 @@
- The crown jewel of Rivalry Week: the league philanthropists and the men who want them destroyed. 
+The crown jewel of Rivalry Week: the league philanthropists and the men who want them destroyed. Iqaluit has built a brand of compassion and community in a region left behind by the more elite. Their fans are fiercely passionate about the team and about the philanthropy the front office supports. On the other end of the country, Prince Edward Island operates with recklessness and even malevolence, and the Trout are often inexplicably the subject of this rancor. 
