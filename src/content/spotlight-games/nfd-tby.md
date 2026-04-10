@@ -1,1 +1,1 @@
- Two SCC welterweights who are desperate for glory. 
+Two SCC welterweights who are desperate for glory. Thunder Bay has made the playoffs in nearly all of their seasons, but their postseason struggles are well documented. Newfoundland made a Cinderella run to the semifinals in 2025, but they also have a 1-13 season tarnishing their history. Both teams know each other exhaustively, and both are trying to cement their identity in a wide-open conference. But in order to capture a moment of true success, it's more likely than not that they'll have to get through each other. 

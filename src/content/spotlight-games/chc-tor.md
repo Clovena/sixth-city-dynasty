@@ -1,1 +1,1 @@
- Ownership shared a graduate school campus, but never shared so much as a lunch. 
+Ownership shared a graduate school campus, but never shared so much as a lunch. The rivalry between Toronto and Choccolocco dates back to 2021, when a heated argument about a contentious Jonathan Taylor trade became a formative moment in the inaugural season. But the rivalry between Sean and Zac precedes even that, when they both attended Case Western Reserve but Zac failed to reach out even once (but Sean didn't either). Now, they will meet on the gridiron to rekindle those bitter moments.

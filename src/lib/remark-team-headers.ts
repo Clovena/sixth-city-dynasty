@@ -50,12 +50,9 @@ function findMatches(combined: string, franchiseByName: Map<string, Franchise>) 
   return found.map(m => m.franchise);
 }
 
-export function remarkTeamHeaders() {
+export function remarkTeamHeaders({ supabaseUrl, supabaseKey }: { supabaseUrl: string; supabaseKey: string }) {
   return async (tree: Root) => {
-    const supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_ANON_KEY!
-    );
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data: franchises, error } = await supabase
       .schema('scdfl')

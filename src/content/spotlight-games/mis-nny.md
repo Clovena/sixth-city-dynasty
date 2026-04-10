@@ -1,1 +1,1 @@
- Between two tortured franchises, it's a war of attrition — and insulin. 
+Between two tortured franchises, it's a war of attrition — and insulin. An unlikely rivalry pairing gives us a game between Mississauga and New New York, both of whom have spent much more time than they'd like at the bottom of the league. The Benders arrived to Sixth City in 2024, the same year the Mastodons had a glimmer of success, but in 2025 it was back to the basement for both. Eventually, all these early draft picks and years of misery will result in success somewhere, right? 

@@ -1,1 +1,1 @@
- No love lost between western Canada rivals, and no imminent signs of making up. 
+No love lost between western Canada rivals, and no imminent signs of making up. Perhaps the most real rivalry of the slate, the Wranglers and Mounties began their distaste for one another after a contentious trade featuring Jalen Hurts. Tempers flared and tensions rose, making it one of the most infamous moments in Sixth City history. The feud has cooled off since that week in 2022, but there's certainly not been any explicit peacemaking. 
