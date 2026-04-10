@@ -102,7 +102,7 @@ if (draftRow) {
 
     draftInfo = {
       year: draftMeta.year,
-      pick: `${draftRow.round}.${String(draftRow.pick_no).padStart(2, '0')}`,
+      pick: `${draftRow.round}.${String(((draftRow.pick_no - 1) % 14) + 1).padStart(2, '0')}`,
       draftedByAbbr: drafter?.abbr ?? '—',
       draftedByActiveAbbr: activeFranchise?.abbr ?? '—',
     };

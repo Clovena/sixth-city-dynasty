@@ -380,7 +380,7 @@ for (const draft of (draftRows ?? [])) {
       const position = fantasyPositions.join(',').toUpperCase();
       const firstPos = (fantasyPositions[0] ?? '').toUpperCase();
       const colorVar = POSITION_COLOR_MAP[firstPos] ?? 'white';
-      const pickLabel = `${pick.round}.${String(pick.pick_no).padStart(2, '0')}`;
+      const pickLabel = `${pick.round}.${String(((pick.pick_no - 1) % 14) + 1).padStart(2, '0')}`;
       const playerName = `${player?.first_name ?? ''} ${player?.last_name ?? ''}`.trim();
 
       const isTrade = pick.original_roster_id != null && pick.roster_id !== pick.original_roster_id;
