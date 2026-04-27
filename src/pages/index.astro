@@ -70,10 +70,6 @@ for (const m of champMatchups) {
   const active = activeBySleeperId.get(winnerSleeperId);
   if (active) champSet.add(active.abbr);
 }
-const totalChampions = champSet.size;
-
-// Total completed dynasty bowls
-const totalBowls = champMatchups.length;
 
 ---
 
@@ -95,21 +91,6 @@ const totalBowls = champMatchups.length;
         Phi Epsilon Ohio Zeta chapter. Rooted in Cleveland, Sixth City is
         host to members throughout the state of Ohio.
       </p>
-
-      <!-- Quick stats row -->
-      <div class="quick-stats-grid" style="display: flex; flex-wrap: wrap; gap: 0; border: 1px solid var(--color-border); width: fit-content;">
-        {[
-          { label: 'Franchises', value: '14' },
-          { label: 'Seasons Completed', value: '5' },
-          { label: 'Champions', value: String(totalChampions) },
-          { label: 'Dynasty Bowls', value: String(totalBowls) },
-        ].map((stat, i) => (
-          <div style={`padding: 1.1rem 1.75rem; ${i !== 0 ? 'border-left: 1px solid var(--color-border);' : ''} background-color: var(--color-surface);`}>
-            <p style="font-family: var(--font-display); font-size: 2rem; font-weight: 700; color: var(--color-text-primary); line-height: 1; margin: 0;">{stat.value}</p>
-            <p style="font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); margin: 0.3rem 0 0;">{stat.label}</p>
-          </div>
-        ))}
-      </div>
 
       <!-- Season status -->
       <div style="margin-top: 2rem; display: inline-flex; align-items: center; gap: 0.75rem; padding: 0.6rem 1rem; background-color: var(--color-surface); border: 1px solid var(--color-border);">
