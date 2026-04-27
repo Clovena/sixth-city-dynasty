@@ -199,8 +199,12 @@ const rendered = await Promise.all(
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  :global(.ranking-section .team-entry span) {
-    font-size: 32pt !important;
+  :global(.ranking-section .team-entry span:nth-child(1)) {
+    font-size: 40pt !important;
+    color: var(--color-text-primary) !important;
+  }
+  :global(.ranking-section .team-entry span:nth-child(2)) {
+    font-size: 20pt !important;
     color: var(--color-text-primary) !important;
   }
   :global(.ranking-section .team-entry p) {
@@ -212,7 +216,7 @@ const rendered = await Promise.all(
   /* Blurb paragraph expands to fill the section */
   :global(.ranking-section > p) {
     flex: 1;
-    font-size: 18pt;
+    font-size: 15pt;
     line-height: 1.5;
     color: var(--color-text-primary);
     text-align: justify;
