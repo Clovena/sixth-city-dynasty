@@ -3,13 +3,13 @@ import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
 import { loadFranchises, franchiseForYear, franchiseByAbbrForYear, logoPath } from '../../lib/franchise-identity';
 import { loadChampionshipMatchups } from '../../lib/game-utils';
-import { toRoman } from '../../lib/format';
+import { toRoman, formatPoints } from '../../lib/format';
 
 // ── Fetch seasons ──────────────────────────────────────────────────────────
 const { data: seasonRows, error: sErr } = await supabase
   .schema('scdfl')
   .from('seasons')
-  .select('year, scc_champion, hcc_champion')
+  .select('year, scc_champion, hcc_champion, charity, playoff_teams, retreat_location')
   .order('year');
 
 if (sErr) throw new Error(`Seasons query failed: ${sErr.message}`);
@@ -23,15 +23,18 @@ const activeBySleeperId = new Map(activeFranchises.map(f => [f.sleeper_id, f]));
 const champMatchups = await loadChampionshipMatchups();
 
 // ── Build per-season display data ──────────────────────────────────────────
-type FranchiseDisplay = { abbr: string; name: string; owner: string; conf: string };
+type FranchiseDisplay = { abbr: string; activeAbbr: string; name: string; owner: string; conf: string };
 
 type SeasonDisplay = {
   year: number;
-  dynasty_bowl_label: string;
+  bowlNumeral: string;
   scc: FranchiseDisplay | null;
   hcc: FranchiseDisplay | null;
   champion: FranchiseDisplay | null;
   runnerUp: FranchiseDisplay | null;
+  scoreW: number;
+  scoreL: number;
+  charity: string | null;
   championSleeperId: string | null;
 };
 
@@ -42,13 +45,9 @@ for (const s of seasonRows) {
   // Skip seasons with no championship matchup (e.g. in-progress season)
   if (!champMatch) continue;
 
-  const bowlNum = s.year - 2020;
-
-  // SCC/HCC champions — join by abbr for the year
   const sccF = franchiseByAbbrForYear(franchises, s.scc_champion, s.year);
   const hccF = franchiseByAbbrForYear(franchises, s.hcc_champion, s.year);
 
-  // Dynasty Bowl winner/loser from week 17 matchup scores
   const aWins = champMatch.score_a > champMatch.score_b;
   const winnerSleeperId = String(aWins ? champMatch.roster_id_a : champMatch.roster_id_b);
   const loserSleeperId = String(aWins ? champMatch.roster_id_b : champMatch.roster_id_a);
@@ -56,219 +55,282 @@ for (const s of seasonRows) {
   const loserF = franchiseForYear(franchises, loserSleeperId, s.year);
 
   const toDisplay = (f: typeof franchises[0] | undefined): FranchiseDisplay | null =>
-    f ? { abbr: f.abbr, name: f.name, owner: f.owner, conf: f.conf } : null;
+    f
+      ? {
+          abbr: f.abbr,
+          activeAbbr: activeBySleeperId.get(f.sleeper_id)?.abbr ?? f.abbr,
+          name: f.name,
+          owner: f.owner,
+          conf: f.conf,
+        }
+      : null;
 
   seasons.push({
     year: s.year,
-    dynasty_bowl_label: `Dynasty Bowl ${toRoman(bowlNum)}`,
+    bowlNumeral: toRoman(s.year - 2020),
     scc: toDisplay(sccF),
     hcc: toDisplay(hccF),
     champion: toDisplay(winnerF),
     runnerUp: toDisplay(loserF),
+    scoreW: aWins ? champMatch.score_a : champMatch.score_b,
+    scoreL: aWins ? champMatch.score_b : champMatch.score_a,
+    charity: s.charity,
     championSleeperId: winnerSleeperId,
   });
 }
 
-// ── Build championship record per franchise (attributed to current identity) ─
-const championshipMap: Record<string, { count: number; years: number[] }> = {};
-
-for (const season of seasons) {
-  if (!season.championSleeperId) continue;
-  const active = activeBySleeperId.get(season.championSleeperId);
-  if (!active) continue;
-  const key = active.abbr;
-  if (!championshipMap[key]) championshipMap[key] = { count: 0, years: [] };
-  championshipMap[key].count++;
-  championshipMap[key].years.push(season.year);
-}
-
-const rollOfHonor = activeFranchises
-  .filter(f => championshipMap[f.abbr])
-  .map(f => ({ ...f, ...championshipMap[f.abbr] }))
-  .sort((a, b) => Math.min(...a.years) - Math.min(...b.years));
-
+const firstYear = Math.min(...seasonRows.map(s => s.year));
+const latestYear = Math.max(...seasonRows.map(s => s.year));
+const retreats = seasonRows.filter(s => s.retreat_location);
 ---
 
 <Layout title="League History" description="Season-by-season history, dynasty bowl results, and franchise records for the Sixth City Dynasty Football League.">
 
-  <div style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 0;">
+  <!-- ══ ARCHIVE PLATE ═══════════════════════════════════════════════════ -->
+  <div class="archive-plate">
+    <div class="wrap">
+      <h1 class="archive-title">History<br /><span>&amp; Records</span></h1>
+    </div>
+  </div>
 
-    <!-- Page header -->
-    <div style="padding-bottom: 2.5rem; border-bottom: 1px solid var(--color-border);">
-      <p class="section-label">League Archive</p>
-      <h1 class="page-title">History &amp; Records</h1>
-      <p class="page-subheader" style="margin-top: 0.75rem;">
-        The Sixth City Dynasty Football League was founded in 2021 as a
-        branch off of a standard redraft league with origins in the Sigma
-        Phi Epsilon Ohio Zeta chapter. Rooted in Cleveland, Sixth City is
-        host to members throughout the state of Ohio.
-      <br><br>
-        Sixth City celebrates continuity and creativity. Franchises carry
-        their own legacies from year to year, and they carry the glory and
-        ignominy that comes with those legacies. Bowl Games and Rivalry Weeks
-        are designed to spotlight both the dynamics between members of the
-        league and the fictional threads that bind franchises historically
-        and geographically. Members concoct experimental formats like 2v2
-        Tag-Team and One-vs-Everyone matchups. History is preserved and
-        celebrated with the advent of Throwback Week and the Hall of Fame.
-      <br><br>
-        What began as a group of fraternity buddies coming together to enjoy
-        the game of football has grown into a vibrant sports community,
-        contributing to a league that has become an entire universe rich
-        with history, rivalries, and traditions.
+  <!-- Prose in a proper measure, with the counts kept out in the margin. -->
+  <div class="wrap archive-intro">
+    <div class="archive-prose">
+      <p class="dropcap">
+        The Sixth City Dynasty Football League was founded in 2021 as a branch off of a standard
+        redraft league with origins in the Sigma Phi Epsilon Ohio Zeta chapter. Rooted in Cleveland,
+        Sixth City is host to members throughout the state of Ohio.
+      </p>
+      <p>
+        Sixth City celebrates continuity and creativity. Franchises carry their own legacies from
+        year to year, and they carry the glory and ignominy that comes with those legacies. Bowl
+        Games and Rivalry Weeks are designed to spotlight both the dynamics between members of the
+        league and the fictional threads that bind franchises historically and geographically.
+        Members concoct experimental formats like 2v2 Tag-Team and One-vs-Everyone matchups. History
+        is preserved and celebrated with the advent of Throwback Week and the Hall of Fame.
+      </p>
+      <p>
+        What began as a group of fraternity buddies coming together to enjoy the game of football
+        has grown into a vibrant sports community, contributing to a league that has become an
+        entire universe rich with history, rivalries, and traditions.
       </p>
     </div>
+  </div>
 
-    <!-- Season-by-season table -->
-    <div style="margin-top: 3rem;">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; color: var(--color-text-primary);">
-        Season Results
-      </h2>
-      <p class="page-whisper" style="margin-bottom: 1.5rem;">Click on a season's row for more detail.</p>
-      <div style="overflow-x: auto;">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Season</th>
-              <th class="col-hide-mobile">SCC Champion</th>
-              <th class="col-hide-mobile">HCC Champion</th>
-              <th class="col-hide-mobile">Dynasty Bowl</th>
-              <th>Champion</th>
-              <th class="col-hide-mobile">Runner-Up</th>
-              <th class="col-see-more"></th>
+  <!-- ══ SEASON LEDGER ═══════════════════════════════════════════════════ -->
+  <div class="wrap ledger-section">
+    <div class="almanac-head">
+      <h2>The Seasons</h2>
+    </div>
+    <p class="standfirst">Every completed season, its two conference champions, and how the bowl was decided. Click a row to open that season's full record.</p>
+
+    <div class="ledger-scroll">
+      <table class="ledger season-ledger">
+        <thead>
+          <tr>
+            <th class="numeral-col">Bowl</th>
+            <th>Season</th>
+            <th class="col-hide-mobile">SCC Champion</th>
+            <th class="col-hide-mobile">HCC Champion</th>
+            <th>Dynasty Bowl Champion</th>
+            <th class="col-hide-mobile">Runner-Up</th>
+            <th class="num">Final</th>
+          </tr>
+        </thead>
+        <tbody>
+          {seasons.slice().reverse().map(season => (
+            <tr onclick={`window.location='/history/${season.year}'`} class="season-row">
+              <td class="numeral-col"><span class="bowl-numeral">{season.bowlNumeral}</span></td>
+              <td class="season-year">
+                <a href={`/history/${season.year}`}>{season.year}</a>
+                {season.charity && <span class="season-charity">for {season.charity}</span>}
+              </td>
+              <td class="col-hide-mobile">
+                <span class="team-line">{season.scc?.name}</span>
+                <span class="team-owner">{season.scc?.owner}</span>
+              </td>
+              <td class="col-hide-mobile">
+                <span class="team-line">{season.hcc?.name}</span>
+                <span class="team-owner">{season.hcc?.owner}</span>
+              </td>
+              <td class="champ-cell">
+                <span class="champ-inner">
+                  <img src={logoPath(season.champion?.abbr ?? '')} alt="" width="24" height="24" onerror="this.style.display='none'" />
+                  <span>
+                    <span class="team-line champ-name">{season.champion?.name}</span>
+                    <span class="team-owner">{season.champion?.owner}</span>
+                  </span>
+                </span>
+              </td>
+              <td class="col-hide-mobile">
+                <span class="team-line runner-name">{season.runnerUp?.name}</span>
+                <span class="team-owner">{season.runnerUp?.owner}</span>
+              </td>
+              <td class="num final-cell">
+                <span class="final-w">{formatPoints(season.scoreW)}</span>
+                <span class="final-l">{formatPoints(season.scoreL)}</span>
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {seasons.slice().reverse().map(season => (
-              <tr
-                onclick={`window.location='/history/${season.year}'`}
-                style="cursor: pointer;"
-                class="history-row"
-              >
-                <td style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-gold);">{season.year}</td>
-                <td class="col-hide-mobile">
-                  <span style="color: var(--color-text-primary);">
-                    {season.scc?.name}
-                  </span>
-                  <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{season.scc?.owner}</span>
-                </td>
-                <td class="col-hide-mobile">
-                  <span style="color: var(--color-text-primary);">
-                    {season.hcc?.name}
-                  </span>
-                  <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{season.hcc?.owner}</span>
-                </td>
-                <td class="col-hide-mobile" style="font-size: 0.85rem; color: var(--color-text-secondary);">{season.dynasty_bowl_label}</td>
-                <td class="winner-cell">
-                  <span style="color: var(--color-gold);">
-                    {season.champion?.name}
-                  </span>
-                  <span style="display: block; font-size: 0.75rem; font-weight: 400; color: var(--color-gold-dim);">{season.champion?.owner}</span>
-                </td>
-                <td class="col-hide-mobile">
-                  <span style="color: var(--color-text-secondary);">
-                    {season.runnerUp?.name}
-                  </span>
-                  <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{season.runnerUp?.owner}</span>
-                </td>
-                <td class="col-see-more">See more &#8594;</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ FORMAT NOTES — ruled columns, not cards ════════════════════════ -->
+  <div class="wrap format-section">
+    <div class="almanac-head">
+      <h2>Playoff Format</h2>
     </div>
 
-    <!-- Roll of Honor -->
-    <div class="section-rule">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;">
-        Championship Roll of Honor
-      </h2>
-      <div style="border: 1px solid var(--color-border);">
-        {rollOfHonor.map((franchise, i) => (
-          <div style={`display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; ${i !== 0 ? 'border-top: 1px solid var(--color-border);' : ''} `}>
-            <div style="display: flex; align-items: center; gap: 1rem;">
-              <img
-                src={logoPath(franchise.abbr)}
-                alt=""
-                width="32"
-                height="32"
-                style="object-fit: contain; flex-shrink: 0;"
-                onerror="this.style.display='none'"
-              />
-              <div>
-                <a href={`/franchises/${franchise.abbr}`} style="font-family: var(--font-display); font-size: 1.05rem; font-weight: 600; color: var(--color-text-primary);">
-                  {franchise.name}
-                </a>
-                <span style="display: block; font-size: 0.75rem; color: var(--color-text-muted);">{franchise.abbr} &bull; {franchise.owner} &bull; <span class={`label-badge badge-${franchise.conf.toLowerCase()}`}>{franchise.conf}</span></span>
-              </div>
-            </div>
-            <div style="text-align: right;">
-              <div style="display: flex; align-items: center; gap: 0.4rem; justify-content: flex-end;">
-                {Array.from({ length: franchise.count }).map(() => (
-                  <span style="color: var(--color-gold); font-size: 1.25rem;">&#11042;</span>
-                ))}
-              </div>
-              <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.2rem;">
-                {franchise.years.join(', ')}
-              </p>
-            </div>
-          </div>
-        ))}
+    <div class="format-cols">
+      <div class="format-col">
+        <p class="format-era">2021&ndash;2022</p>
+        <p>
+          Four teams per conference qualified, eight in all. The bracket ran conference-wise into a
+          cross-conference final, which guaranteed an SCC vs. HCC Dynasty Bowl every year.
+        </p>
       </div>
-    </div>
-
-    <!-- Playoff format notes -->
-    <div class="section-rule">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">Playoff Format</h2>
-      <div class="playoff-format-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem;">
-          <p class="section-label">2021–2022</p>
-          <p style="font-size: 0.9rem; color: var(--color-text-secondary); line-height: 1.6;">
-            4 teams per conference qualified (8 teams total). Conference-wise bracket format with a cross-conference championship, guaranteeing an SCC vs. HCC Dynasty Bowl matchup.
-          </p>
-        </div>
-        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.5rem;">
-          <p class="section-label">2023–Present</p>
-          <p style="font-size: 0.9rem; color: var(--color-text-secondary); line-height: 1.6;">
-            Playoff field contracted to 7 teams. Seeds 1 and 2 are reserved for the SCC and HCC conference champions. The 1-seed earns a first-round bye. Seeds 3 through 7 are at-large by record.
-          </p>
-        </div>
+      <div class="format-col">
+        <p class="format-era">2023&ndash;Present</p>
+        <p>
+          The field contracted to seven. Seeds one and two are reserved for the conference champions,
+          the top seed takes a first-round bye, and seeds three through seven are at-large by record.
+        </p>
       </div>
     </div>
   </div>
+
 </Layout>
 
 <style>
-  .history-row:hover td {
-    background-color: color-mix(in srgb, var(--color-gold) 5%, transparent);
+  /* ── Archive plate ──────────────────────────────────────────────────── */
+  .archive-plate {
+    border-bottom: 3px solid var(--rule-ink);
+    padding: 3rem 0 1.5rem;
+  }
+  .archive-title {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 11vw, 8rem);
+    font-weight: 900;
+    line-height: 0.82;
+    letter-spacing: -0.035em;
+    text-transform: uppercase;
+    margin: 0;
+    color: var(--text-strong);
+  }
+  .archive-title span { color: var(--ink-300); }
+
+  /* ── Intro: prose measure + margin column ───────────────────────────── */
+  .archive-intro {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 3.5rem;
+    padding-top: 2.5rem;
+    padding-bottom: 1rem;
+    align-items: start;
+  }
+  .archive-prose {
+    max-width: 64ch;
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    line-height: 1.72;
+    color: var(--text-body);
+  }
+  .archive-prose p { margin: 0 0 1.2rem; }
+
+  .rail-year { font-family: var(--font-mono); color: var(--text-faint); flex-shrink: 0; }
+
+  /* ── Season ledger ──────────────────────────────────────────────────── */
+  .ledger-section { padding-top: 3.5rem; }
+  .ledger-scroll { overflow-x: auto; }
+
+  .season-ledger td { padding-top: 0.55rem; padding-bottom: 0.55rem; }
+  .season-row { cursor: pointer; }
+
+  .numeral-col { width: 3.2rem; }
+  .bowl-numeral {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--gold-600);
   }
 
-  /* See more column — desktop: hidden; mobile: visible */
-  .col-see-more {
-    display: none;
+  .season-year a {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-strong);
+    line-height: 1;
+  }
+  .season-charity {
+    display: block;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    margin-top: 0.1rem;
+    max-width: 22ch;
+  }
+
+  .team-line { display: block; color: var(--text-body); font-size: 0.84rem; line-height: 1.25; }
+  .team-owner { display: block; font-size: 0.7rem; color: var(--text-faint); }
+
+  /* `.ledger td` aligns on the baseline, and a flex container takes its
+     baseline from its first item — here the 24px logo, whose baseline is its
+     bottom edge. That sits well below the text baseline of the neighbouring
+     cells, which drags this cell's content upward to match. Centre this
+     table's cells instead; every cell holds a two-line stack, so the rest
+     are unaffected. */
+  .season-ledger td { vertical-align: middle; }
+
+  /* The flex box lives on an inner span — making the <td> itself a flex
+     container drops it out of table layout, so its rule stops short of the row. */
+  .champ-inner { display: flex; align-items: center; gap: 0.6rem; }
+  .champ-inner img { object-fit: contain; flex-shrink: 0; }
+  .champ-name { color: var(--text-strong); font-weight: 700; }
+  .runner-name { color: var(--text-muted); }
+
+  .final-cell { white-space: nowrap; font-family: var(--font-mono); }
+  .final-w { color: var(--pine-700); font-weight: 700; }
+  .final-l { color: var(--text-faint); }
+  .final-w::after { content: " – "; color: var(--text-disabled); font-weight: 400; }
+
+
+  /* ── Format notes ───────────────────────────────────────────────────── */
+  .format-section { padding-top: 3.5rem; padding-bottom: 2rem; }
+  .format-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+  }
+  .format-col p {
+    font-family: var(--font-serif);
+    font-size: 0.95rem;
+    line-height: 1.65;
+    color: var(--text-body);
+    margin: 0;
+    max-width: 46ch;
+  }
+  .format-era {
+    font-family: var(--font-display) !important;
+    font-size: 1.3rem !important;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--text-strong);
+    margin-bottom: 0.4rem !important;
+    line-height: 1;
+  }
+
+  /* ── Responsive ─────────────────────────────────────────────────────── */
+  @media (max-width: 900px) {
+    .archive-intro { grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+    .format-cols { grid-template-columns: 1fr; gap: 2rem; }
   }
 
   @media (max-width: 768px) {
-    /* Hide non-essential table columns */
-    .col-hide-mobile {
-      display: none;
-    }
-
-    /* Show and style the "See more" column */
-    .col-see-more {
-      display: table-cell;
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      color: var(--color-gold-dim);
-      white-space: nowrap;
-      text-align: right;
-    }
-
-    /* Playoff format: single column */
-    .playoff-format-grid {
-      grid-template-columns: 1fr !important;
-    }
+    .col-hide-mobile { display: none; }
+    .archive-title { font-size: clamp(2.6rem, 15vw, 4rem); }
   }
 </style>
