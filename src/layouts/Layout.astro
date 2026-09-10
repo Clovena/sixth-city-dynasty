@@ -62,7 +62,7 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
            publication data an almanac carries on its cover. -->
       <div class="masthead-plate">
         <p class="plate-dateline plate-left">
-          Established 2021<br />Cleveland, Ohio
+          Dynasty<br />Fantasy<br />Football
         </p>
 
         <a href="/" class="plate-name">
@@ -77,13 +77,9 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
         </a>
 
         <p class="plate-dateline plate-right">
-          Volume {volume}<br />Fourteen Clubs
+          Established 2021<br />Cleveland, Ohio<br />Volume {volume}
         </p>
       </div>
-
-      <p class="plate-sub">
-        Dynasty Football League &middot; A Record of Play Since MMXXI
-      </p>
 
       <!-- Section rail: sticks. Set in the display face rather than as
            uppercase micro-labels, and ruled instead of boxed. -->
@@ -180,7 +176,7 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
 
   .masthead-plate {
     max-width: 1200px;
-    margin: 0 auto;
+    margin: 0 auto 0.5rem;
     padding: 1.5rem 1.5rem 0.4rem;
     display: grid;
     grid-template-columns: 1fr auto 1fr;
@@ -200,9 +196,6 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
   }
   .plate-left {
     text-align: left;
-  }
-  .plate-right {
-    text-align: right;
   }
 
   .plate-name {
@@ -233,16 +226,8 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
     color: var(--text-strong);
   }
 
-  .plate-sub {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 0 1.5rem 0.9rem;
-    text-align: center;
-    font-family: var(--font-serif);
-    font-style: italic;
-    font-size: 0.8rem;
-    letter-spacing: 0.02em;
-    color: var(--text-muted);
+  .plate-right {
+    text-align: right;
   }
 
   /* ---- Section rail (sticky) ---- */
@@ -419,10 +404,6 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
     .plate-left,
     .plate-right {
       display: none;
-    }
-    .plate-sub {
-      font-size: 0.72rem;
-      padding-bottom: 0.7rem;
     }
 
     #hamburger-btn {
