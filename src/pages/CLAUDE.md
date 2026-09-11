@@ -43,9 +43,10 @@ The editorial preview is sized for a column at rail width: no justification and 
 - Breakpoints: see the three front-page grid states above; 520px additionally collapses the record book to one column and shrinks the scoreboard
 
 ### `history/index.astro`
-Reframed as **the archive**: a large `.archive-plate` title, prose at a real measure with a `.archive-margin` counts column beside it, then a `.ledger` of seasons (bowl numeral, year + charity, both conference champions, champion, runner-up, final score), a typeset Roll of Honor (no boxes), and playoff-format notes as two ruled columns.
+Reframed as **the archive**: a large `.archive-plate` title, prose at a real measure with a `.archive-margin` counts column beside it, then a `.ledger` of seasons (bowl numeral, year + charity, both conference champions, champion, runner-up, final score), and playoff-format notes as two ruled columns. The Roll of Honor was removed — the seasons ledger already names every champion, so it was a second listing of the same facts.
 - Season ledger wraps in `.ledger-scroll` and hides `.col-hide-mobile` columns under 768px
 - The champion cell's flex box sits on an inner `<span>`, not the `<td>` — making a `<td>` a flex container drops it out of table layout and its rule stops short of the row
+- **`.season-ledger td` overrides `vertical-align` to `middle`.** The shared `.ledger td` uses `baseline`, and a flex container takes its baseline from its first item — here the 24px logo, whose baseline is its bottom edge. That sits well below the text baseline of the neighbouring cells, so baseline alignment drags the champion cell's content visibly upward. Don't revert this to inherit from `.ledger` without re-checking that column
 
 ### `history/[year].astro`
 - Final Standings grid goes vertical (HCC below SCC, each full width)

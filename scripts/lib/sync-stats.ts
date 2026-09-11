@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import "dotenv/config";
+import { resolveSeasonScope, scopeToSeason } from "./season-scope";
 
 // ------------------------------------------------------------
 // Syncs weekly NFL player stats into scdfl.nfl_stats.
@@ -289,8 +290,9 @@ async function syncYear(year: number): Promise<void> {
 }
 
 async function main() {
-  const seasons = await fetchSeasons();
-  console.log(`Found ${seasons.length} seasons to sync.`);
+  const scope = await resolveSeasonScope(supabase);
+  const seasons = scopeToSeason(await fetchSeasons(), scope);
+  console.log(`Scope: ${scope.label}. Found ${seasons.length} seasons to sync.`);
 
   for (const { year } of seasons) {
     try {

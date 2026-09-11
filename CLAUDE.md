@@ -13,6 +13,8 @@ npm run preview      # preview built site
 
 # --- Supabase sync scripts (see scripts/lib/CLAUDE.md for details) ---
 npm run sync              # run all routine syncs (results, matchups, rosters, transactions, drafts, exhibitions, stats)
+npm run sync:recent       # same chain, clamped to the most recent season only
+SCDFL_SEASON=2023 npm run sync   # same chain, clamped to one specific season
 npm run sync:results      # sync win/loss/points per franchise per season
 npm run sync:matchups     # sync all weekly matchups (regular + playoff + consolation)
 npm run sync:rosters      # sync current-season roster assignments (full replace)
@@ -28,6 +30,8 @@ npm run sync:player-meta  # run sync:players then sync:pids sequentially
 ```
 
 All sync scripts live in `scripts/lib/` and write directly to Supabase (schema `scdfl`). They use `SUPABASE_SERVICE_KEY` (not the anon key). See `scripts/lib/CLAUDE.md` for full documentation.
+
+**Season scoping.** By default every routine sync walks all of league history, re-fetching completed seasons that will never change. `scripts/lib/season-scope.ts` lets any routine sync be clamped to one season via `--latest`, `--year YYYY`, or the `SCDFL_SEASON` env var (CLI flags win over the env var). `npm run sync:recent` is just `SCDFL_SEASON=latest npm run sync` — defining it that way rather than as a second `--latest` chain means a sync added to `sync` is covered automatically. See `scripts/lib/CLAUDE.md` for the resolution rules and the `sync:rosters` exception.
 
 ---
 

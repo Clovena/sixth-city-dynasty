@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import "dotenv/config";
+import { resolveSeasonScope } from "./season-scope";
 
 // ------------------------------------------------------------
 // Syncs current roster assignments for the most recent season.
@@ -7,6 +8,12 @@ import "dotenv/config";
 // iterate all seasons. Runs a full replacement: delete all
 // existing rows, then insert fresh from Sleeper.
 // Requires scdfl.players to be populated first (sync:players).
+//
+// Season scoping (--latest / --year / SCDFL_SEASON) is accepted so
+// this script can sit in a scoped chain, but it only ever targets the
+// current season: rosters is a snapshot table with no year column, so
+// a full replace scoped to an older season would overwrite the live
+// rosters with stale ones. A scope naming any other year is skipped.
 // ------------------------------------------------------------
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
@@ -94,7 +101,17 @@ async function replaceRosters(rows: RosterRow[]): Promise<void> {
 // --- Main ---
 
 async function main() {
+  const scope = await resolveSeasonScope(supabase);
   const season = await fetchCurrentSeason();
+
+  if (scope.year !== null && scope.year !== season.year) {
+    console.log(
+      `Scope is ${scope.label}, but rosters only tracks the current season ` +
+        `(${season.year}) — skipping.`
+    );
+    return;
+  }
+
   console.log(`Syncing rosters for ${season.year} (league ${season.league_id})...`);
 
   const raw = await fetchRosters(season.league_id);
