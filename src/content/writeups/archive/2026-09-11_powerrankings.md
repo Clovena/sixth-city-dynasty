@@ -1,6 +1,6 @@
 ---
 title: "Power Rankings — Week 1, 2026"
-date: 2026-03-11
+date: 2026-09-11
 type: power_rankings
 ---
 

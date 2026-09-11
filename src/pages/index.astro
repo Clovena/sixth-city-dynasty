@@ -1,226 +1,865 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { loadFranchises, franchiseForYear, logoPath, primaryColor, type FranchiseRow } from '../lib/franchise-identity';
-import { loadChampionshipMatchups } from '../lib/game-utils';
-import { toRoman } from '../lib/format';
+import { getCollection, render } from 'astro:content';
+import { supabase } from '../lib/supabase';
+import {
+  loadFranchises,
+  franchiseForYear,
+  activeFranchise,
+  identityFor,
+  logoPath,
+  primaryColor,
+  type FranchiseRow,
+} from '../lib/franchise-identity';
+import { loadChampionshipMatchups, gameHref, isPlayablePostseasonGame } from '../lib/game-utils';
+import { toRoman, formatPoints, primaryColorOnInk } from '../lib/format';
+import { loadNflState, activeWeekFor } from '../lib/nfl-state';
 
-// ── Fetch all franchise identities (including historical) ─────────────────
-const allFranchises = await loadFranchises();
+// ─────────────────────────────────────────────────────────────────────────────
+// DATA
+// The front page is assembled from the record itself: results, matchups,
+// seasons, the bowl-game slate, and the newest piece of writing. Nothing
+// here is decorative — every number on the page is one the league played for.
+// ─────────────────────────────────────────────────────────────────────────────
+const [franchises, champMatchups, seasonsRes, resultsRes, matchupsRes, slateRes, ledeEntries, nflState] =
+  await Promise.all([
+    loadFranchises(),
+    loadChampionshipMatchups(),
+    supabase
+      .schema('scdfl')
+      .from('seasons')
+      .select('year, charity, scc_champion, hcc_champion, playoff_teams')
+      .order('year'),
+    supabase
+      .schema('scdfl')
+      .from('results')
+      .select('sleeper_id, year, wins, losses, ties, points_for, points_against, seed, finish, playoff')
+      .limit(1000),
+    supabase
+      .schema('scdfl')
+      .from('matchups')
+      .select('year, week, matchup_id, game_type, roster_id_a, roster_id_b, score_a, score_b')
+      .limit(1000),
+    supabase
+      .schema('scdfl')
+      .from('spotlight_game_years')
+      .select('slug, year, spotlight_games(slug, name, type, team_a, team_b)')
+      .limit(500),
+    getCollection('homepage'),
+    loadNflState(),
+  ]);
 
-// ── Fetch championship matchups (week 17, game_type = 1) ──────────────────
-const champMatchups = (await loadChampionshipMatchups())
-  .sort((a, b) => b.year - a.year);
+if (seasonsRes.error) throw new Error(`Seasons query failed: ${seasonsRes.error.message}`);
+if (resultsRes.error) throw new Error(`Results query failed: ${resultsRes.error.message}`);
+if (matchupsRes.error) throw new Error(`Matchups query failed: ${matchupsRes.error.message}`);
+if (slateRes.error) throw new Error(`Spotlight slate query failed: ${slateRes.error.message}`);
 
-// ── Build recent dynasty bowls (last 3) ───────────────────────────────────
-type BowlDisplay = {
-  year: number;
-  label: string;
-  winner: FranchiseRow | undefined;
-  loser: FranchiseRow | undefined;
+const seasons = seasonsRes.data ?? [];
+const results = resultsRes.data ?? [];
+const matchups = matchupsRes.data ?? [];
+
+const currentYear = Math.max(...seasons.map(s => s.year));
+
+// ── The lede: this week's headline game ──────────────────────────────────────
+// The copy is editorial (src/content/homepage/lede-blurb.md); the game beneath
+// it is not. Which game leads follows the live NFL state rather than the
+// archive, so the front page turns over with the schedule — `matchups` holds
+// the full season from the day the Sleeper league is created, so "latest week
+// with rows" runs ahead of the week actually being played.
+const ledeEntry = ledeEntries.find(e => e.id === 'lede-blurb');
+const ledeCopy = ledeEntry?.data ?? null;
+const LedeBody = ledeEntry ? (await render(ledeEntry)).Content : null;
+
+// `status` is the editorial call on where the week stands, and it governs
+// every scorebug on the page — the lede and the rail alike. Only a finished
+// week gets marked winners; while it is live, figures move and a gold marker
+// would just be asserting a result that hasn't happened. Both sides then read
+// in parchment, however they happen to sit.
+const weekIsFinal = ledeCopy?.status === 'final';
+
+const ledeYear =
+  nflState.season !== null && matchups.some(m => m.year === nflState.season)
+    ? nflState.season
+    : Math.max(...matchups.map(m => m.year));
+
+const ledeWeeks = [...new Set(matchups.filter(m => m.year === ledeYear).map(m => m.week))]
+  .sort((a, b) => a - b);
+
+// Falls back to the first week on the schedule when the state fetch failed or
+// the live week has no rows yet, then clamps to a week that actually exists.
+const targetWeek = activeWeekFor(nflState, ledeYear) ?? ledeWeeks[0] ?? 1;
+const ledeWeek = ledeWeeks.includes(targetWeek)
+  ? targetWeek
+  : ledeWeeks.filter(w => w <= targetWeek).pop() ?? ledeWeeks[0] ?? targetWeek;
+
+// "First game of the week" is matchup_id order — the order Sleeper posts them.
+const ledeGame = matchups
+  .filter(m => m.year === ledeYear && m.week === ledeWeek && m.matchup_id)
+  .sort((a, b) => a.matchup_id - b.matchup_id)[0] ?? null;
+
+type LedeGame = {
+  sideA: FranchiseRow | undefined;
+  sideB: FranchiseRow | undefined;
+  scoreA: number;
+  scoreB: number;
+  aWon: boolean;
+  bWon: boolean;
+  href: string | null;
 };
 
-const recentBowls: BowlDisplay[] = [];
-for (const m of champMatchups.slice(0, 3)) {
-  const aWins = m.score_a > m.score_b;
-  const winnerSleeperId = String(aWins ? m.roster_id_a : m.roster_id_b);
-  const loserSleeperId = String(aWins ? m.roster_id_b : m.roster_id_a);
-  recentBowls.push({
-    year: m.year,
-    label: `Dynasty Bowl ${toRoman(m.year - 2020)}`,
-    winner: franchiseForYear(allFranchises, winnerSleeperId, m.year),
-    loser: franchiseForYear(allFranchises, loserSleeperId, m.year),
+let lede: LedeGame | null = null;
+if (ledeGame) {
+  const scoreA = ledeGame.score_a ?? 0;
+  const scoreB = ledeGame.score_b ?? 0;
+  lede = {
+    sideA: franchiseForYear(franchises, String(ledeGame.roster_id_a), ledeYear),
+    sideB: franchiseForYear(franchises, String(ledeGame.roster_id_b), ledeYear),
+    scoreA,
+    scoreB,
+    aWon: weekIsFinal && scoreA > scoreB,
+    bWon: weekIsFinal && scoreB > scoreA,
+    href: gameHref(
+      ledeYear,
+      ledeWeek,
+      identityFor(franchises, ledeGame.roster_id_a, ledeYear),
+      identityFor(franchises, ledeGame.roster_id_b, ledeYear),
+    ),
+  };
+}
+
+// ── The slate: latest played week, or the next set of fixtures if none ───────
+const yearsWithGames = [...new Set(matchups.map(m => m.year))].sort((a, b) => b - a);
+const slateYear = yearsWithGames[0] ?? currentYear;
+const slateYearGames = matchups.filter(m => m.year === slateYear);
+const playedWeeks = [...new Set(slateYearGames.filter(m => m.score_a > 0 || m.score_b > 0).map(m => m.week))];
+
+const slateIsFixtures = playedWeeks.length === 0;
+const slateWeek = slateIsFixtures ? Math.min(...slateYearGames.map(m => m.week)) : Math.max(...playedWeeks);
+
+const slate = slateYearGames
+  .filter(m => m.week === slateWeek && m.matchup_id)
+  .filter(m => isPlayablePostseasonGame(m.game_type, m.score_a, m.score_b) || slateIsFixtures)
+  // The lede already carries this week's headline game at full size; repeating
+  // it in the rail below would be the same result posted twice. Matched on the
+  // full key, so nothing is dropped when the lede week and the slate week
+  // differ (they do whenever the live week has no rows yet).
+  .filter(m => !(
+    ledeGame &&
+    m.year === ledeGame.year &&
+    m.week === ledeGame.week &&
+    m.matchup_id === ledeGame.matchup_id
+  ))
+  .sort((a, b) => a.matchup_id - b.matchup_id)
+  .map(m => {
+    const a = identityFor(franchises, m.roster_id_a, slateYear);
+    const b = identityFor(franchises, m.roster_id_b, slateYear);
+    return {
+      a, b,
+      scoreA: m.score_a ?? 0,
+      scoreB: m.score_b ?? 0,
+      href: gameHref(slateYear, slateWeek, a, b),
+    };
+  })
+  .filter(g => g.a && g.b);
+
+// ── The record book: extremes, computed over every game ever played ──────────
+const played = matchups.filter(
+  m => m.matchup_id && (m.score_a > 0 || m.score_b > 0) && isPlayablePostseasonGame(m.game_type, m.score_a, m.score_b),
+);
+
+type Extreme = { label: string; value: string; line: string; href: string | null; year: number; week: number };
+
+function sideName(rosterId: number, year: number): string {
+  return identityFor(franchises, rosterId, year)?.name ?? '—';
+}
+function hrefFor(m: typeof played[number]): string | null {
+  return gameHref(m.year, m.week, identityFor(franchises, m.roster_id_a, m.year), identityFor(franchises, m.roster_id_b, m.year));
+}
+
+const highestSingle = [...played].sort(
+  (a, b) => Math.max(b.score_a, b.score_b) - Math.max(a.score_a, a.score_b),
+)[0];
+const widestMargin = [...played]
+  .filter(m => m.score_a > 0 && m.score_b > 0)
+  .sort((a, b) => Math.abs(b.score_a - b.score_b) - Math.abs(a.score_a - a.score_b))[0];
+const narrowestMargin = [...played]
+  .filter(m => m.score_a > 0 && m.score_b > 0)
+  .sort((a, b) => Math.abs(a.score_a - a.score_b) - Math.abs(b.score_a - b.score_b))[0];
+const highestCombined = [...played]
+  .filter(m => m.score_a > 0 && m.score_b > 0)
+  .sort((a, b) => b.score_a + b.score_b - (a.score_a + a.score_b))[0];
+
+const recordBook: Extreme[] = [];
+if (highestSingle) {
+  const topIsA = highestSingle.score_a >= highestSingle.score_b;
+  recordBook.push({
+    label: 'Highest score',
+    value: formatPoints(Math.max(highestSingle.score_a, highestSingle.score_b)),
+    line: sideName(topIsA ? highestSingle.roster_id_a : highestSingle.roster_id_b, highestSingle.year),
+    href: hrefFor(highestSingle), year: highestSingle.year, week: highestSingle.week,
   });
 }
+if (widestMargin) {
+  const winIsA = widestMargin.score_a > widestMargin.score_b;
+  recordBook.push({
+    label: 'Widest margin',
+    value: formatPoints(Math.abs(widestMargin.score_a - widestMargin.score_b)),
+    line: `${sideName(winIsA ? widestMargin.roster_id_a : widestMargin.roster_id_b, widestMargin.year)} over ${sideName(winIsA ? widestMargin.roster_id_b : widestMargin.roster_id_a, widestMargin.year)}`,
+    href: hrefFor(widestMargin), year: widestMargin.year, week: widestMargin.week,
+  });
+}
+if (narrowestMargin) {
+  const winIsA = narrowestMargin.score_a > narrowestMargin.score_b;
+  recordBook.push({
+    label: 'Narrowest margin',
+    value: formatPoints(Math.abs(narrowestMargin.score_a - narrowestMargin.score_b)),
+    line: `${sideName(winIsA ? narrowestMargin.roster_id_a : narrowestMargin.roster_id_b, narrowestMargin.year)} over ${sideName(winIsA ? narrowestMargin.roster_id_b : narrowestMargin.roster_id_a, narrowestMargin.year)}`,
+    href: hrefFor(narrowestMargin), year: narrowestMargin.year, week: narrowestMargin.week,
+  });
+}
+if (highestCombined) {
+  recordBook.push({
+    label: 'Most points, one game',
+    value: formatPoints(highestCombined.score_a + highestCombined.score_b),
+    line: `${sideName(highestCombined.roster_id_a, highestCombined.year)} & ${sideName(highestCombined.roster_id_b, highestCombined.year)}`,
+    href: hrefFor(highestCombined), year: highestCombined.year, week: highestCombined.week,
+  });
+}
+
+// ── The standing order: every franchise, all-time, by winning percentage ─────
+type StandingRow = {
+  abbr: string; name: string; owner: string; conf: string; colors: string[];
+  w: number; l: number; t: number; pf: number; seasons: number; titles: number; pct: number;
+};
+
+const titleCountBySleeperId = new Map<string, number>();
+for (const m of champMatchups) {
+  const id = String(m.score_a > m.score_b ? m.roster_id_a : m.roster_id_b);
+  titleCountBySleeperId.set(id, (titleCountBySleeperId.get(id) ?? 0) + 1);
+}
+
+const standingOrder: StandingRow[] = franchises
+  .filter(f => f.to === null)
+  .map(f => {
+    const rows = results.filter(r => r.sleeper_id === f.sleeper_id);
+    const w = rows.reduce((n, r) => n + (r.wins ?? 0), 0);
+    const l = rows.reduce((n, r) => n + (r.losses ?? 0), 0);
+    const t = rows.reduce((n, r) => n + (r.ties ?? 0), 0);
+    return {
+      abbr: f.abbr, name: f.name, owner: f.owner, conf: f.conf, colors: f.colors,
+      w, l, t,
+      pf: rows.reduce((n, r) => n + Number(r.points_for ?? 0), 0),
+      seasons: rows.length,
+      titles: titleCountBySleeperId.get(f.sleeper_id) ?? 0,
+      pct: w + l + t === 0 ? 0 : (w + t / 2) / (w + l + t),
+    };
+  })
+  .sort((a, b) => b.pct - a.pct || b.pf - a.pf);
+
+const completedSeasons = champMatchups.length;
+
+// ── The bowl-game slate for the coming season ────────────────────────────────
+type SpotlightEntry = { slug: string; name: string; type: string; teamA: string; teamB: string; since: number };
+
+const spotlightBySlug = new Map<string, SpotlightEntry>();
+for (const row of slateRes.data ?? []) {
+  const g = row.spotlight_games as unknown as { slug: string; name: string; type: string; team_a: string; team_b: string } | null;
+  if (!g) continue;
+  const existing = spotlightBySlug.get(row.slug);
+  if (existing) {
+    existing.since = Math.min(existing.since, row.year);
+  } else {
+    spotlightBySlug.set(row.slug, {
+      slug: g.slug, name: g.name, type: g.type, teamA: g.team_a, teamB: g.team_b, since: row.year,
+    });
+  }
+}
+const slateThisYear = new Set((slateRes.data ?? []).filter(r => r.year === currentYear).map(r => r.slug));
+
+// Bowl games only. `spotlight_games.type` also carries 'rivalry', but Rivalry
+// Week is redrawn every season and carries no history of its own, so it does
+// not belong in a standing index — the bowls persist and accrue lore.
+const bowlGames = [...spotlightBySlug.values()]
+  .filter(g => slateThisYear.has(g.slug) && g.type === 'bowl-game')
+  .sort((a, b) => a.since - b.since || a.name.localeCompare(b.name));
+
+// ── Champions roll ───────────────────────────────────────────────────────────
+const championsRoll = [...champMatchups]
+  .sort((a, b) => b.year - a.year)
+  .map(m => {
+    const aWins = m.score_a > m.score_b;
+    return {
+      year: m.year,
+      label: toRoman(m.year - 2020),
+      champ: franchiseForYear(franchises, String(aWins ? m.roster_id_a : m.roster_id_b), m.year),
+      loser: franchiseForYear(franchises, String(aWins ? m.roster_id_b : m.roster_id_a), m.year),
+      scoreW: aWins ? m.score_a : m.score_b,
+      scoreL: aWins ? m.score_b : m.score_a,
+      charity: seasons.find(s => s.year === m.year)?.charity ?? null,
+    };
+  });
 ---
 
-<Layout title="SCDFL" description="Sixth City Dynasty Fantasy Football League. 14 franchises, 5 seasons, 4 champions. Est. 2021.">
+<Layout
+  title="SCDFL"
+  description="Sixth City Dynasty Football League — fourteen franchises, five completed seasons, and every score on record. Est. 2021."
+>
 
-  <!-- Hero — parchment ground -->
-  <section class="home-hero sc-paper">
-    <div style="max-width: 1200px; margin: 0 auto; padding: 5rem 1.5rem 4.5rem;">
+  <!-- ══ FRONT PAGE ══════════════════════════════════════════════════════ -->
+  <div class="wrap front-page">
 
-      <p class="sc-eyebrow" style="color: var(--gold-700); margin-bottom: 1.25rem;">Est. 2021 &bull; Cleveland, Ohio</p>
+    <!-- Centre: the lede -->
+    <article class="lede">
+      {ledeCopy && (
+        <h1 class="lede-head">
+          {ledeCopy.title}
+          <span class="lede-head-tail">{ledeCopy.subtitle}</span>
+        </h1>
+      )}
 
-      <h1 style="font-family: var(--font-display); font-size: clamp(2.75rem, 8vw, 5.5rem); font-weight: 900; line-height: 0.98; letter-spacing: -0.02em; color: var(--text-strong); margin: 0 0 1.5rem; max-width: 15ch; text-transform: uppercase;">
-        Sixth City Dynasty Football League
-      </h1>
+      {lede && (
+        <a
+          href={lede.href ?? '#'}
+          class="lede-score"
+          style={`--side-a: ${primaryColorOnInk(lede.sideA?.colors)}; --side-b: ${primaryColorOnInk(lede.sideB?.colors)};`}
+        >
+          <span class="lede-side">
+            <img src={logoPath(lede.sideA?.abbr ?? '')} alt="" width="52" height="52" onerror="this.style.display='none'" />
+            <span class="lede-abbr">{lede.sideA?.abbr}</span>
+          </span>
+          <span class="lede-figures">
+            <span class:list={['lede-num', { win: lede.aWon }]}>{formatPoints(lede.scoreA)}</span>
+            <span class="lede-vs">&ndash;</span>
+            <span class:list={['lede-num', { win: lede.bWon }]}>{formatPoints(lede.scoreB)}</span>
+          </span>
+          <span class="lede-side lede-side-right">
+            <span class="lede-abbr">{lede.sideB?.abbr}</span>
+            <img src={logoPath(lede.sideB?.abbr ?? '')} alt="" width="52" height="52" onerror="this.style.display='none'" />
+          </span>
+        </a>
+      )}
 
-      <p style="font-family: var(--font-serif); font-size: 1.1rem; color: var(--text-body); line-height: 1.62; max-width: 58ch; margin: 0 0 2.25rem;">
-        The Sixth City Dynasty Football League was founded in 2021 as a
-        branch off of a standard redraft league with origins in the Sigma
-        Phi Epsilon Ohio Zeta chapter. Rooted in Cleveland, Sixth City is
-        host to members throughout the state of Ohio.
-      </p>
+      {LedeBody && (
+        <div class="lede-body measure">
+          <LedeBody />
+        </div>
+      )}
 
-      <!-- Season status -->
-      <div style="display: inline-flex; align-items: center; gap: 0.7rem; padding: 0.55rem 1rem; background-color: var(--surface-sunken); border: 1px solid var(--border-hairline);">
-        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: var(--ember-500);"></span>
-        <span class="sc-tabular" style="font-family: var(--font-sans); font-size: 0.8rem; font-weight: 600; color: var(--text-muted); letter-spacing: 0.03em;">Season 6 begins September 9th, 2026</span>
-      </div>
+      {lede && (
+        <p class="lede-credit">
+          <a href={`/franchises/${activeFranchise(franchises, String(lede.sideA?.sleeper_id ?? ''))?.abbr ?? lede.sideA?.abbr}`}>
+            {lede.sideA?.name}
+          </a>
+          <span class="issue-dot">&middot;</span>
+          <a href={`/franchises/${activeFranchise(franchises, String(lede.sideB?.sleeper_id ?? ''))?.abbr ?? lede.sideB?.abbr}`}>
+            {lede.sideB?.name}
+          </a>
+          <span class="issue-dot">&middot;</span>
+          <a href={lede.href ?? '/scores'}>{weekIsFinal ? 'Full box score' : 'Matchup detail'}</a>
+        </p>
+      )}
+    </article>
 
-    </div>
-    <div class="sc-stripe" style="height: 4px; width: 100%;" aria-hidden="true"></div>
-  </section>
+    <!-- Right rail: the rest of the week, posted down the column -->
+    {slate.length > 0 && (
+      <aside class="rail-right" data-theme="ink">
+        <h2 class="rail-head">{slateIsFixtures ? 'The Opening Slate' : 'Latest Scores'}</h2>
+        <p class="rail-stamp slugline">{slateYear} &middot; Week {slateWeek}</p>
 
-  <!-- Primary section nav -->
-  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
-    <div class="section-nav-grid" style="margin-top: 3rem; display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background-color: var(--border-hairline);">
+        <div class="score-rail">
+          {slate.map(g => (
+            <a href={g.href ?? '/scores'} class="rail-game">
+              <span class="rail-side">
+                <img src={logoPath(g.a!.abbr)} alt="" width="22" height="22" onerror="this.style.display='none'" />
+                <span class="rail-abbr">{g.a!.abbr}</span>
+                <span class:list={['rail-score', { win: weekIsFinal && !slateIsFixtures && g.scoreA > g.scoreB }]}>
+                  {slateIsFixtures ? '' : formatPoints(g.scoreA)}
+                </span>
+              </span>
+              <span class="rail-side">
+                <img src={logoPath(g.b!.abbr)} alt="" width="22" height="22" onerror="this.style.display='none'" />
+                <span class="rail-abbr">{g.b!.abbr}</span>
+                <span class:list={['rail-score', { win: weekIsFinal && !slateIsFixtures && g.scoreB > g.scoreA }]}>
+                  {slateIsFixtures ? '' : formatPoints(g.scoreB)}
+                </span>
+              </span>
+            </a>
+          ))}
+        </div>
 
-      <a href="/scores" class="section-nav-card">
-        <h3 class="section-nav-title">Scoreboard</h3>
-        <p class="section-nav-desc">Scores and recaps of every game across the season. Check on this week's matchups, revisit historical showdowns, and explore the way history was made.</p>
-        <span class="section-nav-cta">View Scores &#8594;</span>
-      </a>
-
-      <a href="/content" class="section-nav-card">
-        <h3 class="section-nav-title">Content</h3>
-        <p class="section-nav-desc">Power Rankings, mock drafts, schedule previews, and more. Written by the commissioner and other league members.</p>
-        <span class="section-nav-cta">View Content &#8594;</span>
-      </a>
-    </div>
+        <p class="rail-more"><a href="/scores">Every score, every week</a></p>
+      </aside>
+    )}
   </div>
 
+  <!-- ══ STANDING ORDER + CHAMPIONS ROLL ════════════════════════════════ -->
+  <div class="wrap two-up">
 
-  <!-- Recent Dynasty Bowls -->
-  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
-    <div style="margin-top: 4rem;">
-      <div style="display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 0.75rem; border-bottom: 2px solid var(--rule-ink); padding-bottom: 0.75rem;">
-        <h2 style="font-family: var(--font-display); font-size: 1.75rem; font-weight: 700; margin: 0; color: var(--text-strong); letter-spacing: -0.01em;">Recent Dynasty Bowls</h2>
-        <a href="/history" class="sc-eyebrow" style="color: var(--text-link);">Full History &#8594;</a>
+    <section class="standing">
+      <div class="almanac-head">
+        <h2>All-Time Standings</h2>
       </div>
-
-      <div style="display: flex; flex-direction: column; gap: 1px; background-color: var(--border-hairline); border: 1px solid var(--border-hairline);">
-        {recentBowls.map(bowl => {
-          const winner = bowl.winner;
-          const loser = bowl.loser;
-          return (
-            <div class="dynasty-bowl-row" style="background-color: var(--surface-card); padding: 1.5rem 1.75rem; display: grid; grid-template-columns: 90px 1fr 1fr; gap: 2rem; align-items: center;">
-
-              <div>
-                <p class="sc-tabular" style="font-family: var(--font-display); font-size: 2rem; font-weight: 900; color: var(--gold-700); line-height: 1; margin: 0;">{bowl.year}</p>
-                <p class="sc-eyebrow" style="font-size: 0.62rem; color: var(--text-muted); margin: 0.35rem 0 0;">{bowl.label}</p>
-              </div>
-
-              <div style={`border-left: 3px solid ${primaryColor(winner?.colors)}; padding-left: 1.25rem; display: flex; align-items: center; gap: 0.9rem;`}>
-                <img
-                  src={logoPath(winner?.abbr ?? '')}
-                  alt=""
-                  width="34"
-                  height="34"
-                  style="object-fit: contain; flex-shrink: 0;"
-                  onerror="this.style.display='none'"
-                />
-                <div>
-                  <p class="sc-eyebrow" style="font-size: 0.6rem; color: var(--gold-700); margin: 0 0 0.2rem;">Champion</p>
-                  <a href={`/franchises/${winner?.abbr}`} style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--text-strong); text-decoration: none; line-height: 1.2; display: block;">
-                    {winner?.name}
-                  </a>
-                  <p style="font-family: var(--font-sans); font-size: 0.75rem; color: var(--text-muted); margin: 0.2rem 0 0;">{winner?.abbr} &bull; {winner?.owner}</p>
-                </div>
-              </div>
-
-              <div class="dynasty-bowl-loser" style="padding-left: 1.25rem; display: flex; align-items: center; gap: 0.9rem;">
-                <img
-                  src={logoPath(loser?.abbr ?? '')}
-                  alt=""
-                  width="34"
-                  height="34"
-                  style="object-fit: contain; flex-shrink: 0; opacity: 0.55;"
-                  onerror="this.style.display='none'"
-                />
-                <div>
-                  <p class="sc-eyebrow" style="font-size: 0.6rem; color: var(--text-faint); margin: 0 0 0.2rem;">Runner-Up</p>
-                  <a href={`/franchises/${loser?.abbr}`} style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 600; color: var(--text-muted); text-decoration: none; line-height: 1.2; display: block;">
-                    {loser?.name}
-                  </a>
-                  <p style="font-family: var(--font-sans); font-size: 0.75rem; color: var(--text-faint); margin: 0.2rem 0 0;">{loser?.abbr} &bull; {loser?.owner}</p>
-                </div>
-              </div>
-
-            </div>
-          );
-        })}
+      <div class="ledger-scroll">
+      <table class="ledger">
+        <thead>
+          <tr>
+            <th class="rank"></th>
+            <th>Franchise</th>
+            <th class="col-drop">Owner</th>
+            <th class="num">W</th>
+            <th class="num">L</th>
+            <th class="num">Pct</th>
+            <th class="num col-drop">Points For</th>
+            <th class="num">Bowls</th>
+          </tr>
+        </thead>
+        <tbody>
+          {standingOrder.map((row, i) => (
+            <tr>
+              <td class="rank">{i + 1}</td>
+              <td class="standing-team">
+                <span class="keel" style={`background-color: ${primaryColor(row.colors)};`}></span>
+                <a href={`/franchises/${row.abbr}`}>{row.name}</a>
+                <span class="standing-conf">{row.conf}</span>
+              </td>
+              <td class="col-drop standing-owner">{row.owner}</td>
+              <td class="num">{row.w}</td>
+              <td class="num">{row.l}</td>
+              <td class="num">{row.pct.toFixed(3).replace(/^0/, '')}</td>
+              <td class="num col-drop">{Math.round(row.pf).toLocaleString('en-US')}</td>
+              <td class="num">{row.titles > 0 ? '⬢'.repeat(row.titles) : <span class="dash">&middot;</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
       </div>
-    </div>
+    </section>
+
+    <section class="roll">
+      <div class="almanac-head">
+        <h2>Champions</h2>
+      </div>
+      <ol class="roll-list">
+        {championsRoll.map(c => (
+          <li class="roll-item">
+            <span class="roll-numeral">{c.label}</span>
+            <span class="roll-body">
+              <img src={logoPath(c.champ?.abbr ?? '')} alt="" width="26" height="26" onerror="this.style.display='none'" />
+              <a href={`/franchises/${activeFranchise(franchises, String(c.champ?.sleeper_id ?? ''))?.abbr ?? c.champ?.abbr}`} class="roll-name">{c.champ?.name}</a>
+              <span class="roll-detail">
+                {c.year} &middot; {formatPoints(c.scoreW)}&ndash;{formatPoints(c.scoreL)} over {c.loser?.abbr}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p class="rail-more"><a href="/history">Season by season, back to 2021</a></p>
+    </section>
   </div>
 
-  <!-- Secondary section nav -->
-  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
-    <div class="section-nav-grid" style="margin-top: 4rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background-color: var(--border-hairline);">
+  <!-- ══ BOWL GAMES — dense index, no cards ════════════════════════════ -->
+  {bowlGames.length > 0 && (
+    <div class="wrap bowl-section">
+      <div class="almanac-head">
+        <h2>The Bowl Games of {currentYear}</h2>
+      </div>
 
-      <a href="/history" class="section-nav-card">
-        <h3 class="section-nav-title">History &amp; Records</h3>
-        <p class="section-nav-desc">Season results, the championship roll of honor, narrative recaps, and the full statistical record.</p>
-        <span class="section-nav-cta">View History &#8594;</span>
-      </a>
-
-      <a href="/franchises" class="section-nav-card">
-        <h3 class="section-nav-title">Franchises</h3>
-        <p class="section-nav-desc">All 14 franchises across the SCC and HCC. Ownership, history, colors, and individual franchise records.</p>
-        <span class="section-nav-cta">View Franchises &#8594;</span>
-      </a>
-
-      <a href="/spotlight-games" class="section-nav-card">
-        <h3 class="section-nav-title">Spotlight Games</h3>
-        <p class="section-nav-desc">The 2026 bowl game slate, Rivalry Week, and the institutional pairings that define the regular season.</p>
-        <span class="section-nav-cta">View Spotlight Games &#8594;</span>
-      </a>
+      <div class="bowl-index">
+        {bowlGames.map(g => (
+          <a href={`/spotlight-games/${g.slug}`} class="bowl-entry">
+            <span class="bowl-logos">
+              <img src={logoPath(g.teamA)} alt="" width="24" height="24" onerror="this.style.display='none'" />
+              <img src={logoPath(g.teamB)} alt="" width="24" height="24" onerror="this.style.display='none'" />
+            </span>
+            <span class="bowl-text">
+              <span class="bowl-name">{g.name}</span>
+              <span class="bowl-meta">
+                {g.teamA} v {g.teamB}
+                <span class="bowl-since">est. {g.since}</span>
+              </span>
+            </span>
+          </a>
+        ))}
+      </div>
     </div>
-  </div>
+  )}
+
+  <!-- ══ RECORD BOOK — extremes across one horizontal band ══════════════ -->
+  {recordBook.length > 0 && (
+    <div class="wrap record-section">
+      <div class="almanac-head">
+        <h2>The Record Book</h2>
+      </div>
+
+      <dl class="record-row">
+        {recordBook.map(r => (
+          <div class="record-cell">
+            <dt>{r.label}</dt>
+            <dd>
+              <a href={r.href ?? '/hall-of-fame/records'} class="record-fig">{r.value}</a>
+              <span class="record-line">{r.line}</span>
+              <span class="slugline">{r.year} &middot; Week {r.week}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      <p class="record-more"><a href="/hall-of-fame/records">The complete record book</a></p>
+    </div>
+  )}
+
 </Layout>
 
 <style>
-  .home-hero { background-color: var(--surface-page); }
+  /* ── Front page: three unequal columns ──────────────────────────────── */
+  .front-page {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 230px;
+    gap: 2.5rem;
+    padding-top: 2.75rem;
+    padding-bottom: 3.5rem;
+    align-items: start;
+  }
 
-  .section-nav-card {
-    text-decoration: none;
-    display: block;
-    background-color: var(--surface-card);
-    padding: 2rem;
-    transition: background-color var(--dur-fast) var(--ease-standard);
-  }
-  .section-nav-card:hover {
-    background-color: var(--surface-sunken);
-    text-decoration: none;
-  }
-  .section-nav-title {
-    font-family: var(--font-display);
-    font-size: 1.35rem;
-    font-weight: 700;
-    color: var(--text-strong);
-    margin: 0 0 0.5rem;
-    line-height: 1.15;
-    letter-spacing: -0.01em;
-  }
-  .section-nav-desc {
-    font-family: var(--font-serif);
-    font-size: 0.95rem;
-    color: var(--text-body);
+  /* DOM order is lede → score rail, which is also the reading order wanted
+     when the grid collapses to one column. */
+  .lede      { order: 1; }
+  .rail-right{ order: 2; }
+
+  /* An ink panel, not a ruled light column — results belong in the broadcast
+     register. `data-theme="ink"` on the element re-scopes the colour tokens,
+     so the rules below keep using semantic names and flip with it. */
+  .rail-right {
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
     line-height: 1.55;
+    color: var(--text-body);
+    background-color: var(--ink-900);
+    padding: 1.25rem 1.25rem 1.4rem;
+  }
+
+  .rail-head {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    color: var(--text-strong);
+    margin: 0 0 0.6rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 2px solid var(--rule-ink);
+    line-height: 1;
+  }
+
+  .rail-more {
+    margin: 1rem 0 0;
+    font-family: var(--font-sans);
+    font-size: 0.74rem;
+  }
+
+  /* ── The lede ───────────────────────────────────────────────────────── */
+  .lede-head {
+    font-family: var(--font-display);
+    font-size: clamp(2.6rem, 6.4vw, 4.9rem);
+    font-weight: 900;
+    line-height: 0.9;
+    letter-spacing: -0.025em;
+    text-transform: uppercase;
+    color: var(--text-strong);
+    margin: 0 0 1.25rem;
+  }
+  .lede-head-tail {
+    display: block;
+    font-size: 0.42em;
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: 0.01em;
+    color: var(--text-muted);
+    margin-top: 0.35rem;
+  }
+
+  /* Scoreboard: mono figures on an ink slab, the way a result gets posted. */
+  .lede-score {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 1.25rem;
+    background-color: var(--ink-900);
+    padding: 1rem 1.5rem;
+    text-decoration: none;
+    border-left: 4px solid var(--side-a, var(--ember-500));
+    border-right: 4px solid var(--side-b, var(--ember-500));
+    margin-bottom: 1.5rem;
+  }
+  .lede-score:hover { text-decoration: none; background-color: var(--ink-800); }
+
+  .lede-side { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
+  .lede-side-right { justify-content: flex-end; }
+  .lede-side img { object-fit: contain; flex-shrink: 0; }
+
+  .lede-abbr {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: var(--paper-200);
+  }
+
+  .lede-figures {
+    display: flex;
+    align-items: baseline;
+    gap: 0.55rem;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  /* Parchment is the resting state for a figure on ink: a live score is just
+     a number, not yet a result. Gold arrives only once the week is final —
+     see `weekIsFinal`, which both scorebugs share. */
+  .lede-num {
+    font-size: clamp(1.3rem, 3vw, 2rem);
+    font-weight: 600;
+    color: var(--paper-200);
+    letter-spacing: -0.03em;
+  }
+  .lede-num.win { color: var(--gold-400); font-weight: 700; }
+  .lede-vs { color: rgba(244, 236, 216, 0.35); font-size: 1.1rem; }
+
+  .lede-body { margin: 0 0 1rem; }
+  .lede-body :global(p) {
+    font-family: var(--font-serif);
+    font-size: 1.08rem;
+    line-height: 1.66;
+    color: var(--text-body);
     margin: 0 0 1rem;
   }
-  .section-nav-cta {
+  .lede-body :global(p:last-child) { margin-bottom: 0; }
+
+  .issue-dot { color: var(--text-muted); }
+
+  .lede-credit {
     font-family: var(--font-sans);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--text-link);
+    font-size: 0.78rem;
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin: 0;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border-default);
   }
 
-  @media (max-width: 768px) {
-    /* Dynasty bowls: hide runner-up, collapse to 2 columns */
-    .dynasty-bowl-loser {
-      display: none !important;
-    }
+  /* ── Score rail ─────────────────────────────────────────────────────── */
+  /* The week's remaining games, posted down the column. Each game stacks its
+     two sides so the figures form a single right-aligned column the eye can
+     run down — a side-by-side scoreline has nowhere to go at rail width. */
+  .rail-stamp { display: block; margin: -0.35rem 0 0.9rem; color: var(--text-faint); }
 
-    .dynasty-bowl-row {
-      grid-template-columns: 80px 1fr !important;
-    }
+  .score-rail { display: flex; flex-direction: column; }
 
-    /* Section nav: stack vertically */
-    .section-nav-grid {
-      grid-template-columns: 1fr !important;
-    }
+  .rail-game {
+    display: block;
+    padding: 0.5rem 0.3rem;
+    border-bottom: 1px dotted var(--border-default);
+    text-decoration: none;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+  .rail-game:hover { text-decoration: none; background-color: rgba(244, 236, 216, 0.06); }
+
+  .rail-side {
+    display: grid;
+    grid-template-columns: 22px 1fr auto;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.12rem 0;
+  }
+  .rail-side img { object-fit: contain; }
+
+  .rail-abbr {
+    font-family: var(--font-display);
+    font-size: 0.98rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: var(--text-strong);
+    line-height: 1.1;
+  }
+  /* Same rule as the lede scorebug: parchment at rest, gold only once the
+     week is final. `--paper-200` rather than `--text-body` so the two match
+     literally — the lede slab is ink-coloured but carries no `data-theme`. */
+  .rail-score {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    font-variant-numeric: tabular-nums lining-nums;
+    color: var(--paper-200);
+  }
+  /* Gold is the ink register's winner marker — pine goes muddy on this ground. */
+  .rail-score.win { color: var(--gold-400); font-weight: 700; }
+
+  /* ── Two-up: ledger + roll ──────────────────────────────────────────── */
+  .two-up {
+    display: grid;
+    grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+    gap: 3.5rem;
+    padding-top: 3.5rem;
+    padding-bottom: 1rem;
+    align-items: start;
+  }
+
+  .standing-team { display: flex; align-items: center; gap: 0.5rem; }
+  .keel { display: inline-block; width: 3px; height: 15px; flex-shrink: 0; }
+  .standing-team a { color: var(--text-strong); font-weight: 600; }
+  .standing-conf {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--text-disabled);
+    letter-spacing: 0.06em;
+  }
+  .standing-owner { color: var(--text-faint); font-size: 0.78rem; }
+  .ledger .dash { color: var(--text-disabled); }
+  .ledger td.num:last-child { color: var(--gold-700); letter-spacing: 0.08em; }
+
+  .roll-list { list-style: none; margin: 0; padding: 0; }
+  .roll-item {
+    display: flex;
+    gap: 0.85rem;
+    align-items: baseline;
+    padding: 0.7rem 0;
+    border-bottom: 1px dotted var(--border-default);
+  }
+  .roll-numeral {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--gold-600);
+    min-width: 2.1rem;
+    flex-shrink: 0;
+  }
+  .roll-body { display: flex; align-items: center; flex-wrap: wrap; gap: 0.45rem; min-width: 0; }
+  .roll-body img { object-fit: contain; flex-shrink: 0; }
+  .roll-name {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-strong);
+    line-height: 1.1;
+  }
+  .roll-detail {
+    flex-basis: 100%;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    color: var(--text-faint);
+    letter-spacing: 0.02em;
+  }
+
+  /* ── Bowl games index ───────────────────────────────────────────────── */
+  .bowl-section { padding-top: 3.5rem; padding-bottom: 2rem; }
+  .bowl-index {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+    gap: 0 2.25rem;
+  }
+  .bowl-entry {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px dotted var(--border-default);
+    text-decoration: none;
+  }
+  .bowl-entry:hover { text-decoration: none; }
+  .bowl-entry:hover .bowl-name { color: var(--ember-700); }
+  .bowl-logos { display: flex; gap: 0.15rem; flex-shrink: 0; }
+  .bowl-logos img { object-fit: contain; }
+  .bowl-text { display: flex; flex-direction: column; min-width: 0; }
+  .bowl-name {
+    font-family: var(--font-display);
+    font-size: 1.02rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--text-strong);
+    transition: var(--transition-color);
+  }
+  .bowl-meta {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    display: flex;
+    gap: 0.5rem;
+  }
+  .bowl-since { color: var(--text-disabled); }
+
+  /* ── Record book: one horizontal band of extremes ───────────────────── */
+  .record-section { padding-top: 2.5rem; padding-bottom: 3.5rem; }
+
+  .record-row {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0 2.5rem;
+    margin: 0;
+  }
+  /* A rule over each figure rather than a box around it — the columns read as
+     one band of the same kind of fact, which four bordered tiles would not. */
+  .record-cell {
+    padding-top: 0.7rem;
+    min-width: 0;
+  }
+  .record-cell dt {
+    font-family: var(--font-sans);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .record-cell dd { margin: 0.25rem 0 0; display: flex; flex-direction: column; }
+
+  .record-fig {
+    font-family: var(--font-mono);
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: var(--text-strong);
+    line-height: 1.05;
+  }
+  .record-fig:hover { color: var(--ember-700); text-decoration: none; }
+  .record-line { font-size: 0.8rem; color: var(--text-muted); line-height: 1.35; margin-top: 0.2rem; }
+
+  .record-more {
+    margin: 1.1rem 0 0;
+    padding-top: 0.8rem;
+    border-top: 1px solid var(--border-default);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+  }
+
+  /* ── Responsive ─────────────────────────────────────────────────────── */
+  @media (max-width: 1080px) {
+    /* Four record columns get too narrow for a 1.75rem figure plus a club
+       name; two rows of two hold the measure. */
+    .record-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.75rem 2.5rem; }
+    .two-up { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; }
+  }
+
+  .ledger-scroll { overflow-x: auto; }
+
+  @media (max-width: 760px) {
+    /* One column, DOM order: the lede, then the rest of the week beneath it. */
+    .front-page { grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
+    .lede, .rail-right { order: 0; }
+    /* Full width is wasted on a stacked scoreline, so the games run two-up. */
+    .score-rail { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1.75rem; }
+    .lede-score { gap: 0.6rem; padding: 0.85rem 1rem; }
+    .lede-abbr { font-size: 1.15rem; }
+    .lede-side img { width: 38px; height: 38px; }
+    .col-drop { display: none; }
+  }
+
+  @media (max-width: 520px) {
+    .record-row { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+    .score-rail { grid-template-columns: 1fr; }
+    .lede-side img { width: 32px; height: 32px; }
+    .lede-abbr { font-size: 1rem; }
+    .lede-score { gap: 0.4rem; padding: 0.75rem 0.6rem; }
   }
 </style>

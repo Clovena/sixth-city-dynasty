@@ -10,7 +10,8 @@ All scripts are run via `npx tsx` and configured as npm scripts in the root `pac
 
 ```bash
 # Routine syncs — run weekly during the NFL season
-npm run sync              # all 7 routine syncs sequentially
+npm run sync              # all 7 routine syncs sequentially, all seasons
+npm run sync:recent       # all 7, clamped to the most recent season (the weekly default)
 npm run sync:results      # npx tsx scripts/lib/sync-results.ts
 npm run sync:matchups     # npx tsx scripts/lib/sync-matchups.ts
 npm run sync:rosters      # npx tsx scripts/lib/sync-rosters.ts
@@ -24,6 +25,30 @@ npm run sync:players      # npx tsx scripts/lib/sync-players.ts
 npm run sync:pids         # npx tsx scripts/lib/sync-pids.ts
 npm run sync:player-meta  # sync:players then sync:pids sequentially
 ```
+
+---
+
+## Season Scoping (`season-scope.ts`)
+
+Every routine sync defaults to walking all of league history, which re-fetches five completed seasons that will never change again. All seven accept an optional season clamp:
+
+```bash
+npx tsx scripts/lib/sync-matchups.ts --latest    # most recent season only
+npx tsx scripts/lib/sync-matchups.ts --year 2023 # one specific season
+npx tsx scripts/lib/sync-matchups.ts --year=2023 # equivalent
+npx tsx scripts/lib/sync-matchups.ts --all       # explicit default
+
+SCDFL_SEASON=latest npm run sync   # the whole chain — this is `npm run sync:recent`
+SCDFL_SEASON=2023 npm run sync     # the whole chain, one season
+```
+
+**Why the env var carries the chain.** npm only forwards `--` args to the *last* script in an `&&` chain, so `npm run sync -- --latest` would clamp nothing. An env var inherits down the whole process tree instead, and defining `sync:recent` as `SCDFL_SEASON=latest npm run sync` means a sync added to `sync` is covered automatically — no second chain to keep in step. CLI flags win over the env var, so a single script can still override a scope set for the chain around it.
+
+**`latest` resolves against `MAX(year)` in `scdfl.seasons`**, not against each table's own max, so every script in a chain clamps to the *same* year. That matters for `drafts` and `exhibitions`, whose own max year can lead (next year's draft configured early) or lag (no exhibition scheduled yet) the season table.
+
+**`sync:rosters` is the exception.** It already targets the current season only, and `rosters` is a snapshot table with no year column that it rebuilds via DELETE-all-then-INSERT. A scope naming any year other than the current season is therefore **skipped with a message** rather than honoured — running it for 2023 would replace the live rosters with a three-year-old snapshot. It accepts the flags purely so it can sit in a scoped chain without erroring.
+
+Usage per script: call `resolveSeasonScope(supabase)` once at the top of `main()`, then pass the fetched row list through `scopeToSeason(rows, scope)`. Any row type with a `year` field works — `seasons`, `drafts`, and `exhibitions` rows all qualify. The `seasons` lookup only fires when `latest` was actually requested.
 
 ---
 

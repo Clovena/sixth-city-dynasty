@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import "dotenv/config";
+import { resolveSeasonScope, scopeToSeason } from "./season-scope";
 
 // ------------------------------------------------------------
 // Syncs all draft picks into scdfl.draft_results.
@@ -148,8 +149,9 @@ async function syncDraft(draft: Draft): Promise<void> {
 }
 
 async function main() {
-  const drafts = await fetchDrafts();
-  console.log(`Found ${drafts.length} drafts to sync.`);
+  const scope = await resolveSeasonScope(supabase);
+  const drafts = scopeToSeason(await fetchDrafts(), scope);
+  console.log(`Scope: ${scope.label}. Found ${drafts.length} drafts to sync.`);
 
   for (const draft of drafts) {
     try {

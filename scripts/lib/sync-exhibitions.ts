@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import "dotenv/config";
+import { resolveSeasonScope, scopeToSeason } from "./season-scope";
 
 // ------------------------------------------------------------
 // Syncs exhibition matchup results into scdfl.exhibition_matchups.
@@ -127,8 +128,9 @@ async function upsertExhibitionMatchup(row: ExhibitionMatchupRow): Promise<void>
 // --- Main ---
 
 async function main() {
-  const exhibitions = await fetchExhibitions();
-  console.log(`Found ${exhibitions.length} exhibitions to sync.`);
+  const scope = await resolveSeasonScope(supabase);
+  const exhibitions = scopeToSeason(await fetchExhibitions(), scope);
+  console.log(`Scope: ${scope.label}. Found ${exhibitions.length} exhibitions to sync.`);
 
   for (const exhibition of exhibitions) {
     console.log(
