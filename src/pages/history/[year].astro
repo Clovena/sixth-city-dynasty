@@ -424,7 +424,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
     <!-- Season summary -->
     {SeasonSummary ? 
     <div class="section-rule">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">Season Summary</h2>
+      <h2 class="sect-head">Season Summary</h2>
       <div class="season-summary" style="max-width: 72ch; font-size: 0.95rem; color: var(--color-text-secondary); text-align: justify; line-height: 1.7;">
         <SeasonSummary />
       </div>
@@ -432,7 +432,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
     <!-- Conference standings -->
     <div class="section-rule">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;">Final Standings</h2>
+      <h2 class="sect-head">Final Standings</h2>
       <div class="standings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
 
         <!-- SCC -->
@@ -524,7 +524,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
     <!-- Playoff bracket -->
     <div class="section-rule">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem;">Playoff Bracket</h2>
+      <h2 class="sect-head">Playoff Bracket</h2>
       <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2rem;">
         Click a matchup for more details →
       </p>
@@ -762,7 +762,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
       {yearExhibitions.length > 0 && (
         <div class="section-rule">
-          <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">
+          <h2 class="sect-head">
             Exhibition Games
           </h2>
           <div style="display:grid; grid-template-columns:1fr; gap:1rem; max-width:72ch;">
@@ -804,7 +804,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
       {draftBoards.length > 0 && (
         <div class="section-rule draft-section">
-          <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">
+          <h2 class="sect-head">
             Draft Board{draftBoards.length > 1 ? 's' : ''}
           </h2>
 
@@ -862,6 +862,20 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
 
 <style>
+  /* Section heads match the archive elsewhere: display caps over a heavy rule. */
+  .sect-head {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: -0.005em;
+    line-height: 1;
+    color: var(--text-strong);
+    margin: 0 0 1.2rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 2px solid var(--rule-ink);
+  }
+
   /* ── Season summary ──────────────────────────────── */
   .season-summary :global(p) {
     margin-bottom: 1rem;

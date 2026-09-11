@@ -86,3 +86,102 @@ export function primaryColor(
 ): string {
   return colors?.[0] ?? fallback;
 }
+
+/* ── Club colour on a dark ground ──────────────────────────────────────────
+ * Franchise palettes are authored for light surfaces, so several primaries
+ * (VAN #0c152d, NFD #192f5d) sit within a point or two of the ink band's own
+ * ground and disappear on it entirely.
+ *
+ * The fix keeps the club's hue and raises only its lightness, and only as far
+ * as legibility requires. Searching the palette for a brighter entry instead
+ * would be simpler but costs the identity — it hands Vancouver its grey
+ * tertiary and Gold Coast a pink, neither of which reads as the club.
+ *
+ * 3:1 is the WCAG threshold for non-text UI, which is what these are: rules,
+ * keels, and accent borders rather than anything you read.
+ */
+
+const INK_GROUND = '#1C1A17'; // --ink-900
+const MIN_RATIO = 3;
+const HEX6 = /^#[0-9a-f]{6}$/i;
+
+function channels(hex: string): [number, number, number] {
+  const s = hex.slice(1);
+  return [0, 2, 4].map(i => parseInt(s.slice(i, i + 2), 16)) as [number, number, number];
+}
+
+function relativeLuminance(hex: string): number {
+  const [r, g, b] = channels(hex).map(v => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(a: string, b: string): number {
+  const [x, y] = [relativeLuminance(a), relativeLuminance(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
+function toHsl(hex: string): [number, number, number] {
+  const [r, g, b] = channels(hex).map(v => v / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const d = max - min;
+
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+  }
+  h = (h * 60 + 360) % 360;
+
+  const l = (max + min) / 2;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  return [h, s, l];
+}
+
+function hslToHex(h: number, s: number, l: number): string {
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+
+  const [r, g, b] =
+    h < 60 ? [c, x, 0] :
+    h < 120 ? [x, c, 0] :
+    h < 180 ? [0, c, x] :
+    h < 240 ? [0, x, c] :
+    h < 300 ? [x, 0, c] : [c, 0, x];
+
+  return '#' + [r, g, b]
+    .map(v => Math.round((v + m) * 255).toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * A colour lightened just enough to read against a dark ground, hue intact.
+ * Anything that isn't a 6-digit hex (a CSS variable, say) is returned as-is.
+ */
+export function readableOnInk(color: string, ground = INK_GROUND): string {
+  if (!HEX6.test(color)) return color;
+  if (contrastRatio(color, ground) >= MIN_RATIO) return color;
+
+  const [h, s] = toHsl(color);
+  let [, , l] = toHsl(color);
+  while (l < 0.95) {
+    l = Math.min(l + 0.02, 0.95);
+    const next = hslToHex(h, s, l);
+    if (contrastRatio(next, ground) >= MIN_RATIO) return next;
+  }
+  return hslToHex(h, s, 0.95);
+}
+
+/** A franchise's primary accent, adjusted to read on the dark broadcast band. */
+export function primaryColorOnInk(
+  colors: string[] | null | undefined,
+  fallback = 'var(--ember-500)',
+): string {
+  const primary = colors?.[0];
+  return primary ? readableOnInk(primary) : fallback;
+}

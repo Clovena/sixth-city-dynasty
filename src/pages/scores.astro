@@ -198,137 +198,148 @@ const exhibitionsData: ExhibEntry[] = (exhibRows ?? []).map((e: any) => {
 
 <Layout title="Scores" description="Week-by-week matchup scores for every season of the Sixth City Dynasty Football League.">
 
-  <div style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 0;">
-
-    <!-- Page header -->
-    <div style="padding-bottom: 2.5rem; border-bottom: 1px solid var(--color-border);">
-      <p class="section-label">Results</p>
-      <h1 class="page-title">Scores</h1>
-      <p class="page-subtitle" style="margin-top: 0.75rem;">
-        Season and week-by-week matchup results across all seasons of the SCDFL.
-      </p>
+  <!-- ══ PLATE ═══════════════════════════════════════════════════════════ -->
+  <div class="plate">
+    <div class="wrap">
+      <h1 class="plate-title">Matchup<br /><span>Scores</span></h1>
     </div>
+  </div>
 
-    <!-- Controls -->
-    <div style="display: flex; gap: 1rem; margin-top: 2rem; flex-wrap: wrap;">
-
-      <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-        <label for="season-select" style="font-family: var(--font-body); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted);">Season</label>
-        <select id="season-select" style="font-family: var(--font-body); font-size: 0.9rem; color: var(--color-text-primary); background-color: var(--color-surface); border: 1px solid var(--color-border); border-radius: 4px; padding: 0.5rem 2rem 0.5rem 0.75rem; appearance: none; -webkit-appearance: none; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22 viewBox=%220 0 10 6%22><path d=%22M0 0l5 6 5-6z%22 fill=%22%23888%22/></svg>'); background-repeat: no-repeat; background-position: right 0.6rem center; cursor: pointer; min-width: 140px;">
+  <!-- ══ CONTROL BAR — a ruled strip, styled as part of the scoreboard ══ -->
+  <div class="score-bar">
+    <div class="wrap score-bar-inner">
+      <div class="score-control">
+        <label for="season-select">Season</label>
+        <select id="season-select">
           {sortedSeasons.map((yr: number) => (
             <option
               value={yr}
               selected={yr === defaultSeasonYear}
               disabled={Object.keys(matchupsData[String(yr)] ?? {}).length === 0}
             >
-              {yr} Season{Object.keys(matchupsData[String(yr)] ?? {}).length === 0 ? ' (no data)' : ''}
+              {yr}{Object.keys(matchupsData[String(yr)] ?? {}).length === 0 ? ' (no data)' : ''}
             </option>
           ))}
         </select>
       </div>
 
-      <div style="display: flex; flex-direction: column; gap: 0.4rem;">
-        <label for="week-select" style="font-family: var(--font-body); font-size: 0.7rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted);">Week</label>
-        <select id="week-select" style="font-family: var(--font-body); font-size: 0.9rem; color: var(--color-text-primary); background-color: var(--color-surface); border: 1px solid var(--color-border); border-radius: 4px; padding: 0.5rem 2rem 0.5rem 0.75rem; appearance: none; -webkit-appearance: none; background-image: url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2210%22 height=%226%22 viewBox=%220 0 10 6%22><path d=%22M0 0l5 6 5-6z%22 fill=%22%23888%22/></svg>'); background-repeat: no-repeat; background-position: right 0.6rem center; cursor: pointer; min-width: 110px;">
-          <!-- populated by JS -->
-        </select>
+      <div class="score-control">
+        <label for="week-select">Week</label>
+        <select id="week-select"><!-- populated by JS --></select>
       </div>
-
     </div>
+  </div>
 
-    <!-- Scores grid -->
-    <div id="scores-grid" style="margin-top: 2rem; padding-bottom: 4rem;"></div>
-
+  <!-- ══ SCOREBOARD ══════════════════════════════════════════════════════ -->
+  <div class="wrap scores-wrap">
+    <div id="scores-grid"></div>
   </div>
 
 </Layout>
 
 <style>
+  /* ── Plate ──────────────────────────────────────────────────────────── */
+  .plate { border-bottom: 3px solid var(--rule-ink); padding: 3rem 0 1.75rem; }
+  .plate-title {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 11vw, 8rem);
+    font-weight: 900;
+    line-height: 0.82;
+    letter-spacing: -0.035em;
+    text-transform: uppercase;
+    margin: 0;
+    color: var(--text-strong);
+  }
+  .plate-title span { color: var(--ink-300); }
+
+  /* ── Control bar ────────────────────────────────────────────────────── */
+  .score-bar {
+    background-color: var(--surface-sunken);
+    border-bottom: 1px solid var(--border-default);
+    top: 34px;
+    z-index: 40;
+  }
+  .score-bar-inner { display: flex; gap: 2.5rem; flex-wrap: wrap; padding-block: 0.7rem; }
+  .score-control { display: flex; align-items: baseline; gap: 0.6rem; }
+  .score-control label {
+    font-family: var(--font-sans);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .score-control select {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    color: var(--text-strong);
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid var(--ember-500);
+    padding: 0 1.4rem 0.05rem 0;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23C84B28'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.15rem center;
+  }
+
+  .scores-wrap { padding-top: 2.25rem; padding-bottom: 4.5rem; }
+
+  /* ── Scoreboard ─────────────────────────────────────────────────────────
+     Results are posted on ink panels with mono figures: a board, not a feed
+     of cards. Two up on wide screens, one up on narrow. ─────────────────── */
+  :global(.scores-section-label) {
+    font-family: var(--font-sans);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 0.6rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 2px solid var(--rule-ink);
+  }
+
   :global(.matchups-grid) {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
     gap: 1rem;
-    max-width: 72ch;
   }
 
   :global(.matchup-card) {
     display: block;
-    background-color: var(--surface-card);
-    border: 1px solid var(--border-hairline);
-    border-radius: var(--radius-md);
-    box-shadow: var(--shadow-1);
-    overflow: hidden;
+    background-color: var(--ink-900);
+    border-left: 4px solid var(--ink-600);
     text-decoration: none;
     color: inherit;
-    transition: box-shadow var(--dur-base) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
+    overflow: hidden;
+    transition: border-color var(--dur-fast) var(--ease-standard);
   }
-  :global(.matchup-card:hover) {
-    box-shadow: var(--shadow-3);
-    border-color: var(--border-default);
-  }
+  :global(.matchup-card:hover) { border-left-color: var(--ember-500); text-decoration: none; }
 
-  :global(.matchup-body) {
-    display: flex;
-    align-items: stretch;
-  }
-
-  :global(.matchup-teams) {
-    flex: 1;
-    min-width: 0;
-  }
-
-  :global(.recap-btn) {
-    display: flex;
-    align-items: center;
-    padding: 0 1.1rem;
-    background-color: var(--surface-sunken);
-    border-left: 1px solid var(--border-hairline);
-    color: var(--text-link);
-    font-family: var(--font-sans);
-    font-size: 0.72rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    white-space: nowrap;
-    flex-shrink: 0;
-    letter-spacing: 0.1em;
-  }
+  :global(.matchup-body) { display: flex; align-items: stretch; }
+  :global(.matchup-teams) { flex: 1; min-width: 0; }
 
   :global(.team-row) {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.65rem 1rem;
-    transition: background-color 0.1s ease;
+    padding: 0.6rem 1rem;
   }
+  :global(.team-row + .team-row) { border-top: 1px solid rgba(244, 236, 216, 0.12); }
 
-  :global(.team-row + .team-row) {
-    border-top: 1px solid var(--color-border);
-  }
-
-  :global(.team-row.winner) {
-    background-color: var(--pine-100);
-  }
-
-  :global(.team-row.loser) {
-    opacity: 0.55;
-  }
-
-  :global(.team-row.tied) {
-    background-color: transparent;
-  }
-
-  :global(.team-logo) {
-    width: 36px;
-    height: 36px;
-    object-fit: contain;
-    flex-shrink: 0;
-  }
+  :global(.team-logo) { width: 32px; height: 32px; object-fit: contain; flex-shrink: 0; }
 
   :global(.team-name) {
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    font-weight: 500;
-    color: var(--color-text-primary);
+    font-family: var(--font-display);
+    font-size: 1.08rem;
+    font-weight: 700;
+    letter-spacing: 0.005em;
+    color: var(--paper-200);
     flex: 1;
     white-space: nowrap;
     overflow: hidden;
@@ -337,39 +348,66 @@ const exhibitionsData: ExhibEntry[] = (exhibRows ?? []).map((e: any) => {
 
   :global(.team-score) {
     font-family: var(--font-mono);
-    font-size: 1rem;
-    font-weight: 600;
+    font-size: 1.05rem;
+    font-weight: 500;
     font-variant-numeric: tabular-nums lining-nums;
-    color: var(--text-strong);
-    min-width: 3.5rem;
+    letter-spacing: -0.03em;
+    color: rgba(244, 236, 216, 0.5);
+    min-width: 4rem;
     text-align: right;
     flex-shrink: 0;
   }
 
-  :global(.winner .team-score) {
-    color: var(--pine-700);
+  /* Winner carries the gold; loser recedes rather than being dimmed whole,
+     so both team names stay legible on the board. */
+  :global(.team-row.winner .team-name) { color: var(--paper-50); }
+  :global(.team-row.winner .team-score) { color: var(--gold-400); font-weight: 700; }
+  :global(.team-row.loser .team-name) { color: rgba(244, 236, 216, 0.55); }
+  :global(.team-row.scheduled .team-score) { color: rgba(244, 236, 216, 0.3); }
+  :global(.team-row.loser .team-logo) { opacity: 0.6; }
+
+  :global(.recap-btn) {
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    background-color: rgba(244, 236, 216, 0.07);
+    border-left: 1px solid rgba(244, 236, 216, 0.12);
+    color: var(--gold-400);
+    font-family: var(--font-sans);
+    font-size: 0.62rem;
     font-weight: 700;
+    text-transform: uppercase;
+    white-space: nowrap;
+    flex-shrink: 0;
+    letter-spacing: 0.16em;
   }
+  :global(.matchup-card:hover .recap-btn) { background-color: rgba(244, 236, 216, 0.12); }
 
   :global(.dynasty-bowl-banner) {
-    background-color: var(--gold-100);
-    border-bottom: 1px solid var(--gold-300);
-    color: var(--gold-800);
+    background-color: var(--gold-500);
+    color: var(--ink-900);
     font-family: var(--font-display);
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    padding: 0.35rem 4rem;
+    padding: 0.3rem 1rem;
     text-align: center;
   }
 
   :global(.no-data) {
-    font-family: var(--font-body);
-    font-size: 0.95rem;
-    color: var(--color-text-muted);
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--text-muted);
     padding: 3rem 0;
-    text-align: center;
+  }
+
+  @media (max-width: 768px) {
+    .score-bar { position: static; }
+    .score-bar-inner { gap: 1.5rem; }
+    .plate-title { font-size: clamp(2.6rem, 15vw, 4rem); }
+    :global(.matchups-grid) { grid-template-columns: 1fr; }
   }
 </style>
 
@@ -418,7 +456,7 @@ const exhibitionsData: ExhibEntry[] = (exhibRows ?? []).map((e: any) => {
       .sort((a, b) => a - b);
 
     weekSelect.innerHTML = weeks
-      .map(w => `<option value="${w}"${w === selectedWeek ? ' selected' : ''}>Week ${w}</option>`)
+      .map(w => `<option value="${w}"${w === selectedWeek ? ' selected' : ''}>${w}</option>`)
       .join('');
   }
 
@@ -445,7 +483,7 @@ const exhibitionsData: ExhibEntry[] = (exhibRows ?? []).map((e: any) => {
 
     let html = '';
     if (yearExhibs.length > 0) {
-      html += '<p class="section-label" style="margin-bottom:0.5rem;">Exhibitions</p>'
+      html += '<p class="scores-section-label">Exhibitions</p>'
         + '<div class="matchups-grid" style="margin-bottom:1.5rem;">';
       for (const e of yearExhibs) {
         const aWins = e.scoreA > e.scoreB;
@@ -462,7 +500,7 @@ const exhibitionsData: ExhibEntry[] = (exhibRows ?? []).map((e: any) => {
       }
       html += `
       </div>
-      <p class="section-label" style="margin-bottom:0.5rem;">Regular Season</p>`;
+      <p class="scores-section-label">Regular Season</p>`;
     }
 
     // Standard matchups — each row is already one game (both teams)
@@ -477,6 +515,14 @@ const exhibitionsData: ExhibEntry[] = (exhibRows ?? []).map((e: any) => {
     const validMatchups = matchups
       .filter(m => m.matchup_id && m.matchup_id > 0)
       .sort((a, b) => a.matchup_id - b.matchup_id);
+
+    // A week nobody has played yet is a fixture list, not a set of 0.00 results.
+    const weekScheduled = validMatchups.length > 0
+      && validMatchups.every(m => m.score_a === 0 && m.score_b === 0);
+
+    if (weekScheduled) {
+      html += `<p class="scores-section-label">Week ${week} &middot; Scheduled</p>`;
+    }
 
     html += '<div class="matchups-grid">';
     for (const m of validMatchups) {
@@ -510,8 +556,8 @@ const exhibitionsData: ExhibEntry[] = (exhibRows ?? []).map((e: any) => {
           ${banner}
           <div class="matchup-body">
             <div class="matchup-teams">
-              ${teamRow(fA, m.score_a, aWins, bWins)}
-              ${teamRow(fB, m.score_b, bWins, aWins)}
+              ${teamRow(fA, m.score_a, aWins, bWins, weekScheduled)}
+              ${teamRow(fB, m.score_b, bWins, aWins, weekScheduled)}
             </div>
             ${hasRecap ? `<div class="recap-btn">Recap&nbsp;→</div>` : ''}
           </div>
@@ -522,8 +568,8 @@ const exhibitionsData: ExhibEntry[] = (exhibRows ?? []).map((e: any) => {
     grid.innerHTML = html;
   }
 
-  function teamRow(franchise, score, isWinner, isLoser) {
-    const cls = isWinner ? 'winner' : isLoser ? 'loser' : 'tied';
+  function teamRow(franchise, score, isWinner, isLoser, scheduled) {
+    const cls = scheduled ? 'scheduled' : isWinner ? 'winner' : isLoser ? 'loser' : 'tied';
 
     return `
       <div class="team-row ${cls}">
@@ -532,7 +578,7 @@ const exhibitionsData: ExhibEntry[] = (exhibRows ?? []).map((e: any) => {
              alt="${franchise.name}"
              onerror="this.style.display='none'" />
         <span class="team-name">${franchise.name}</span>
-        <span class="team-score">${score.toFixed(2)}</span>
+        <span class="team-score">${scheduled ? '&middot;' : score.toFixed(2)}</span>
       </div>`;
   }
 

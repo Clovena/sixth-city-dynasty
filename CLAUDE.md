@@ -13,6 +13,8 @@ npm run preview      # preview built site
 
 # --- Supabase sync scripts (see scripts/lib/CLAUDE.md for details) ---
 npm run sync              # run all routine syncs (results, matchups, rosters, transactions, drafts, exhibitions, stats)
+npm run sync:recent       # same chain, clamped to the most recent season only
+SCDFL_SEASON=2023 npm run sync   # same chain, clamped to one specific season
 npm run sync:results      # sync win/loss/points per franchise per season
 npm run sync:matchups     # sync all weekly matchups (regular + playoff + consolation)
 npm run sync:rosters      # sync current-season roster assignments (full replace)
@@ -28,6 +30,8 @@ npm run sync:player-meta  # run sync:players then sync:pids sequentially
 ```
 
 All sync scripts live in `scripts/lib/` and write directly to Supabase (schema `scdfl`). They use `SUPABASE_SERVICE_KEY` (not the anon key). See `scripts/lib/CLAUDE.md` for full documentation.
+
+**Season scoping.** By default every routine sync walks all of league history, re-fetching completed seasons that will never change. `scripts/lib/season-scope.ts` lets any routine sync be clamped to one season via `--latest`, `--year YYYY`, or the `SCDFL_SEASON` env var (CLI flags win over the env var). `npm run sync:recent` is just `SCDFL_SEASON=latest npm run sync` — defining it that way rather than as a second `--latest` chain means a sync added to `sync` is covered automatically. See `scripts/lib/CLAUDE.md` for the resolution rules and the `sync:rosters` exception.
 
 ---
 
@@ -189,6 +193,7 @@ Common logic used across many pages lives in three small, focused lib files. **I
 - `playerName(first, last, fallback)` — joins first/last, dropping whichever half is missing
 - `espnHeadshotUrl(espnId)` — always returns a usable `src` (the site placeholder image if there's no `espn_id`), so callers can render an `<img>` unconditionally instead of branching
 - `logoPath(abbr)` / `primaryColor(colors, fallback?)` — `/images/logos/{abbr}.png` and `colors[0]` with a `var(--border-default)` fallback
+- `readableOnInk(color, ground?)` / `primaryColorOnInk(colors, fallback?)` — a club colour adjusted to read on the dark broadcast band. **Use these for any club accent placed on an ink ground**, never raw `colors[0]`: franchise palettes are authored for light surfaces, and several primaries (VAN `#0c152d`, NFD `#192f5d`) sit within a point of `--ink-900` and vanish on it. The helper raises lightness only, and only until it clears 3:1 (the WCAG threshold for non-text UI, which is what these accents are), so the club's hue survives — 10 of the 14 current primaries come back untouched. Searching the palette for a brighter entry instead is the tempting shortcut and the wrong one: it hands Vancouver its grey tertiary and Gold Coast a pink. Currently used by the homepage lede scorebug; the `/scores` ink panels and the homepage slate band are the obvious next consumers
 
 This file has **no imports of its own** — that's deliberate, not an oversight. `src/lib/remark-team-headers.ts` runs inside `astro.config.mjs`'s evaluation context, before Vite env vars exist; anything it imports must not transitively pull in `src/lib/supabase.ts`, which crashes (`supabaseUrl is required`) if constructed at that point. `logoPath`/`primaryColor` live in `format.ts` rather than the more topically-obvious `franchise-identity.ts` specifically to keep this file import-safe for that plugin — don't move them there.
 
@@ -198,6 +203,12 @@ This file has **no imports of its own** — that's deliberate, not an oversight.
 - `GAME_TYPE_LABEL` — `{ 0: 'Regular Season', 1: 'Playoffs', -1: 'Consolation' }`
 - `isPlayablePostseasonGame(gameType, scoreA, scoreB)` — the shared "drop the still-0–0 Sleeper bracket placeholder" rule: regular season is always playable, postseason only once it's actually been scored
 - `loadChampionshipMatchups()` — every played (not placeholder) week-17/`game_type=1` Dynasty Bowl across all seasons, `.limit(1000)` included
+
+### `src/lib/nfl-state.ts` — live NFL state (Sleeper)
+- `loadNflState()` — fetches `https://api.sleeper.app/v1/state/nfl`, returning `{ season, week, seasonType }`. **Every field is nullable**: a build with no network still has to produce a page, so callers fall back to archive-derived behaviour rather than treating this as required data.
+- `activeWeekFor(state, year)` — the week a page should lead with, or `null` if the state is unusable or is for a different season. Encodes the preseason rule: Sleeper reports week 0 in the preseason and its preseason counter doesn't track the league schedule, so both cases resolve to Week 1.
+
+**Why this exists:** `matchups` rows are created for the entire season the moment a Sleeper league is created, so "latest week with rows" runs *ahead* of the week actually being played. Any page that leads with "the current week" needs the real-world state, not the archive. Used by `index.astro` (which game leads the front page). `scores.astro` still carries its own inline copy of the fetch — converting it is a pending one-line cleanup, not a second intentional implementation.
 
 ### Scope: build-time only
 These are for **frontmatter / build-time use**. A client-side `<script>` can only import them if the script has no `is:inline` attribute (Astro then bundles it through Vite, so a normal `import` resolves) — `scores.astro`'s script qualifies but currently still carries local copies of this logic as a deliberately deferred cleanup. `franchises/[abbr].astro`'s scripts use `is:inline` and cannot import at all, so their local `getIdentity`/`teamRow` duplicates are intentional, not a bug. Don't "fix" either without first resolving the `is:inline` question — that's a separate, riskier piece of work than the frontmatter consolidation.
@@ -224,6 +235,7 @@ Slugs are the canonical matchup identifier and the lookup key for recap content 
 | `franchises` | `src/content/franchises/` | `**/*.md` | One file per franchise, filename = `abbr.toLowerCase()` |
 | `writeups` | `src/content/writeups/` | `*.md` | Editorial writeups; `archive/` subdir excluded automatically |
 | `recaps` | `src/content/recaps/` | `**/*.md` | Organized by season subdir: `recaps/[year]/[slug].md` |
+| `homepage` | `src/content/homepage/` | `*.md` | Front-page editorial copy, one file per slot. `lede-blurb.md` is the centre lede |
 
 ### Astro 5 render() usage
 
@@ -242,6 +254,16 @@ const { Content } = rendered;
 
 The site was rebranded from the old dark "neon-noir" look to the **Sixth City DFL design system** (imported from the `claude_design` MCP project `SCDFL Design System`). Identity in one line: **cream/parchment ground (never white), warm-charcoal ink (never `#000`), a single `ember` primary, supporting `pine / wheat-gold / steel-slate`, unified by a Hudson's Bay point-blanket stripe, hexagon geometry, industrial + almanac type. No neon, no glow, no emoji.**
 
+### Editorial direction (the part that matters most)
+
+The palette and type are the *brand*; they are not a component kit. The site is **a small, obsessive sports publication and statistical archive**, not a SaaS product. Consistency comes from the brand, not from every block having the same geometry. Concretely:
+
+- **Reach for a rule, a ledger, or a band before reaching for a box.** A card is for something that is genuinely a discrete object. Do not box content merely because it *can* be boxed. Stacks of identically-shaped panels are the failure mode — that is what the franchise sidebar, the Hall of Fame wing tiles, and the old homepage nav cards all were before they became ruled lists.
+- **Avoid the eyebrow → heading → paragraph → CTA cycle.** Use `.almanac-head` (heading + right-hand `.folio`) instead. A section rarely needs a "View X →" link; a `.folio` count or an inline link in the prose usually carries it.
+- **Vary the measure.** `.wrap` (1200), `.wrap-wide` (1460), `.wrap-narrow` (760), `.wrap-column` (560), plus `.measure` (66ch) for running serif prose. Breaking the 1200 grid deliberately — a full-bleed ink band, a narrow reading column — is the point, not an inconsistency.
+- **Let content type drive treatment.** Standings look like standings (`.ledger`, dotted leaders, tabular figures), results look like a scoreboard (ink panels, mono figures, gold winner), records look archival, articles look editorial (drop cap, justified serif, narrow measure), franchise pages look like dossiers (club-tinted header band, stamped vitals).
+- **Prefer real league material as the visual interest** — logos, scores, records, rivalries, colours, editorial copy — over decorative UI.
+
 ### Token files (`src/styles/tokens/`, imported by `global.css`)
 `fonts.css` · `colors.css` · `typography.css` · `spacing.css` · `elevation.css` · `motion.css` · `base.css` (the `.sc-*` helpers). Copied largely verbatim from the design project — treat them as the source of truth and edit sparingly.
 
@@ -258,13 +280,44 @@ The site was rebranded from the old dark "neon-noir" look to the **Sixth City DF
                  .sc-chamfer  .sc-hex  .sc-paper (grain)  [data-theme="ink"] (broadcast band)
 ```
 
-### Legacy `--color-*` bridge (important)
-`global.css` keeps a **bridge** that remaps every retired dark-theme `--color-*` name onto the new palette (e.g. `--color-bg → --surface-page`, `--color-text-primary → --text-strong`, `--color-gold → --gold-700`, all `*-glow → *` flat tint). This inverts dark→light automatically, so pages authored against the old variables render correctly in the new brand. When touching a page, prefer the new semantic tokens directly; the bridge is a safety net, not the target.
+### Editorial primitives (`global.css`, `@layer components`)
+
+Shared classes that implement the direction above. **Use these rather than inventing another local card.**
+
+| Class | Purpose |
+|-------|---------|
+| `.wrap` / `.wrap-wide` / `.wrap-narrow` / `.wrap-column` | Page measures — 1200 / 1460 / 760 / 560, each with 1.5rem gutters |
+| `.measure` / `.measure-tight` | 66ch / 52ch prose measure for running serif text |
+| `.rule-heavy` / `.rule-mid` / `.rule-hair` / `.rule-dot` | Almanac rules; weight carries meaning (chapter / section / row / leader) |
+| `.almanac-head` | Section heading + optional right-hand `.folio`. Replaces the eyebrow/heading/CTA stack |
+| `.standfirst` | Italic serif line beneath a section head |
+| `.ledger` | Archival record table: dotted leaders, tight rows, tabular figures, no shadow. Helpers: `.num`, `.rank`, `.ledger-break` |
+| `.scoreline` | Posted-result layout with `.score` / `.winner` / `.loser` |
+| `.band` / `.band-ink` | Full-bleed change of ground; `.band-ink` is the dark broadcast register |
+| `.marginalia` | Narrow ruled column beside a main story |
+| `.dropcap` | Editorial opening drop cap (ember) |
+| `.slugline` | Mono metadata stamp |
+
+The retained legacy classes (`.data-table`, `.franchise-card`, `.bowl-card`, `.page-title`) were **restyled toward print**: `.data-table` now uses a heavy header rule and dotted row leaders, the card classes are flat and ruled (no drop shadow, no hover lift), and `.page-title` is uppercase display.
+
+### Layout chrome
+
+`Layout.astro` renders an **almanac masthead**, not an app header:
+- A nameplate that scrolls away (`.masthead-plate`) flanked by publication data — "Established 2021 / Cleveland, Ohio" and "Volume {N} / Fourteen Clubs". The volume is **derived, not queried** (`toRoman(leagueYear - 2020)`, league year rolling in March) because the masthead also renders on the on-demand `/players/[id]` route, where a DB round-trip would cost every pageview.
+- A sticky **section rail** (`.section-rail`, ~34px tall) set in the display face and ruled rather than boxed, with an ember underline on the active section. Pages that stick their own control bar beneath it (see `/scores`) offset by `top: 34px`.
+- A **colophon** footer — league blurb, index, and a typesetting note — rather than a nav footer.
+
+The blanket stripe appears exactly twice per page, at the masthead and the colophon. Do not add a third; a second stripe within ~150px of the masthead reads as a repeated component rather than a motif.
+
+### Honour marks
+
+Franchise honours use the brand's own hexagon geometry, consistently across the homepage ledger, the franchise register, and the franchise dossier: `⬢` (`&#11042;`) Dynasty Bowl, `⬡` (`&#11041;`) runner-up, `▲` (`&#9650;`) conference title.
 
 ### Brand assets (`public/brand/`)
 `emblem.svg` (header/favicon), `emblem_white.svg`. The Hudson's Bay stripe is a CSS gradient (`.sc-stripe`), not an asset. Real franchise logos stay in `public/images/logos/` — the design project's `assets/franchises/*` (a fictional demo world) are intentionally NOT used. **The emblem is a placeholder** pending the real league mark. Fonts + Phosphor icons load via CDN (open-license substitutions).
 
----
+### Legacy `--color-*` bridge (important)
+`global.css` keeps a **bridge** that remaps every retired dark-theme `--color-*` name onto the new palette (e.g. `--color-bg → --surface-page`, `--color-text-primary → --text-strong`, `--color-gold → --gold-700`, all `*-glow → *` flat tint). This inverts dark→light automatically, so pages authored against the old variables render correctly in the new brand. When touching a page, prefer the new semantic tokens directly; the bridge is a safety net, not the target.
 
 ## Scoped Styles & Markdown-Rendered Content
 

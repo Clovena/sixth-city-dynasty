@@ -18,60 +18,60 @@ const rendered = await Promise.all(
 
 <Layout title="Content" description="Power rankings, mock drafts, matchup previews, and more from the Sixth City Dynasty Football League.">
 
-  <div class="content-container" style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 6rem;">
-
-    <!-- Page header -->
-    <div class="no-print" style="padding-bottom: 2.5rem; border-bottom: 1px solid var(--color-border);">
-      <p class="section-label">Editorial</p>
-      <h1 class="page-title">Content</h1>
-      <p class="page-subtitle" style="margin-top: 0.75rem;">
-        Power rankings, mock drafts, matchup previews, and analysis from around the league.
+  <!-- Plate. The print packer reaches into article > div:first-child, so the
+       per-piece head below must stay a <div> holding a <p> and an <h2>. -->
+  <div class="no-print desk-plate">
+    <div class="wrap">
+      <h1 class="plate-title">Content</h1>
+      <p class="plate-lede">
+        Power rankings, mock drafts, matchup previews, and analysis from around the league &mdash;
+        written by the commissioner and whoever else can be talked into filing copy.
       </p>
     </div>
+  </div>
+
+  <div class="content-container">
 
     {writeups.length === 0 ? (
-      <p style="color: var(--color-text-muted); margin-top: 3rem;">No content published yet.</p>
+      <div class="wrap"><p class="desk-empty">No content published yet.</p></div>
     ) : (
-      <div style="margin-top: 2.5rem;">
-
-        <!-- Dropdown selector -->
+      <>
+        <!-- Piece selector, kept as a ruled strip rather than a form panel -->
         {writeups.length > 1 && (
-          <div class="no-print" style="margin-bottom: 2.5rem;">
-            <label for="writeup-select" style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-muted); display: block; margin-bottom: 0.5rem;">Select piece</label>
-            <select
-              id="writeup-select"
-              style="background-color: var(--color-surface); border: 1px solid var(--color-border); color: var(--color-text-primary); font-family: var(--font-body); font-size: 0.875rem; padding: 0.5rem 0.75rem; cursor: pointer; min-width: 320px;"
-            >
-              {writeups.map((entry, i) => (
-                <option value={entry.id} selected={i === 0}>
-                  {entry.data.title}
-                </option>
-              ))}
-            </select>
+          <div class="no-print desk-bar">
+            <div class="wrap-narrow desk-bar-inner">
+              <label for="writeup-select">Now reading</label>
+              <select id="writeup-select">
+                {writeups.map((entry, i) => (
+                  <option value={entry.id} selected={i === 0}>
+                    {entry.data.title}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
 
         <!-- Rendered writeup panels (all present in DOM, one visible at a time) -->
-        {rendered.map(({ entry, Content }, i) => (
-          <article
-            id={`writeup-${entry.id}`}
-            style={i === 0 ? '' : 'display: none;'}
-          >
-            <div style="border-left: 3px solid var(--color-gold); padding-left: 1.5rem; margin-bottom: 2rem;">
-              <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.4rem;">
-                {entry.data.type?.replace('_', ' ')} &bull; {new Date(entry.data.date).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}
-              </p>
-              <h2 style="font-family: var(--font-display); font-size: clamp(1.4rem, 3vw, 2rem); font-weight: 700; color: var(--color-text-primary); margin: 0; line-height: 1.15;">
-                {entry.data.title}
-              </h2>
-            </div>
-            <div class="writeup-content">
-              <Content />
-            </div>
-          </article>
-        ))}
-
-      </div>
+        <div class="wrap-narrow desk-body">
+          {rendered.map(({ entry, Content }, i) => (
+            <article
+              id={`writeup-${entry.id}`}
+              style={i === 0 ? '' : 'display: none;'}
+            >
+              <div class="piece-head">
+                <p class="piece-slug">
+                  {entry.data.type?.replace('_', ' ')} &bull; {new Date(entry.data.date).toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })}
+                </p>
+                <h2 class="piece-title">{entry.data.title}</h2>
+              </div>
+              <div class="writeup-content">
+                <Content />
+              </div>
+            </article>
+          ))}
+        </div>
+      </>
     )}
 
   </div>
@@ -79,6 +79,96 @@ const rendered = await Promise.all(
 </Layout>
 
 <style>
+  /* ── Plate ──────────────────────────────────────────────────────────── */
+  .desk-plate { border-bottom: 3px solid var(--rule-ink); padding: 3rem 0 2rem; }
+  .plate-title {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 11vw, 8rem);
+    font-weight: 900;
+    line-height: 0.82;
+    letter-spacing: -0.035em;
+    text-transform: uppercase;
+    margin: 0 0 1.25rem;
+    color: var(--text-strong);
+  }
+  .plate-lede {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    line-height: 1.7;
+    color: var(--text-body);
+    max-width: 60ch;
+    margin: 0;
+  }
+
+  /* ── Selector strip: a ruled bar, not a form panel ──────────────────── */
+  .desk-bar {
+    background-color: var(--surface-sunken);
+    border-bottom: 1px solid var(--border-default);
+  }
+  .desk-bar-inner {
+    display: flex;
+    align-items: baseline;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+    padding-block: 0.65rem;
+  }
+  .desk-bar label {
+    font-family: var(--font-sans);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .desk-bar select {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    color: var(--text-strong);
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid var(--ember-500);
+    padding: 0 1.4rem 0.1rem 0;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23C84B28'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.15rem center;
+    max-width: 100%;
+  }
+
+  .desk-body { padding-top: 2.75rem; padding-bottom: 5rem; }
+  .desk-empty { font-family: var(--font-serif); color: var(--text-muted); padding: 3rem 0; }
+
+  /* ── Piece head ─────────────────────────────────────────────────────── */
+  .piece-head {
+    border-top: 3px solid var(--rule-ink);
+    padding-top: 0.9rem;
+    margin-bottom: 2rem;
+    max-width: 68ch;
+  }
+  .piece-slug {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ember-700);
+    margin: 0 0 0.5rem;
+  }
+  .piece-title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5vw, 3.6rem);
+    font-weight: 900;
+    line-height: 0.95;
+    letter-spacing: -0.025em;
+    text-transform: uppercase;
+    color: var(--text-strong);
+    margin: 0;
+  }
+
   .writeup-content {
     font-family: var(--font-serif);
     font-size: 1.05rem;
