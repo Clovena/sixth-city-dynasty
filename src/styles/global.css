@@ -120,7 +120,207 @@
 }
 
 /* ============================================================
+   EDITORIAL PRIMITIVES
+   The site is an almanac, not an app. These give sections a way
+   to vary width, density, and voice without every block becoming
+   an identically-geometried card. Reach for a rule, a ledger, or
+   a band before reaching for a box.
+   ============================================================ */
+@layer components {
+
+  /* ---- Measures. Not everything is 1200px. ---- */
+  .wrap        { max-width: 1200px; margin-inline: auto; padding-inline: 1.5rem; }
+  .wrap-wide   { max-width: 1460px; margin-inline: auto; padding-inline: 1.5rem; }
+  .wrap-narrow { max-width: 760px;  margin-inline: auto; padding-inline: 1.5rem; }
+  .wrap-column { max-width: 560px;  margin-inline: auto; padding-inline: 1.5rem; }
+  /* Prose measure — the only correct width for running serif text. */
+  .measure     { max-width: 66ch; }
+  .measure-tight { max-width: 52ch; }
+
+  /* ---- Almanac rules. Weight carries meaning: heavy = chapter,
+     hair = row, dotted = ledger leader. ---- */
+  .rule-heavy { border: 0; border-top: 3px solid var(--rule-ink); }
+  .rule-mid   { border: 0; border-top: 2px solid var(--rule-ink); }
+  .rule-hair  { border: 0; border-top: 1px solid var(--border-default); }
+  .rule-dot   { border: 0; border-top: 1px dotted var(--border-strong); }
+
+  /* ---- Section heading. A dateline, not an eyebrow/heading/CTA stack.
+     The rule under it does the work a card border used to do. ---- */
+  .almanac-head {
+    display: flex;
+    align-items: baseline;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+    border-bottom: 2px solid var(--rule-ink);
+    padding-bottom: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .almanac-head > h2,
+  .almanac-head > h3 {
+    font-family: var(--font-display);
+    font-size: clamp(1.4rem, 2.6vw, 2rem);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: -0.005em;
+    line-height: 1;
+    margin: 0;
+    color: var(--text-strong);
+  }
+  /* Right-hand folio: the page number / count / date in the corner of an
+     almanac spread. Replaces the "View X →" call-to-action. */
+  .almanac-head .folio {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    white-space: nowrap;
+  }
+  .almanac-head .folio a { color: var(--text-muted); }
+  .almanac-head .folio a:hover { color: var(--text-link); }
+
+  /* Standfirst — the italic serif line under a section head. */
+  .standfirst {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin: -0.9rem 0 1.5rem;
+    max-width: 62ch;
+  }
+
+  /* ---- Ledger. Archival record: dotted leaders, tight rows, tabular
+     figures, no hover-lift, no shadow. Records should look recorded. ---- */
+  .ledger {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .ledger caption {
+    caption-side: top;
+    text-align: left;
+    font-family: var(--font-sans);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    padding-bottom: 0.4rem;
+  }
+  .ledger th {
+    font-family: var(--font-sans);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    text-align: left;
+    padding: 0 0.5rem 0.35rem;
+    border-bottom: 2px solid var(--rule-ink);
+    white-space: nowrap;
+  }
+  .ledger td {
+    padding: 0.34rem 0.5rem;
+    border-bottom: 1px dotted var(--border-default);
+    color: var(--text-body);
+    vertical-align: baseline;
+  }
+  .ledger tbody tr:last-child td { border-bottom: 1px solid var(--border-default); }
+  .ledger .num { text-align: right; font-variant-numeric: tabular-nums lining-nums; }
+  .ledger .rank {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-faint);
+    width: 1.6rem;
+  }
+  .ledger tbody tr:hover td { background-color: rgba(28, 26, 23, 0.035); }
+  /* A ruled-off leader row (conference break, era break). */
+  .ledger tr.ledger-break td {
+    border-bottom: 2px solid var(--rule-ink);
+    padding-top: 0.1rem;
+  }
+
+  /* ---- Scoreboard. Game results get mono figures on an ink band or a
+     ruled strip — they should read as posted results, not as content. ---- */
+  .scoreline {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 0.75rem;
+    font-family: var(--font-sans);
+  }
+  .scoreline .score {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -0.02em;
+  }
+  .scoreline .winner { font-weight: 700; color: var(--text-strong); }
+  .scoreline .loser  { color: var(--text-faint); }
+
+  /* ---- Bands. A full-bleed change of ground, used sparingly to break
+     the column and mark a change of register. ---- */
+  .band {
+    width: 100%;
+    background-color: var(--surface-sunken);
+    border-top: 1px solid var(--border-default);
+    border-bottom: 1px solid var(--border-default);
+  }
+  .band-ink {
+    width: 100%;
+    background-color: var(--ink-900);
+    color: var(--text-on-ink);
+  }
+  .band-ink h2, .band-ink h3 { color: var(--paper-50); }
+
+  /* ---- Marginalia. The narrow ruled column beside a main story. ---- */
+  .marginalia {
+    border-left: 1px solid var(--border-default);
+    padding-left: 1.5rem;
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.55;
+  }
+  .marginalia h3 {
+    font-family: var(--font-sans);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 0.6rem;
+  }
+
+  /* ---- Drop cap. Editorial voice marker for article openings. ---- */
+  .dropcap::first-letter {
+    float: left;
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-size: 3.4em;
+    line-height: 0.76;
+    padding: 0.08em 0.09em 0 0;
+    color: var(--ember-600);
+  }
+
+  /* ---- Slug line: mono metadata, the stamp on an archived record. ---- */
+  .slugline {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+}
+
+/* ============================================================
    SHARED COMPONENT CLASSES
+   Retained names, restyled toward print. Cards here are flat and
+   ruled: the border and the ground carry the structure, not a
+   drop shadow and a hover lift.
    ============================================================ */
 @layer components {
   .section-rule { margin-top: 3rem; }
@@ -147,34 +347,36 @@
     border: 1px solid var(--ember-300);
   }
 
+  /* Data tables read as records: heavy header rule, dotted row leaders. */
   .data-table {
     width: 100%;
     border-collapse: collapse;
     font-family: var(--font-sans);
-    font-size: 0.9rem;
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums lining-nums;
   }
 
   .data-table th {
     font-family: var(--font-sans);
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--text-muted);
-    border-bottom: 1px solid var(--border-default);
-    padding: 0.5rem 1rem 0.6rem;
+    border-bottom: 2px solid var(--rule-ink);
+    padding: 0 0.75rem 0.4rem;
     text-align: left;
   }
 
   .data-table td {
-    padding: 0.75rem 1rem;
-    border-bottom: 1px solid var(--border-hairline);
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px dotted var(--border-default);
     color: var(--text-body);
     vertical-align: middle;
     font-variant-numeric: tabular-nums lining-nums;
   }
 
-  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:last-child td { border-bottom: 1px solid var(--border-default); }
 
   .data-table tbody tr:hover td { background-color: rgba(28, 26, 23, 0.04); }
 
@@ -183,21 +385,20 @@
     font-weight: 700;
   }
 
+  /* Flat, ruled dossier tile — no shadow, no lift. The left keel is the
+     franchise's own colour, so the identity does the decorating. */
   .franchise-card {
     background-color: var(--surface-card);
     border: 1px solid var(--border-hairline);
-    box-shadow: var(--shadow-1);
     padding: 1rem;
     position: relative;
-    transition: border-color var(--dur-fast) var(--ease-standard),
-                box-shadow var(--dur-base) var(--ease-standard),
-                transform var(--dur-base) var(--ease-felt);
+    transition: background-color var(--dur-fast) var(--ease-standard),
+                border-color var(--dur-fast) var(--ease-standard);
   }
 
   .franchise-card:hover {
-    border-color: var(--border-default);
-    box-shadow: var(--shadow-3);
-    transform: translateY(-1px);
+    border-color: var(--border-strong);
+    background-color: var(--surface-raised);
   }
 
   .section-label {
@@ -216,6 +417,7 @@
     font-weight: 900;
     line-height: 1.05;
     letter-spacing: -0.02em;
+    text-transform: uppercase;
     color: var(--text-strong);
   }
 
@@ -238,15 +440,14 @@
   .bowl-card {
     background-color: var(--surface-card);
     border: 1px solid var(--border-hairline);
-    box-shadow: var(--shadow-1);
     padding: 1.75rem;
     transition: border-color var(--dur-fast) var(--ease-standard),
-                box-shadow var(--dur-base) var(--ease-standard);
+                background-color var(--dur-fast) var(--ease-standard);
   }
 
   .bowl-card:hover {
-    border-color: var(--border-default);
-    box-shadow: var(--shadow-3);
+    border-color: var(--border-strong);
+    background-color: var(--surface-raised);
   }
 
   .inner-section {

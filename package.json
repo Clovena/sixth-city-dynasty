@@ -17,6 +17,7 @@
     "sync:exhibitions": "npx tsx scripts/lib/sync-exhibitions.ts",
     "sync:stats": "npx tsx scripts/lib/sync-stats.ts",
     "sync": "npm run sync:results && npm run sync:matchups && npm run sync:rosters && npm run sync:transactions && npm run sync:drafts && npm run sync:exhibitions && npm run sync:stats",
+    "sync:recent": "SCDFL_SEASON=latest npm run sync",
     "sync:players": "npx tsx scripts/lib/sync-players.ts",
     "sync:pids": "npx tsx scripts/lib/sync-pids.ts",
     "sync:player-meta": "npm run sync:players && npm run sync:pids"
@@ -29,9 +30,11 @@
     "tailwindcss": "^4.2.1"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.10",
     "@types/node": "^25.4.0",
     "dotenv": "^17.4.0",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   },
   "optionalDependencies": {
     "@tailwindcss/oxide-linux-x64-gnu": "^4.2.1"

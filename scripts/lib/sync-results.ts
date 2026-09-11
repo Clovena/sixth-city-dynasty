@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import "dotenv/config";
+import { resolveSeasonScope, scopeToSeason } from "./season-scope";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY!;
@@ -86,8 +87,9 @@ async function upsertResults(rows: ResultRow[]): Promise<void> {
 // --- Main ---
 
 async function main() {
-  const seasons = await fetchSeasons();
-  console.log(`Found ${seasons.length} seasons to sync.`);
+  const scope = await resolveSeasonScope(supabase);
+  const seasons = scopeToSeason(await fetchSeasons(), scope);
+  console.log(`Scope: ${scope.label}. Found ${seasons.length} seasons to sync.`);
 
   for (const season of seasons) {
     try {

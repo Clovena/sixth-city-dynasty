@@ -3,6 +3,7 @@ import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
 import fs from 'node:fs';
 import path from 'node:path';
+import { logoPath, primaryColor } from '../../lib/franchise-identity';
 
 // ── Determine current season year ───────────────────────────────────────────
 const { data: seasonRows, error: sError } = await supabase
@@ -23,7 +24,7 @@ const { data: activeSlugsRows, error: asError } = await supabase
   .eq('year', currentYear);
 
 if (asError) throw new Error(`Active slugs query failed: ${asError.message}`);
-const activeSlugs = new Set(activeSlugsRows.map(r => r.slug));
+const activeSlugs = new Set(activeSlugsRows.map((r) => r.slug));
 
 // ── Fetch all year rows for active games (needed for year_established) ──────
 const { data: gameYearRows, error: gyError } = await supabase
@@ -32,7 +33,8 @@ const { data: gameYearRows, error: gyError } = await supabase
   .select('slug, year, spotlight_games(slug, name, type, team_a, team_b)')
   .in('slug', Array.from(activeSlugs));
 
-if (gyError) throw new Error(`Spotlight game years query failed: ${gyError.message}`);
+if (gyError)
+  throw new Error(`Spotlight game years query failed: ${gyError.message}`);
 
 // Group by slug to compute year_established = min(year) and flatten game data
 type SpotlightGame = {
@@ -47,7 +49,13 @@ type SpotlightGame = {
 
 const gameMap = new Map<string, SpotlightGame>();
 for (const row of gameYearRows) {
-  const game = row.spotlight_games as unknown as { slug: string; name: string; type: string; team_a: string; team_b: string };
+  const game = row.spotlight_games as unknown as {
+    slug: string;
+    name: string;
+    type: string;
+    team_a: string;
+    team_b: string;
+  };
   const existing = gameMap.get(row.slug);
   if (existing) {
     existing.year_established = Math.min(existing.year_established, row.year);
@@ -76,8 +84,8 @@ for (const game of gameMap.values()) {
 }
 
 const spotlightGames = Array.from(gameMap.values());
-const bowlGames = spotlightGames.filter(bg => bg.type === 'bowl-game');
-const rivalryGames = spotlightGames.filter(rg => rg.type === 'rivalry');
+const bowlGames = spotlightGames.filter((bg) => bg.type === 'bowl-game');
+const rivalryGames = spotlightGames.filter((rg) => rg.type === 'rivalry');
 
 // ── Fetch active franchises from Supabase ───────────────────────────────────
 const { data: franchiseRows, error: fError } = await supabase
@@ -88,179 +96,321 @@ const { data: franchiseRows, error: fError } = await supabase
 
 if (fError) throw new Error(`Franchises query failed: ${fError.message}`);
 
-const franchiseByAbbr = new Map(franchiseRows.map(f => [f.abbr, f]));
+const franchiseByAbbr = new Map(franchiseRows.map((f) => [f.abbr, f]));
 
 function getFranchise(abbr: string) {
   return franchiseByAbbr.get(abbr);
 }
 ---
 
-<Layout title="Spotlight Games" description="The 2026 Bowl Game slate and Rivalry Week for the Sixth City Dynasty Football League.">
-
-  <div style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 0;">
-
-    <!-- Page header -->
-    <div style="padding-bottom: 2.5rem; border-bottom: 1px solid var(--color-border);">
-      <p class="section-label">Spotlight Games</p>
-      <h1 class="page-title">Bowl Games &amp; Rivalry Week</h1>
-      <p class="page-subheader" style="margin-top: 0.75rem;">
-        Institutional pairings that give the regular season shape and stakes. 
-        <br><br>
-        Bowl Games are persistent, named matchups that recur year to year; they are designed to build lore between pairs of franchises, one annual clash at a time.
-        <br><br>
-        Rivalry Week matchups are hand-selected to put the most compelling cross-conference and intra-conference rivalries on the field simultaneously. Unlike Bowl Games, the Rivalry Week pairings are fluid and can be revised each season.
+<Layout
+  title="Spotlight Games"
+  description="The 2026 Bowl Game slate and Rivalry Week for the Sixth City Dynasty Football League.">
+  <!-- ══ PLATE ═══════════════════════════════════════════════════════════ -->
+  <div class="plate">
+    <div class="wrap">
+      <h1 class="plate-title">Spotlight<br /><span>Games</span></h1>
+      <p class="plate-lede">
+        Institutional pairings that give the regular season shape and stakes.
+        Matchups are determined by geography, history, and rivalry.
       </p>
     </div>
-
-    <!-- What are Bowl Games -->
-    <div class="explain-grid" style="margin-top: 3rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-      <div style="background-color: var(--color-green-surface); border: 1px solid var(--color-green-glow); padding: 1.75rem;">
-        <p class="section-label">Bowl Games</p>
-        <p style="font-size: 0.9rem; color: var(--color-text-secondary); text-align: justify; line-height: 1.65; margin: 0;">
-          Each Bowl Game is a named, institutionalized rivalry matchup between two specific franchises. The pairing is fixed — the same two teams play their Bowl Game every season. These games are spread throughout the regular season schedule and carry the weight of a named tradition. Bowl Games return year to year unless officially dissolved.
-        </p>
-      </div>
-      <div style="background-color: var(--color-red-surface); border: 1px solid var(--color-red-glow); padding: 1.75rem;">
-        <p class="section-label">Rivalry Week</p>
-        <p style="font-size: 0.9rem; color: var(--color-text-secondary); text-align: justify; line-height: 1.65; margin: 0;">
-          Rivalry Week is a single designated week late in the regular season where all 7 matchups are rivalry pairings — cross-conference, historically contentious, or geographically meaningful. Unlike Bowl Games, Rivalry Week pairings can change year to year. It's the most watched week of the regular season.
-        </p>
-      </div>
-    </div>
-
-    <!-- 2026 Bowl Game Slate -->
-    <div class="section-rule">
-      <div style="display: flex; align-items: baseline; gap: 1.5rem; margin-bottom: 2rem;">
-        <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin: 0; color: var(--color-text-primary);">2026 Bowl Game Slate</h2>
-        <span style="font-family: var(--font-body); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted);">Weeks 5 thru 11</span>
-      </div>
-
-      <div style="display: flex; flex-direction: column; gap: 1px; background-color: var(--color-border);">
-        {bowlGames.map(game => {
-          const teamA = getFranchise(game.team_a);
-          const teamB = getFranchise(game.team_b);
-          return (
-            <a href={`/spotlight-games/${game.slug}`} style="text-decoration: none; display: block;">
-              <div class="bowl-card" style="display: grid; grid-template-columns: 1fr auto; gap: 2rem; align-items: center;">
-                <div>
-                  <div style="display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
-                    <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-gold); margin: 0;">{game.name}</h3>
-                    {game.year_established <= 2025 && (
-                      <span style="font-size: 0.72rem; color: var(--color-text-muted); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Est. {game.year_established} · Recurring</span>
-                    )}
-                    {game.year_established === 2026 && (
-                      <span style="font-size: 0.72rem; color: var(--color-gold-dim); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;">Inaugural 2026</span>
-                    )}
-                  </div>
-                  <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.55; margin: 0; max-width: 65ch;">
-                    {game.description.split('.')[0] + '.'}
-                  </p>
-                </div>
-
-                <div class="bowl-teams-outer" style="text-align: right; flex-shrink: 0;">
-                  <div class="bowl-teams-inner" style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
-                    <div class="bowl-team-a" style="display: flex; align-items: center; gap: 0.6rem;">
-                      <span class="bowl-team-name" style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamA?.name}</span>
-                      <img src={`/images/logos/${game.team_a}.png`} alt="" width="24" height="24" style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
-                      <span style={`font-family: var(--font-body); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.15rem 0.45rem; background-color: ${teamA?.colors[0]}22; color: ${teamA?.colors[0]}; border: 1px solid ${teamA?.colors[0]}44;`}>{game.team_a}</span>
-                    </div>
-                    <div style="font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted);">vs.</div>
-                    <div style="display: flex; align-items: center; gap: 0.6rem;">
-                      <span class="bowl-team-name" style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamB?.name}</span>
-                      <img src={`/images/logos/${game.team_b}.png`} alt="" width="24" height="24" style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
-                      <span style={`font-family: var(--font-body); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.15rem 0.45rem; background-color: ${teamB?.colors[0]}22; color: ${teamB?.colors[0]}; border: 1px solid ${teamB?.colors[0]}44;`}>{game.team_b}</span>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            </a>
-          );
-        })}
-      </div>
-    </div>
-
-    <!-- Rivalry Week section -->
-    <div class="section-rule" style="margin-bottom: 5rem;">
-      <div style="display: flex; align-items: baseline; gap: 1.5rem; margin-bottom: 2rem;">
-        <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin: 0; color: var(--color-text-primary);">2026 Rivalry Week Slate</h2>
-        <span style="font-family: var(--font-body); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted);">Week 14</span>
-      </div>
-
-      <div style="display: flex; flex-direction: column; gap: 1px; background-color: var(--color-border);">
-        {rivalryGames.map(game => {
-          const teamA = getFranchise(game.team_a);
-          const teamB = getFranchise(game.team_b);
-          return (
-            <a href={`/spotlight-games/${game.slug}`} style="text-decoration: none; display: block;">
-              <div class="bowl-card" style="display: grid; grid-template-columns: 1fr auto; gap: 2rem; align-items: center;">
-                <div>
-                  <div style="display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
-                    <h3 style="font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; color: var(--color-gold); margin: 0;">{game.name}</h3>
-                  </div>
-                  <p style="font-size: 0.85rem; color: var(--color-text-secondary); line-height: 1.55; margin: 0; max-width: 65ch;">
-                    {game.description.split('.')[0] + '.'}
-                  </p>
-                </div>
-
-                <div class="bowl-teams-outer" style="text-align: right; flex-shrink: 0;">
-                  <div class="bowl-teams-inner" style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem;">
-                    <div class="bowl-team-a" style="display: flex; align-items: center; gap: 0.6rem;">
-                      <span class="bowl-team-name" style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamA?.name}</span>
-                      <img src={`/images/logos/${game.team_a}.png`} alt="" width="24" height="24" style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
-                      <span style={`font-family: var(--font-body); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.15rem 0.45rem; background-color: ${teamA?.colors[0]}22; color: ${teamA?.colors[0]}; border: 1px solid ${teamA?.colors[0]}44;`}>{game.team_a}</span>
-                    </div>
-                    <div style="font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted);">vs.</div>
-                    <div style="display: flex; align-items: center; gap: 0.6rem;">
-                      <span class="bowl-team-name" style="font-size: 0.8rem; color: var(--color-text-secondary);">{teamB?.name}</span>
-                      <img src={`/images/logos/${game.team_b}.png`} alt="" width="24" height="24" style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
-                      <span style={`font-family: var(--font-body); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; padding: 0.15rem 0.45rem; background-color: ${teamB?.colors[0]}22; color: ${teamB?.colors[0]}; border: 1px solid ${teamB?.colors[0]}44;`}>{game.team_b}</span>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            </a>
-          );
-        })}
-      </div>
-    </div>
-
   </div>
+
+  <!-- Two definitions, set as ruled columns rather than tinted panels. -->
+  <div class="wrap explain-grid">
+    <div class="explain-col explain-bowl">
+      <p class="explain-head">Bowl Games</p>
+      <p>
+        Each Bowl Game is a named, institutionalized rivalry between two
+        specific franchises. The pairing is fixed, so the same two teams play
+        their Bowl Game across many seasons. They are spread through the regular
+        season and carry the weight of a named tradition, returning year to year
+        unless officially dissolved.
+      </p>
+    </div>
+    <div class="explain-col explain-rivalry">
+      <p class="explain-head">Rivalry Week</p>
+      <p>
+        Rivalry Week is a single designated week to close the regular season.
+        All seven matchups are rivalry pairings and generally determined based
+        on dynamics between ownership. Unlike Bowl Games, the pairings can
+        change year to year. It is the most watched week of the regular season.
+      </p>
+    </div>
+  </div>
+
+  <!-- ══ SLATES ══════════════════════════════════════════════════════════ -->
+  {
+    [
+      {
+        title: `${currentYear} Bowl Games`,
+        folio: 'Weeks 5 thru 11',
+        games: bowlGames,
+        kind: 'bowl',
+      },
+      {
+        title: `${currentYear} Rivalry Week`,
+        folio: 'Week 14',
+        games: rivalryGames,
+        kind: 'rivalry',
+      },
+    ].map(
+      (section) =>
+        section.games.length > 0 && (
+          <div class="wrap slate-section">
+            <div class="almanac-head">
+              <h2>{section.title}</h2>
+              <span class="folio">
+                {section.folio}
+              </span>
+            </div>
+
+            <ol class="game-list">
+              {section.games.map((game) => {
+                const teamA = getFranchise(game.team_a);
+                const teamB = getFranchise(game.team_b);
+                return (
+                  <li class="game-row">
+                    <a href={`/spotlight-games/${game.slug}`} class="game-link">
+                      <span class="game-crest">
+                        <img
+                          src={logoPath(game.team_a)}
+                          alt=""
+                          width="40"
+                          height="40"
+                          onerror="this.style.display='none'"
+                        />
+                        <img
+                          src={logoPath(game.team_b)}
+                          alt=""
+                          width="40"
+                          height="40"
+                          onerror="this.style.display='none'"
+                        />
+                      </span>
+
+                      <span class="game-body">
+                        <span class="game-name">{game.name}</span>
+                        <span class="game-teams">
+                          <span style={`--c: ${primaryColor(teamA?.colors)};`}>
+                            {teamA?.name ?? game.team_a}
+                          </span>
+                          <em>v</em>
+                          <span style={`--c: ${primaryColor(teamB?.colors)};`}>
+                            {teamB?.name ?? game.team_b}
+                          </span>
+                        </span>
+                        {game.description && (
+                          <span class="game-desc">
+                            {game.description.split('.')[0] + '.'}
+                          </span>
+                        )}
+                      </span>
+
+                      <span class="game-stamp">
+                        {section.kind === 'bowl'
+                          ? game.year_established >= currentYear
+                            ? `Inaugural ${currentYear}`
+                            : `Est. ${game.year_established}`
+                          : 'Week 14'}
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        ),
+    )
+  }
 </Layout>
 
 <style>
-  @media (max-width: 768px) {
-    /* "What are Bowl Games" info cards: stack vertically */
+  /* ── Plate ──────────────────────────────────────────────────────────── */
+  .plate {
+    border-bottom: 3px solid var(--rule-ink);
+    padding: 3rem 0 2rem;
+  }
+  .plate-title {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 11vw, 8rem);
+    font-weight: 900;
+    line-height: 0.82;
+    letter-spacing: -0.035em;
+    text-transform: uppercase;
+    margin: 0 0 1.25rem;
+    color: var(--text-strong);
+  }
+  .plate-title span {
+    color: var(--ink-300);
+  }
+  .plate-lede {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    line-height: 1.7;
+    color: var(--text-body);
+    max-width: 58ch;
+    margin: 0;
+  }
+
+  /* ── Definitions ────────────────────────────────────────────────────── */
+  .explain-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 3rem;
+    padding-top: 2.5rem;
+  }
+  .explain-col {
+    border-top: 2px solid var(--rule-ink);
+    padding-top: 0.85rem;
+  }
+  .explain-col p {
+    font-family: var(--font-serif);
+    font-size: 0.94rem;
+    line-height: 1.68;
+    color: var(--text-body);
+    margin: 0;
+    max-width: 48ch;
+  }
+  .explain-head {
+    font-family: var(--font-display) !important;
+    font-size: 1.35rem !important;
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: 1;
+    margin-bottom: 0.5rem !important;
+  }
+  .explain-bowl .explain-head {
+    color: var(--pine-700);
+  }
+  .explain-rivalry .explain-head {
+    color: var(--ember-700);
+  }
+
+  /* ── Game list ──────────────────────────────────────────────────────── */
+  .slate-section {
+    padding-top: 3.25rem;
+  }
+  .game-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .game-row {
+    border-bottom: 1px solid var(--border-hairline);
+  }
+  .game-row:first-child {
+    border-top: 1px solid var(--border-hairline);
+  }
+
+  .game-link {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 1.5rem;
+    align-items: start;
+    padding: 1rem 0.4rem;
+    text-decoration: none;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+  .game-link:hover {
+    text-decoration: none;
+    background-color: var(--surface-card);
+  }
+
+  .game-crest {
+    display: flex;
+    gap: 0.3rem;
+    flex-shrink: 0;
+    padding-top: 0.15rem;
+  }
+  .game-crest img {
+    object-fit: contain;
+  }
+
+  .game-body {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+  .game-name {
+    font-family: var(--font-display);
+    font-size: 1.65rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+    color: var(--text-strong);
+    transition: var(--transition-color);
+  }
+  .game-link:hover .game-name {
+    color: var(--ember-700);
+  }
+
+  /* The two clubs, each keyed to its own colour — the identities do the
+     decorating instead of a tinted badge. */
+  .game-teams {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    font-family: var(--font-sans);
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+  .game-teams > span {
+    color: var(--text-body);
+    box-shadow: inset 0 -0.35em 0 color-mix(in srgb, var(--c) 22%, transparent);
+  }
+  .game-teams em {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-weight: 400;
+    color: var(--text-faint);
+  }
+
+  .game-desc {
+    font-family: var(--font-serif);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    color: var(--text-muted);
+    max-width: 68ch;
+    margin-top: 0.25rem;
+  }
+
+  .game-stamp {
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    white-space: nowrap;
+    padding-top: 0.4rem;
+  }
+
+  /* ── Responsive ─────────────────────────────────────────────────────── */
+  @media (max-width: 860px) {
     .explain-grid {
-      grid-template-columns: 1fr !important;
+      grid-template-columns: 1fr;
+      gap: 2rem;
     }
+  }
 
-    /* Bowl card: collapse to single column */
-    .bowl-card {
-      grid-template-columns: 1fr !important;
+  @media (max-width: 768px) {
+    .plate-title {
+      font-size: clamp(2.6rem, 15vw, 4rem);
     }
-
-    .bowl-team-name {
-      display: none !important;
+    .game-link {
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 1rem;
     }
-
-    /* Teams outer: allow full width */
-    .bowl-teams-outer {
-      text-align: left !important;
+    .game-stamp {
+      grid-column: 2;
+      padding-top: 0.4rem;
     }
-
-    /* Teams inner: switch from vertical column to horizontal row */
-    .bowl-teams-inner {
-      flex-direction: row !important;
-      align-items: center !important;
-      justify-content: space-between !important;
-      gap: 0.5rem !important;
-    }
-
-    /* Team A: reverse order → badge | logo | name (name closest to "vs.") */
-    .bowl-team-a {
-      flex-direction: row-reverse !important;
+    .game-name {
+      font-size: 1.3rem;
     }
   }
 </style>

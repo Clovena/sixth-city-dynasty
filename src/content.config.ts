@@ -25,8 +25,20 @@ const recaps = defineCollection({
   }),
 });
 
+// Front-page editorial copy. One file per slot; `lede-blurb` is the centre lede.
+// `status` gates result formatting on the scorebug — the winner is only marked
+// once the game is actually final, so a live or scheduled game reads as neutral.
+const homepage = defineCollection({
+  loader: glob({ pattern: '*.md', base: './src/content/homepage' }),
+  schema: z.object({
+    title: z.string(),
+    subtitle: z.string(),
+    status: z.enum(['scheduled', 'active', 'final']).default('scheduled'),
+  }),
+});
+
 const seasons = defineCollection({
   loader: glob({ pattern: '*.md', base: './src/content/seasons' }),
 });
 
-export const collections = { franchises, writeups, recaps, seasons };
+export const collections = { franchises, writeups, recaps, seasons, homepage };

@@ -1,23 +1,39 @@
 ---
 import '../styles/global.css';
+import { toRoman } from '../lib/format';
 
 interface Props {
   title: string;
   description?: string;
 }
 
-const { title, description = "Official archive of the Sixth City Dynasty Fantasy Football League. Est. 2021." } = Astro.props;
+const {
+  title,
+  description = 'Official archive of the Sixth City Dynasty Fantasy Football League. Est. 2021.',
+} = Astro.props;
 const pageTitle = title === 'SCDFL' ? title : `${title} — SCDFL`;
+
+// League year runs March → February, so a January Dynasty Bowl still belongs to
+// the previous autumn's season. Derived rather than queried: the masthead is
+// also rendered by the on-demand player route, where a DB round-trip would be
+// latency on every pageview.
+const now = new Date();
+const leagueYear =
+  now.getUTCMonth() >= 2 ? now.getUTCFullYear() : now.getUTCFullYear() - 1;
+const volume = toRoman(leagueYear - 2020);
 
 const navLinks = [
   { href: '/history', label: 'History' },
   { href: '/franchises', label: 'Franchises' },
-  { href: '/spotlight-games', label: 'Spotlight Games' },
   { href: '/scores', label: 'Scores' },
-  { href: '/content', label: 'Content' },
+  { href: '/spotlight-games', label: 'Spotlight' },
+  // { href: '/content', label: 'Content' },
   { href: '/bets', label: 'Bets' },
   { href: '/hall-of-fame', label: 'Hall of Fame' },
 ];
+
+const path = Astro.url.pathname;
+const isActive = (href: string) => path === href || path.startsWith(href + '/');
 ---
 
 <!doctype html>
@@ -28,56 +44,109 @@ const navLinks = [
     <meta name="description" content={description} />
     <meta name="theme-color" content="#F4ECD8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
-    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css"
+    />
     <title>{pageTitle}</title>
   </head>
   <body>
+    <header class="masthead">
+      <div class="sc-stripe masthead-stripe" aria-hidden="true"></div>
 
-    <header class="site-header">
-      <div class="sc-stripe site-header-stripe" aria-hidden="true"></div>
-      <div class="site-header-inner">
+      <!-- Masthead proper: scrolls away. The nameplate is flanked by the
+           publication data an almanac carries on its cover. -->
+      <div class="masthead-plate">
+        <p class="plate-dateline plate-left">
+          Dynasty<br />Fantasy<br />Football
+        </p>
 
-        <a href="/" class="brand-lockup">
-          <img src="/brand/emblem.svg" width="40" height="40" alt="" class="brand-emblem" />
-          <span class="brand-text">
-            <span class="brand-name">Sixth City</span>
-            <span class="brand-sub">Dynasty Fantasy League</span>
-          </span>
+        <a href="/" class="plate-name">
+          <img
+            src="/brand/emblem.svg"
+            width="34"
+            height="34"
+            alt=""
+            class="plate-emblem"
+          />
+          <span class="plate-word">Sixth City</span>
         </a>
 
-        <button id="hamburger-btn" aria-label="Toggle navigation" aria-expanded="false">
-          <span></span>
-          <span></span>
-          <span></span>
-        </button>
-
-        <nav id="main-nav">
-          <ul>
-            {navLinks.map(link => (
-              <li><a href={link.href} class="nav-link">{link.label}</a></li>
-            ))}
-          </ul>
-        </nav>
+        <p class="plate-dateline plate-right">
+          Established 2021<br />Cleveland, Ohio<br />Volume {volume}
+        </p>
       </div>
+
+      <!-- Section rail: sticks. Set in the display face rather than as
+           uppercase micro-labels, and ruled instead of boxed. -->
+      <nav class="section-rail" id="main-nav">
+        <button
+          id="hamburger-btn"
+          aria-label="Toggle navigation"
+          aria-expanded="false">
+          <span class="hamburger-word">Sections</span>
+          <span class="hamburger-bars"
+            ><span></span><span></span><span></span></span
+          >
+        </button>
+        <ul>
+          {
+            navLinks.map((link) => (
+              <li>
+                <a
+                  href={link.href}
+                  class:list={[
+                    'rail-link',
+                    { 'is-active': isActive(link.href) },
+                  ]}>
+                  {link.label}
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
     </header>
 
     <main>
       <slot />
     </main>
 
-    <footer class="site-footer">
-      <div class="sc-stripe site-footer-stripe" aria-hidden="true"></div>
-      <div class="site-footer-inner">
-        <div class="footer-brand">
+    <!-- Colophon: the back matter of a printed annual, not a nav footer. -->
+    <footer class="colophon">
+      <div class="sc-stripe colophon-stripe" aria-hidden="true"></div>
+      <div class="colophon-inner">
+        <div class="colophon-brand">
+          <img src="/brand/emblem.svg" width="30" height="30" alt="" />
           <div>
-            <p class="footer-title">Sixth City Dynasty Fantasy League</p>
-            <p class="footer-meta">Est. 2021 &bull; Cleveland, Ohio &bull; Copyright © Zacalytics &bull; Some rights reserved.</p>
+            <p class="colophon-title">Sixth City Dynasty Football League</p>
+            <p class="colophon-line">
+              Fourteen franchises. Four months. A lifetime of fellowship. Rugged Cleveland football in the Great White North.
+            </p>
+            <p class="colophon-rights">
+              Copyright © Zacalytics &middot; Some rights reserved.
+            </p>
           </div>
+        </div>
+
+        <div class="colophon-index">
+          <p class="colophon-head">Index</p>
+          <ul>
+            {
+              navLinks.map((link) => (
+                <li>
+                  <a href={link.href}>{link.label}</a>
+                </li>
+              ))
+            }
+          </ul>
         </div>
       </div>
     </footer>
-
   </body>
 </html>
 
@@ -89,192 +158,285 @@ const navLinks = [
     overflow-x: hidden;
   }
 
-  main { flex: 1; }
-
-  /* ---- Header ---- */
-  .site-header {
-    position: sticky;
-    top: 0;
-    z-index: 50;
-    background-color: var(--surface-card);
-    border-bottom: 1px solid var(--border-default);
-    box-shadow: var(--shadow-1);
+  main {
+    flex: 1;
   }
 
-  .site-header-stripe { height: 4px; width: 100%; }
+  /* ============ MASTHEAD ============ */
+  .masthead {
+    background-color: var(--surface-page);
+    position: relative;
+    z-index: 50;
+  }
 
-  .site-header-inner {
+  .masthead-stripe {
+    height: 5px;
+    width: 100%;
+  }
+
+  .masthead-plate {
+    max-width: 1200px;
+    margin: 0 auto 0.5rem;
+    padding: 1.5rem 1.5rem 0.4rem;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .plate-dateline {
+    font-family: var(--font-sans);
+    font-size: 0.62rem;
+    font-weight: 600;
+    line-height: 1.5;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0;
+  }
+  .plate-left {
+    text-align: left;
+  }
+
+  .plate-name {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    text-decoration: none;
+    color: var(--text-strong);
+    white-space: nowrap;
+  }
+  .plate-name:hover {
+    text-decoration: none;
+    color: var(--text-strong);
+  }
+
+  .plate-emblem {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  .plate-word {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 5.5vw, 3.4rem);
+    font-weight: 900;
+    line-height: 0.9;
+    letter-spacing: -0.015em;
+    text-transform: uppercase;
+    color: var(--text-strong);
+  }
+
+  .plate-right {
+    text-align: right;
+  }
+
+  /* ---- Section rail (sticky) ---- */
+  .section-rail {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    background-color: var(--surface-page);
+    border-top: 2px solid var(--rule-ink);
+    border-bottom: 1px solid var(--rule-ink);
+  }
+
+  .section-rail ul {
     max-width: 1200px;
     margin: 0 auto;
     padding: 0 1.5rem;
     display: flex;
-    align-items: center;
-    gap: 1.5rem;
-    height: 66px;
-  }
-
-  .brand-lockup {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    text-decoration: none;
-    color: var(--text-strong);
-  }
-  .brand-lockup:hover { text-decoration: none; color: var(--text-strong); }
-
-  .brand-emblem { display: block; flex-shrink: 0; }
-
-  .brand-text { line-height: 1; }
-
-  .brand-name {
-    display: block;
-    font-family: var(--font-display);
-    font-size: 1.4rem;
-    font-weight: 900;
-    line-height: 0.95;
-    letter-spacing: -0.01em;
-    text-transform: uppercase;
-    color: var(--text-strong);
-  }
-
-  .brand-sub {
-    display: block;
-    font-family: var(--font-sans);
-    font-size: 0.58rem;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--slate-600);
-    margin-top: 0.2rem;
-  }
-
-  #main-nav { margin-left: auto; }
-
-  #main-nav ul {
-    display: flex;
-    align-items: center;
+    align-items: stretch;
+    justify-content: center;
     gap: 0;
     list-style: none;
-    margin: 0;
-    padding: 0;
   }
 
-  .nav-link {
-    font-family: var(--font-sans);
-    font-size: 0.72rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
+  .rail-link {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1.02rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
     text-transform: uppercase;
     color: var(--text-muted);
-    padding: 0.5rem 0.85rem;
-    display: block;
-    position: relative;
+    padding: 0.42rem 1.05rem;
+    border-bottom: 3px solid transparent;
     transition: var(--transition-color);
   }
-  .nav-link:hover {
+  .section-rail li + li .rail-link {
+    box-shadow: -1px 0 0 var(--border-hairline);
+  }
+
+  .rail-link:hover {
     color: var(--text-strong);
     text-decoration: none;
-  }
-  .nav-link::after {
-    content: "";
-    position: absolute;
-    left: 0.85rem;
-    right: 0.85rem;
-    bottom: 0.15rem;
-    height: 2px;
-    background-color: var(--ember-500);
-    transform: scaleX(0);
-    transform-origin: left;
-    transition: transform var(--dur-fast) var(--ease-standard);
-  }
-  .nav-link:hover::after { transform: scaleX(1); }
-
-  .header-season { flex-shrink: 0; }
-
-  .season-badge {
-    font-family: var(--font-sans);
-    font-size: 0.62rem;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--slate-600);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-pill);
-    padding: 0.3rem 0.7rem;
-    white-space: nowrap;
+    background-color: var(--surface-sunken);
   }
 
-  /* ---- Footer ---- */
-  .site-footer {
-    margin-top: 6rem;
-    background-color: var(--surface-card);
-    border-top: 1px solid var(--border-hairline);
-  }
-  .site-footer-stripe { height: 3px; width: 100%; }
-  .site-footer-inner {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2.25rem 1.5rem;
-  }
-  .footer-brand { display: flex; align-items: flex-start; gap: 0.75rem; }
-  .footer-title {
-    font-family: var(--font-display);
-    font-size: 1.05rem;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    color: var(--text-strong);
-    margin: 0;
-  }
-  .footer-meta {
-    font-family: var(--font-sans);
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    margin: 0.25rem 0 0;
+  .rail-link.is-active {
+    color: var(--ember-700);
+    border-bottom-color: var(--ember-500);
   }
 
-  /* ---- Hamburger (hidden on desktop) ---- */
+  /* ---- Hamburger (mobile only) ---- */
   #hamburger-btn {
     display: none;
-    flex-direction: column;
-    justify-content: center;
-    gap: 5px;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
     background: none;
     border: none;
     cursor: pointer;
-    padding: 0.5rem;
-    z-index: 60;
+    padding: 0.6rem 1.5rem;
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-strong);
   }
-  #hamburger-btn span {
+  .hamburger-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .hamburger-bars span {
     display: block;
-    width: 22px;
+    width: 20px;
     height: 2px;
     background-color: var(--text-strong);
-    transition: transform 0.2s ease, opacity 0.2s ease;
   }
 
-  @media (max-width: 768px) {
-    .brand-sub { display: none; }
-    .header-season { display: none; }
+  /* ============ COLOPHON ============ */
+  .colophon {
+    margin-top: 6rem;
+    background-color: var(--surface-sunken);
+    border-top: 2px solid var(--rule-ink);
+  }
+  .colophon-stripe {
+    height: 4px;
+    width: 100%;
+  }
 
-    #hamburger-btn { display: flex; margin-left: auto; }
+  .colophon-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 3rem;
+    display: grid;
+    grid-template-columns: 2.9fr 1.5fr;
+    gap: 3rem;
+    align-items: start;
+  }
 
-    #main-nav {
-      display: none;
-      position: absolute;
-      top: calc(66px + 4px);
-      left: 0;
-      right: 0;
-      margin-left: 0;
-      background-color: var(--surface-card);
-      border-bottom: 1px solid var(--border-default);
-      box-shadow: var(--shadow-3);
-      padding: 0.5rem 0;
-      z-index: 50;
+  .colophon-brand {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.85rem;
+  }
+  .colophon-brand img {
+    flex-shrink: 0;
+    margin-top: 0.2rem;
+  }
+
+  .colophon-title {
+    font-family: var(--font-display);
+    font-size: 1.3rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: -0.005em;
+    color: var(--text-strong);
+    margin: 0 0 0.4rem;
+    line-height: 1;
+  }
+
+  .colophon-line {
+    font-family: var(--font-serif);
+    font-size: 0.88rem;
+    line-height: 1.6;
+    color: var(--text-muted);
+    margin: 0;
+    max-width: 42ch;
+  }
+
+  .colophon-head {
+    font-family: var(--font-sans);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 0.7rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .colophon-index ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    columns: 2;
+    column-gap: 1.25rem;
+  }
+  .colophon-index li {
+    margin-bottom: 0.3rem;
+    break-inside: avoid;
+  }
+  .colophon-index a {
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    color: var(--text-body);
+  }
+
+  .colophon-rights {
+    color: var(--text-faint) !important;
+    font-size: 0.7rem !important;
+  }
+
+  /* ============ MOBILE ============ */
+  @media (max-width: 860px) {
+    .masthead-plate {
+      grid-template-columns: 1fr;
+      justify-items: center;
+      padding: 1.1rem 1.5rem 0.3rem;
+      gap: 0.5rem;
     }
-    #main-nav.open { display: block; }
-    #main-nav ul { flex-direction: column !important; gap: 0 !important; align-items: stretch; }
-    .nav-link { padding: 0.85rem 1.5rem !important; }
-    .nav-link::after { display: none; }
+    .plate-left,
+    .plate-right {
+      display: none;
+    }
+
+    #hamburger-btn {
+      display: flex;
+    }
+
+    .section-rail ul {
+      display: none;
+      flex-direction: column;
+      padding: 0 0 0.5rem;
+      background-color: var(--surface-page);
+      border-top: 1px solid var(--border-default);
+    }
+    .section-rail.open ul {
+      display: flex;
+    }
+    .rail-link {
+      padding: 0.7rem 1.5rem;
+      border-bottom: 1px solid var(--border-hairline);
+      border-left: 3px solid transparent;
+    }
+    .section-rail li + li .rail-link {
+      box-shadow: none;
+    }
+    .rail-link.is-active {
+      border-bottom-color: var(--border-hairline);
+      border-left-color: var(--ember-500);
+    }
+
+    .colophon-inner {
+      grid-template-columns: 1fr;
+      gap: 2rem;
+    }
   }
 </style>
 

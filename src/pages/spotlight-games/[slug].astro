@@ -1,15 +1,13 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { getHistoricalMatchups } from '../../lib/get-historical-matchups';
+import { franchiseForYear, logoPath, primaryColor } from '../../lib/franchise-identity';
+import { buildSlug } from '../../lib/game-utils';
 import fs from 'node:fs';
 import path from 'node:path';
 
 export async function getStaticPaths() {
-  const { createClient } = await import('@supabase/supabase-js');
-  const sb = createClient(
-    import.meta.env.SUPABASE_URL,
-    import.meta.env.SUPABASE_ANON_KEY
-  );
+  const { supabase: sb } = await import('../../lib/supabase');
 
   // Determine current season year
   const { data: seasonRows, error: sError } = await sb
@@ -95,7 +93,7 @@ export async function getStaticPaths() {
   const { data: allFranchises, error: allError } = await sb
     .schema('scdfl')
     .from('franchises')
-    .select('id, sleeper_id, abbr, "from", "to"');
+    .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"');
 
   if (allError) throw new Error(`All franchises query failed: ${allError.message}`);
 
@@ -113,20 +111,14 @@ const historicalMatchups = await getHistoricalMatchups(game.team_a, game.team_b)
 
 // Resolve franchise identity for a roster_id at a given year
 function getHistoricalAbbr(rosterId: number, year: number): string {
-  const identity = allFranchises.find((f: any) =>
-    f.id === rosterId && f.from <= year && (f.to === null || f.to >= year)
-  );
-  return identity?.abbr ?? 'UNK';
+  return franchiseForYear(allFranchises, String(rosterId), year)?.abbr ?? 'UNK';
 }
 
 // Helper function to build game recap URL using historical abbreviations
 function buildGameUrl(year: number, week: number, rosterIdA: number, rosterIdB: number): string {
   const abbrA = getHistoricalAbbr(rosterIdA, year);
   const abbrB = getHistoricalAbbr(rosterIdB, year);
-  const teams = [abbrA, abbrB].sort();
-  const weekPadded = String(week).padStart(2, '0');
-  const slug = `${weekPadded}-${teams[0].toLowerCase()}-${teams[1].toLowerCase()}`;
-  return `/games/${year}/${slug}`;
+  return `/games/${year}/${buildSlug(abbrA, abbrB, week)}`;
 }
 ---
 
@@ -159,8 +151,8 @@ function buildGameUrl(year: number, week: number, rosterIdA: number, rosterIdB: 
 
         <!-- Team A -->
         <a href={`/franchises/${teamA?.abbr}`} style="text-decoration: none; display: block;">
-          <div style={`padding: 2rem; border-left: 4px solid ${teamA?.colors[0]}; border-right: 1px solid var(--color-border);`}>
-            <img src={`/images/logos/${game.team_a}.png`} alt="" width="48" height="48" style="object-fit: contain; margin-bottom: 0.75rem; display: block;" onerror="this.style.display='none'" />
+          <div style={`padding: 2rem; border-left: 4px solid ${primaryColor(teamA?.colors)}; border-right: 1px solid var(--color-border);`}>
+            <img src={logoPath(game.team_a)} alt="" width="48" height="48" style="object-fit: contain; margin-bottom: 0.75rem; display: block;" onerror="this.style.display='none'" />
             <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.4rem;">{teamA?.abbr} &bull; <span class={`label-badge badge-${teamA?.conf.toLowerCase()}`}>{teamA?.conf}</span></p>
             <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.2;">{teamA?.name}</h2>
             <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0;">Owner: {teamA?.owner}</p>
@@ -176,8 +168,8 @@ function buildGameUrl(year: number, week: number, rosterIdA: number, rosterIdB: 
 
         <!-- Team B -->
         <a href={`/franchises/${teamB?.abbr}`} style="text-decoration: none; display: block;">
-          <div class="matchup-team-b-inner" style={`padding: 2rem; border-right: 4px solid ${teamB?.colors[0]}; --team-b-color: ${teamB?.colors[0]};`}>
-            <img src={`/images/logos/${game.team_b}.png`} alt="" width="48" height="48" style="object-fit: contain; margin-bottom: 0.75rem; display: block;" onerror="this.style.display='none'" />
+          <div class="matchup-team-b-inner" style={`padding: 2rem; border-right: 4px solid ${primaryColor(teamB?.colors)}; --team-b-color: ${primaryColor(teamB?.colors)};`}>
+            <img src={logoPath(game.team_b)} alt="" width="48" height="48" style="object-fit: contain; margin-bottom: 0.75rem; display: block;" onerror="this.style.display='none'" />
             <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.4rem;">{teamB?.abbr} &bull; <span class={`label-badge badge-${teamB?.conf.toLowerCase()}`}>{teamB?.conf}</span></p>
             <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--color-text-primary); margin: 0 0 0.5rem; line-height: 1.2;">{teamB?.name}</h2>
             <p style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0;">Owner: {teamB?.owner}</p>

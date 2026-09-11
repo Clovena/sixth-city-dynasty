@@ -2,12 +2,18 @@
 import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
 import { getEntry, render, getCollection } from 'astro:content';
+import { loadFranchises, franchiseForYear, logoPath, primaryColor as getPrimaryColor } from '../../lib/franchise-identity';
+import { toRoman, formatPoints } from '../../lib/format';
+import { buildSlug, isPlayablePostseasonGame, loadChampionshipMatchups } from '../../lib/game-utils';
 
 // ── Static paths: active franchises only ──────────────────────────────────
 export async function getStaticPaths() {
   const { supabase: sb } = await import('../../lib/supabase');
-  const { data: rows } = await sb.schema('scdfl').from('franchises')
-    .select('abbr').is('to', null);
+  const { data: rows } = await sb
+    .schema('scdfl')
+    .from('franchises')
+    .select('abbr')
+    .is('to', null);
   return (rows ?? []).map(f => ({ params: { abbr: f.abbr } }));
 }
 
@@ -76,7 +82,7 @@ if (notesEntry) {
   FranchiseContent = Content;
 }
 
-const primaryColor = franchise.colors[0];
+const primaryColor = getPrimaryColor(franchise.colors);
 const secondaryColor = franchise.colors[1] ?? franchise.colors[0];
 const confColor = franchise.conf === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
 
@@ -89,22 +95,8 @@ const { data: seasonRows, error: sErr } = await supabase
 
 if (sErr) throw new Error(`Seasons query failed: ${sErr.message}`);
 
-// ── Fetch championship matchups (week 17, game_type = 1) ──────────────────
-const { data: champMatchups, error: cmErr } = await supabase
-  .schema('scdfl')
-  .from('matchups')
-  .select('year, roster_id_a, roster_id_b, score_a, score_b')
-  .eq('week', 17)
-  .eq('game_type', 1);
-
-if (cmErr) throw new Error(`Championship matchups query failed: ${cmErr.message}`);
-
-// Drop not-yet-played championship placeholders (0–0) — Sleeper seeds the
-// bracket with random opponents before the postseason, and those would
-// otherwise register as a Dynasty Bowl appearance with a fabricated winner.
-const playedChampMatchups = (champMatchups ?? []).filter(
-  m => (m.score_a ?? 0) !== 0 || (m.score_b ?? 0) !== 0
-);
+// ── Fetch championship matchups (week 17, game_type = 1, already played) ──
+const playedChampMatchups = await loadChampionshipMatchups();
 
 // Dynasty Bowl appearances for this franchise
 const sleeperId = parseInt(franchise.sleeper_id);
@@ -113,32 +105,7 @@ const myChampMatchups = playedChampMatchups.filter(
 );
 
 // ── Fetch all franchise identities (for year-appropriate display) ─────────
-const { data: allFranchiseRows, error: afErr } = await supabase
-  .schema('scdfl')
-  .from('franchises')
-  .select('sleeper_id, abbr, name, owner, conf, colors, "from", "to"');
-
-if (afErr) throw new Error(`All franchises query failed: ${afErr.message}`);
-
-const activeFranchises = allFranchiseRows;
-
-// Resolve franchise identity for a given year
-function franchiseForYear(sid: string, yr: number) {
-  return activeFranchises.find(f =>
-    f.sleeper_id === sid && f.from <= yr && (f.to === null || f.to >= yr)
-  );
-}
-
-// Roman numeral helper
-function toRoman(n: number): string {
-  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
-  const syms = ['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
-  let result = '';
-  for (let i = 0; i < vals.length; i++) {
-    while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
-  }
-  return result;
-}
+const allFranchiseRows = await loadFranchises();
 
 // Build dynasty bowl appearance data
 type DynastyBowlAppearance = {
@@ -156,7 +123,7 @@ for (const m of myChampMatchups) {
   const won = (iAmA && aWins) || (!iAmA && !aWins);
   const oppRosterId = iAmA ? m.roster_id_b : m.roster_id_a;
   const oppSleeperId = String(oppRosterId);
-  const oppIdentity = franchiseForYear(oppSleeperId, m.year);
+  const oppIdentity = franchiseForYear(allFranchiseRows, oppSleeperId, m.year);
   dynastyBowlAppearances.push({
     year: m.year,
     won,
@@ -208,7 +175,7 @@ function getSpotlightOpponent(g: SpotlightGame) {
   return g.team_a === abbr ? g.team_b : g.team_a;
 }
 function getOpponentFranchise(oppAbbr: string) {
-  return activeFranchises.find(f => f.abbr === oppAbbr);
+  return allFranchiseRows.find(f => f.abbr === oppAbbr);
 }
 
 // ── Fetch results for this franchise ──────────────────────────────────────
@@ -250,9 +217,7 @@ for (const m of matchupRows ?? []) {
   // bracket with placeholder (random) opponents before the postseason begins;
   // these show up as 0–0 and don't reflect the real slate, so exclude them.
   // Regular-season games (game_type 0) are always kept, even at 0–0.
-  const isPostseason = m.game_type !== 0;
-  const notStarted = (m.score_a ?? 0) === 0 && (m.score_b ?? 0) === 0;
-  if (isPostseason && notStarted) continue;
+  if (!isPlayablePostseasonGame(m.game_type, m.score_a, m.score_b)) continue;
 
   const yr = String(m.year);
   const wk = String(m.week);
@@ -324,8 +289,8 @@ for (const m of matchupRows ?? []) {
   const diff = pf - pa;
   const result: 'W' | 'L' | 'T' = pf > pa ? 'W' : pf < pa ? 'L' : 'T';
 
-  const myId = franchiseForYear(franchise.sleeper_id, m.year);
-  const oppId = franchiseForYear(String(oppRid), m.year);
+  const myId = franchiseForYear(allFranchiseRows, franchise.sleeper_id, m.year);
+  const oppId = franchiseForYear(allFranchiseRows, String(oppRid), m.year);
 
   gamePerf.push({
     year: m.year,
@@ -347,80 +312,75 @@ const perfDefaultSeason = perfSeasons.length > 0 ? perfSeasons[perfSeasons.lengt
   description={`Franchise profile for ${franchise.name} (${franchise.abbr}), owned by ${franchise.owner}. ${franchise.conf} — Sixth City Dynasty Football League.`}
 >
 
-  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
+  <!-- ══ DOSSIER HEADER ══════════════════════════════════════════════════
+       A full-bleed band tinted with the club's own primary, so each franchise
+       page opens in its own colours rather than in a generic card. ───────── -->
+  <header class="dossier" style={`--primary: ${primaryColor}; --secondary: ${secondaryColor};`}>
+    <div class="wrap">
+      <a href="/franchises" class="dossier-back">&#8592;&nbsp; All Franchises</a>
 
-    <!-- Franchise hero band -->
-    <div style={`border-left: 4px solid ${primaryColor}; border-bottom: 1px solid var(--color-border); padding: 3rem 0 2.5rem 2rem; margin-top: 3rem;`}>
-      <a href="/franchises" style="font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1.25rem;">
-        &#8592; All Franchises
-      </a>
-
-      <div style="display: flex; align-items: flex-start; gap: 2rem; flex-wrap: wrap;">
+      <div class="dossier-grid">
         <img
-          src={`/images/logos/${abbr}.png`}
+          class="dossier-crest"
+          src={logoPath(abbr)}
           alt={`${franchise.name} logo`}
-          width="72"
-          height="72"
-          style="object-fit: contain; flex-shrink: 0; margin-top: 0.25rem;"
+          width="120"
+          height="120"
           onerror="this.style.display='none'"
         />
-        <div style="flex: 1; min-width: 260px;">
-          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; flex-wrap: wrap;">
-            <span style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-text-muted);">{franchise.abbr}</span>
+
+        <div class="dossier-identity">
+          <p class="dossier-slug">
+            <span class="dossier-abbr">{franchise.abbr}</span>
             <span class={`label-badge badge-${franchise.conf.toLowerCase()}`}>{franchise.conf}</span>
-          </div>
-          <h1 style={`font-family: var(--font-display); font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 700; line-height: 1.1; color: var(--color-text-primary); margin: 0;`}>
-            {franchise.name}
-          </h1>
-        </div>
-
-        <div style="display: grid; grid-template-columns: repeat(3, auto); gap: 2rem; flex-shrink: 0; align-self: center;">
-          <div>
-            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Owner</p>
-            <p style="font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{franchise.owner}</p>
-          </div>
-          <div>
-            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Founded</p>
-            <p style="font-size: 0.95rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{founded}</p>
-          </div>
-          <div>
-            <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.2rem;">Colors</p>
-            <div style="display: flex; gap: 5px; align-items: center; margin-top: 0.35rem;">
-              {franchise.colors.map((c: string) => (
-                <span style={`display: inline-block; width: 16px; height: 16px; background-color: ${c}; border-radius: 50%;`} title={c}></span>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Accolades -->
-    {(championships.length > 0 || runnerUps.length > 0 || confChamps.length > 0) && (
-      <div style="display: flex; align-items: center; gap: 1.5rem; padding: 0.75rem 0; border-bottom: 1px solid var(--color-border); margin-top: 1rem; flex-wrap: wrap;">
-        <p class="section-label" style="margin-bottom: 0;">Accolades</p>
-        <div style="display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;">
-          {championships.map(c => (
-            <span style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--color-text-secondary);">
-              <span style="font-size: 1rem; color: var(--color-gold);">&#11042;</span>
-              <span>{c.year} League Champion</span>
+            <span class="dossier-since">Est. {founded}</span>
+          </p>
+          <h1 class="dossier-name">{franchise.name}</h1>
+          <p class="dossier-owner">
+            Operated by <strong>{franchise.owner}</strong>
+            <span class="dossier-swatches" aria-hidden="true">
+              {franchise.colors.map((c: string) => <span style={`background-color: ${c};`} title={c}></span>)}
             </span>
+          </p>
+        </div>
+
+        <dl class="dossier-vitals">
+          <div>
+            <dt>All-time</dt>
+            <dd>{totalWins}&ndash;{totalLosses}</dd>
+          </div>
+          <div>
+            <dt>Pct</dt>
+            <dd>{(totalWins + totalLosses === 0 ? 0 : totalWins / (totalWins + totalLosses)).toFixed(3).replace(/^0/, '')}</dd>
+          </div>
+          <div>
+            <dt>Seasons</dt>
+            <dd>{franchiseResults.length}</dd>
+          </div>
+          <div>
+            <dt>Points for</dt>
+            <dd>{Math.round(totalPF).toLocaleString('en-US')}</dd>
+          </div>
+        </dl>
+      </div>
+
+      {(championships.length > 0 || runnerUps.length > 0 || confChamps.length > 0) && (
+        <ul class="dossier-honors">
+          {championships.map(c => (
+            <li><span class="mark mark-title">&#11042;</span> Dynasty Bowl, {c.year}</li>
           ))}
           {runnerUps.map(r => (
-            <span style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--color-text-secondary);">
-              <span style="font-size: 1rem; color: var(--color-text-primary);">&#11041;</span>
-              <span>{r.year} Runner-Up</span>
-            </span>
+            <li><span class="mark mark-runner">&#11041;</span> Runner-up, {r.year}</li>
           ))}
-          {confChamps.map(s => (
-            <span style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; color: var(--color-text-secondary);">
-              <span style={`font-size: 1rem; color: ${confColor};`}>&#9650;</span>
-              <span>{s.year} {franchise.conf} Champion</span>
-            </span>
+          {confChamps.map(sc => (
+            <li><span class={`mark mark-conf-${franchise.conf.toLowerCase()}`}>&#9650;</span> {franchise.conf} champion, {sc.year}</li>
           ))}
-        </div>
-      </div>
-    )}
+        </ul>
+      )}
+    </div>
+  </header>
+
+  <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.5rem;">
 
     <div class="franchise-layout-grid" style="display: grid; grid-template-columns: 1fr 300px; gap: 3rem; margin-top: 3rem; align-items: start;">
 
@@ -430,7 +390,7 @@ const perfDefaultSeason = perfSeasons.length > 0 ? perfSeasons[perfSeasons.lengt
         <!-- Franchise notes markdown -->
         {FranchiseContent && (
           <div style="margin-bottom: 2rem;">
-            <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin-bottom: 1.25rem; color: var(--color-text-primary);">Franchise Notes</h2>
+            <h2 class="sect-head">Franchise Notes</h2>
             <div style="font-size: 0.9rem; color: var(--color-text-secondary); text-align: justify; line-height: 1.7;">
               <FranchiseContent />
             </div>
@@ -467,7 +427,7 @@ const perfDefaultSeason = perfSeasons.length > 0 ? perfSeasons[perfSeasons.lengt
 
         <!-- Season record -->
         <div>
-          <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-primary);">Season Record</h2>
+          <h2 class="sect-head">Season Record</h2>
           <div class="season-record-wrap" style="overflow-x: auto;">
             <table class="data-table">
               <thead>
@@ -500,7 +460,7 @@ const perfDefaultSeason = perfSeasons.length > 0 ? perfSeasons[perfSeasons.lengt
                     {isAdopted && (
                       <td style="padding: 0.25rem 0.5rem; text-align: center;">
                         <img
-                          src={`/images/logos/${(franchiseForYear(franchise.sleeper_id, row.year))?.abbr ?? abbr}.png`}
+                          src={logoPath(franchiseForYear(allFranchiseRows, franchise.sleeper_id, row.year)?.abbr ?? abbr)}
                           alt=""
                           width="24"
                           height="24"
@@ -518,8 +478,8 @@ const perfDefaultSeason = perfSeasons.length > 0 ? perfSeasons[perfSeasons.lengt
                       <>
                         <td>{row.wins}</td>
                         <td>{row.losses}</td>
-                        <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_for.toFixed(2)}</td>
-                        <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums;">{row.points_against.toFixed(2)}</td>
+                        <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums;">{formatPoints(row.points_for)}</td>
+                        <td class="col-hide-mobile" style="text-align: right; font-variant-numeric: tabular-nums;">{formatPoints(row.points_against)}</td>
                       </>
                     )}
                     <td style={resultStyle}>{seasonNotStarted ? '—' : row.finish}</td>
@@ -543,124 +503,88 @@ const perfDefaultSeason = perfSeasons.length > 0 ? perfSeasons[perfSeasons.lengt
         </div>
       </div>
 
-      <!-- Sidebar -->
-      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+      <!-- Margin column. Ruled sections rather than a stack of five identical
+           boxes; the franchise-facts panel is gone because the dossier header
+           above already carries every number it held. -->
+      <aside class="dossier-margin">
 
-        <!-- Quick facts -->
-        <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
-          <p class="section-label">Franchise Facts</p>
-          <dl style="display: flex; flex-direction: column; gap: 0.6rem;">
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Conference</dt>
-              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">
-                <span class={`label-badge badge-${franchise.conf.toLowerCase()}`}>{franchise.conf}</span>
-              </dd>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Championships</dt>
-              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{championships.length}</dd>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Bowl Appearances</dt>
-              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{dynastyBowlAppearances.length}</dd>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Conf. Titles</dt>
-              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{confChamps.length}</dd>
-            </div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline;">
-              <dt style="font-size: 0.75rem; color: var(--color-text-muted);">Founded</dt>
-              <dd style="font-size: 0.85rem; font-weight: 600; color: var(--color-text-primary); margin: 0;">{founded}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <!-- Championships -->
         {dynastyBowlAppearances.length > 0 && (
-          <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
-            <p class="section-label">Dynasty Bowl History</p>
-            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <section class="margin-block">
+            <h2 class="margin-head">Dynasty Bowl History</h2>
+            <ul class="margin-list">
               {dynastyBowlAppearances.map(a => {
-                const oppDisplay = franchiseForYear(a.opponentSleeperId, a.year);
-                const myDisplay = franchiseForYear(franchise.sleeper_id, a.year);
-                const slugAbbrs = [myDisplay?.abbr ?? franchise.abbr, oppDisplay?.abbr ?? a.opponentAbbr].sort().map(s => s.toLowerCase());
-                const recapSlug = `17-${slugAbbrs[0]}-${slugAbbrs[1]}`;
+                const oppDisplay = franchiseForYear(allFranchiseRows, a.opponentSleeperId, a.year);
+                const myDisplay = franchiseForYear(allFranchiseRows, franchise.sleeper_id, a.year);
+                const recapSlug = buildSlug(myDisplay?.abbr ?? franchise.abbr, oppDisplay?.abbr ?? a.opponentAbbr, 17);
                 return (
-                  <a href={`/games/${a.year}/${recapSlug}`} style={`display: block; text-decoration: none; padding: 0.75rem; border-left: 3px solid ${a.won ? 'var(--color-gold)' : 'var(--color-border-light)'}; background-color: var(--color-surface-alt); transition: border-color 0.15s ease;`} onmouseover="this.style.borderColor='var(--color-border-light)'" onmouseout={`this.style.borderColor='${a.won ? 'var(--color-gold)' : 'var(--color-border-light)'}'`}>
-                    <p style={`font-size: 0.8rem; font-weight: 700; margin: 0 0 0.2rem; color: ${a.won ? 'var(--color-gold)' : 'var(--color-text-muted)'};`}>
-                      {a.won ? 'Champion' : 'Runner-Up'} · {a.year}
-                    </p>
-                    <p style="font-size: 0.8rem; color: var(--color-text-secondary); margin: 0;">{a.label}</p>
-                    <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0.2rem 0 0;">
-                      vs. {oppDisplay?.abbr ?? a.opponentAbbr}
-                    </p>
-                  </a>
+                  <li class={a.won ? 'is-win' : 'is-loss'}>
+                    <a href={`/games/${a.year}/${recapSlug}`}>
+                      <span class="margin-result">{a.won ? 'Champion' : 'Runner-Up'}</span>
+                      <span class="margin-detail">{a.label} &middot; vs. {oppDisplay?.abbr ?? a.opponentAbbr}</span>
+                    </a>
+                  </li>
                 );
               })}
-            </div>
-          </div>
+            </ul>
+          </section>
         )}
 
-        <!-- Conference Championships -->
         {confChamps.length > 0 && (
-          <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
-            <p class="section-label">Conference Titles</p>
-            <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
-              {confChamps.map(s => (
-                <span style="font-size: 0.8rem; font-weight: 600; padding: 0.2rem 0.6rem; background-color: var(--color-surface-alt); border: 1px solid var(--color-border-light); color: var(--color-text-secondary);">
-                  {s.year}
-                </span>
-              ))}
-            </div>
-            <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.5rem;">{franchise.conf} Championship</p>
-          </div>
+          <section class="margin-block">
+            <h2 class="margin-head">{franchise.conf} Titles</h2>
+            <p class="margin-years">
+              {confChamps.map(sc => <a href={`/history/${sc.year}`}>{sc.year}</a>)}
+            </p>
+          </section>
         )}
 
-        <!-- Bowl game affiliations -->
         {myBowlGames.length > 0 && (
-          <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
-            <p class="section-label">{spotlightYear} Bowl Games</p>
-            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <section class="margin-block">
+            <h2 class="margin-head">{spotlightYear} Bowl Games</h2>
+            <ul class="margin-list">
               {myBowlGames.map(bg => {
                 const oppAbbr = getSpotlightOpponent(bg);
                 const opp = getOpponentFranchise(oppAbbr);
                 return (
-                  <a href={`/spotlight-games/${bg.slug}`} style="text-decoration: none; display: block; padding: 0.75rem; background-color: var(--color-surface-alt); border: 1px solid var(--color-border); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='var(--color-border-light)'" onmouseout="this.style.borderColor='var(--color-border)'">
-                    <p style="font-family: var(--font-display); font-size: 0.9rem; font-weight: 600; color: var(--color-gold); margin: 0 0 0.2rem;">{bg.name}</p>
-                    <p style="font-size: 0.75rem; color: var(--color-text-muted); margin: 0;">vs <span style="color: var(--color-text-secondary);">{opp?.name ?? oppAbbr}</span></p>
-                  </a>
+                  <li>
+                    <a href={`/spotlight-games/${bg.slug}`}>
+                      <span class="margin-game">{bg.name}</span>
+                      <span class="margin-detail">vs. {opp?.name ?? oppAbbr}</span>
+                    </a>
+                  </li>
                 );
               })}
-            </div>
-          </div>
+            </ul>
+          </section>
         )}
 
-        <!-- Rivalry game affiliations -->
         {myRivalryGames.length > 0 && (
-          <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem;">
-            <p class="section-label">{spotlightYear} Rivalry Week</p>
-            <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+          <section class="margin-block">
+            <h2 class="margin-head">{spotlightYear} Rivalry Week</h2>
+            <ul class="margin-list">
               {myRivalryGames.map(rg => {
                 const oppAbbr = getSpotlightOpponent(rg);
                 const opp = getOpponentFranchise(oppAbbr);
                 return (
-                  <a href={`/spotlight-games/${rg.slug}`} style="text-decoration: none; display: block; padding: 0.75rem; background-color: var(--color-surface-alt); border: 1px solid var(--color-border); transition: border-color 0.15s ease;" onmouseover="this.style.borderColor='var(--color-border-light)'" onmouseout="this.style.borderColor='var(--color-border)'">
-                    <p style="font-family: var(--font-display); font-size: 0.9rem; font-weight: 600; color: var(--color-gold); margin: 0 0 0.2rem;">vs {opp?.name ?? oppAbbr}</p>
-                  </a>
+                  <li>
+                    <a href={`/spotlight-games/${rg.slug}`}>
+                      <span class="margin-game">vs. {opp?.name ?? oppAbbr}</span>
+                    </a>
+                  </li>
                 );
               })}
-            </div>
-          </div>
+            </ul>
+          </section>
         )}
 
-      </div>
+      </aside>
     </div>
 
     <!-- Game-by-game performance chart (Widget A) -->
     {gamePerf.length > 0 && (
       <div style="margin-top: 4rem;">
         <div style="padding-bottom: 1.5rem; border-bottom: 1px solid var(--color-border);">
-          <h2 style="font-family: var(--font-display); font-size: 1.75rem; font-weight: 600; margin-bottom: 0.4rem; color: var(--color-text-primary);">Game-by-Game</h2>
+          <h2 class="sect-head">Game-by-Game</h2>
           <p style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0;">
             Every regular-season game, point differential per week. Click a bar for the recap.
           </p>
@@ -695,7 +619,7 @@ const perfDefaultSeason = perfSeasons.length > 0 ? perfSeasons[perfSeasons.lengt
     {availableYears.length > 0 && (
       <div style="margin-top: 4rem;">
         <div style="padding-bottom: 2rem; border-bottom: 1px solid var(--color-border);">
-          <h2 style="font-family: var(--font-display); font-size: 1.75rem; font-weight: 600; margin-bottom: 1rem; color: var(--color-text-primary);">Games</h2>
+          <h2 class="sect-head">Games</h2>
 
           <!-- Year selector -->
           <div style="display: flex; flex-direction: column; gap: 0.4rem; max-width: 180px;">
@@ -723,6 +647,231 @@ const perfDefaultSeason = perfSeasons.length > 0 ? perfSeasons[perfSeasons.lengt
 </Layout>
 
 <style>
+  /* Section heads carry a rule instead of relying on size alone. */
+  .sect-head {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: -0.005em;
+    line-height: 1;
+    color: var(--text-strong);
+    margin: 0 0 1.1rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 2px solid var(--rule-ink);
+  }
+
+  /* ── Margin column ──────────────────────────────────────────────────── */
+  .dossier-margin { display: flex; flex-direction: column; gap: 2rem; }
+
+  .margin-head {
+    font-family: var(--font-sans);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin: 0 0 0.6rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 2px solid var(--rule-ink);
+  }
+
+  .margin-list { list-style: none; margin: 0; padding: 0; }
+  .margin-list li { border-bottom: 1px dotted var(--border-default); }
+  .margin-list a {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    padding: 0.55rem 0 0.55rem 0.7rem;
+    border-left: 3px solid transparent;
+    text-decoration: none;
+    transition: border-color var(--dur-fast) var(--ease-standard);
+  }
+  .margin-list a:hover { text-decoration: none; border-left-color: var(--ember-500); }
+  .margin-list li.is-win a { border-left-color: var(--gold-500); }
+  .margin-list li.is-loss a { border-left-color: var(--ink-200); }
+
+  .margin-result {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: 1;
+    color: var(--text-strong);
+  }
+  .margin-list li.is-win .margin-result { color: var(--gold-700); }
+  .margin-list li.is-loss .margin-result { color: var(--text-muted); }
+
+  .margin-game {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: var(--text-strong);
+  }
+
+  .margin-detail {
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .margin-years { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0; }
+  .margin-years a {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--slate-700);
+    background-color: var(--slate-100);
+    border: 1px solid var(--slate-300);
+    padding: 0.12rem 0.45rem;
+  }
+  .margin-years a:hover { text-decoration: none; background-color: var(--slate-200); }
+
+  /* ── Dossier header ─────────────────────────────────────────────────── */
+  .dossier {
+    background-color: color-mix(in srgb, var(--primary) 9%, var(--surface-page));
+    border-bottom: 3px solid var(--rule-ink);
+    border-top: 5px solid var(--primary);
+    padding: 1.5rem 0 1.75rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .dossier-back {
+    font-family: var(--font-sans);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    display: inline-block;
+    margin-bottom: 1.5rem;
+  }
+
+  .dossier-grid {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 2rem;
+    align-items: center;
+  }
+
+  .dossier-crest { object-fit: contain; flex-shrink: 0; }
+
+  .dossier-slug {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+    margin: 0 0 0.4rem;
+  }
+  .dossier-abbr {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    color: var(--text-muted);
+  }
+  .dossier-since {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .dossier-name {
+    font-family: var(--font-display);
+    font-size: clamp(2.2rem, 6vw, 4.4rem);
+    font-weight: 900;
+    line-height: 0.9;
+    letter-spacing: -0.03em;
+    text-transform: uppercase;
+    color: var(--text-strong);
+    margin: 0 0 0.5rem;
+  }
+
+  .dossier-owner {
+    font-family: var(--font-serif);
+    font-size: 0.95rem;
+    color: var(--text-muted);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .dossier-owner strong { color: var(--text-strong); font-weight: 600; }
+  .dossier-swatches { display: inline-flex; gap: 3px; }
+  .dossier-swatches span {
+    display: block;
+    width: 10px;
+    height: 18px;
+    border: 1px solid rgba(28, 26, 23, 0.18);
+  }
+
+  /* Vitals read as a stamped record block, in mono figures. */
+  .dossier-vitals {
+    display: grid;
+    grid-template-columns: repeat(4, auto);
+    gap: 0 1.75rem;
+    margin: 0;
+    padding-left: 1.75rem;
+    border-left: 1px solid var(--border-default);
+    flex-shrink: 0;
+  }
+  .dossier-vitals dt {
+    font-family: var(--font-sans);
+    font-size: 0.56rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    margin-bottom: 0.15rem;
+  }
+  .dossier-vitals dd {
+    font-family: var(--font-mono);
+    font-size: 1.4rem;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: var(--text-strong);
+    margin: 0;
+    white-space: nowrap;
+  }
+
+  .dossier-honors {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.5rem;
+    margin: 1.5rem 0 0;
+    padding: 0.85rem 0 0;
+    border-top: 1px solid var(--border-default);
+    font-family: var(--font-sans);
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+  .dossier-honors li { display: flex; align-items: center; gap: 0.4rem; }
+  .mark { font-size: 0.95rem; line-height: 1; }
+  .mark-title { color: var(--gold-600); }
+  .mark-runner { color: var(--ink-400); }
+  .mark-conf-scc { color: var(--slate-500); font-size: 0.7rem; }
+  .mark-conf-hcc { color: var(--ember-500); font-size: 0.7rem; }
+
+  @media (max-width: 900px) {
+    .dossier-grid { grid-template-columns: auto minmax(0, 1fr); gap: 1.25rem; }
+    .dossier-crest { width: 74px; height: 74px; }
+    .dossier-vitals {
+      grid-column: 1 / -1;
+      padding-left: 0;
+      border-left: none;
+      border-top: 1px solid var(--border-default);
+      padding-top: 1rem;
+      gap: 0 1.25rem;
+    }
+    .dossier-vitals dd { font-size: 1.15rem; }
+  }
+
   @media (max-width: 768px) {
     /* Stack sidebar below main column, both full width */
     .franchise-layout-grid {

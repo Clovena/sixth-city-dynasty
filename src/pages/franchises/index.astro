@@ -1,267 +1,335 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
+import { loadFranchises, logoPath, primaryColor } from '../../lib/franchise-identity';
+import { loadChampionshipMatchups } from '../../lib/game-utils';
 
-// ── Fetch active franchises ───────────────────────────────────────────────
-const { data: activeFranchises, error: fErr } = await supabase
-  .schema('scdfl')
-  .from('franchises')
-  .select('sleeper_id, abbr, name, owner, conf, colors')
-  .is('to', null)
-  .order('abbr');
+// ── Identities, results, seasons ───────────────────────────────────────────
+const [franchises, champMatchups, resultsRes, seasonsRes] = await Promise.all([
+  loadFranchises(),
+  loadChampionshipMatchups(),
+  supabase
+    .schema('scdfl')
+    .from('results')
+    .select('sleeper_id, year, wins, losses, ties, points_for')
+    .limit(1000),
+  supabase
+    .schema('scdfl')
+    .from('seasons')
+    .select('year, scc_champion, hcc_champion'),
+]);
 
-if (fErr || !activeFranchises) throw new Error(`Franchises query failed: ${fErr?.message || 'No data returned'}`);
+if (resultsRes.error) throw new Error(`Results query failed: ${resultsRes.error.message}`);
+if (seasonsRes.error) throw new Error(`Seasons query failed: ${seasonsRes.error.message}`);
 
-// ── Fetch all franchise identities (for historical abbr → sleeper_id mapping) ─
-const { data: allIdentities, error: aiErr } = await supabase
-  .schema('scdfl')
-  .from('franchises')
-  .select('sleeper_id, abbr, "from", "to"');
+const results = resultsRes.data ?? [];
+const activeFranchises = franchises.filter(f => f.to === null);
 
-if (aiErr) throw new Error(`All identities query failed: ${aiErr.message}`);
+// abbr → sleeper_id across every era, so a conference title won under an old
+// brand still lands on the franchise that won it.
+const sleeperIdByAbbr = new Map(franchises.map(f => [f.abbr, f.sleeper_id]));
 
-// Map: abbr → sleeper_id (covers historical abbrs too)
-const sleeperIdByAbbr = new Map(allIdentities.map(f => [f.abbr, f.sleeper_id]));
-
-// ── Fetch seasons (for conf champion attribution) ─────────────────────────
-const { data: seasonRows, error: sErr } = await supabase
-  .schema('scdfl')
-  .from('seasons')
-  .select('year, scc_champion, hcc_champion');
-
-if (sErr) throw new Error(`Seasons query failed: ${sErr.message}`);
-
-// ── Fetch championship matchups (week 17, game_type = 1) ──────────────────
-const { data: champMatchups, error: cmErr } = await supabase
-  .schema('scdfl')
-  .from('matchups')
-  .select('year, roster_id_a, roster_id_b, score_a, score_b')
-  .eq('week', 17)
-  .eq('game_type', 1);
-
-if (cmErr) throw new Error(`Championship matchups query failed: ${cmErr.message}`);
-
-// ── Build accolade counts (attributed to active franchise via sleeper_id) ─
-const activeBySleeperId = new Map(activeFranchises.map(f => [f.sleeper_id, f]));
-
-const champCounts: Record<string, number> = {};
-const runnerUpCounts: Record<string, number> = {};
-const confTitleCounts: Record<string, number> = {};
-
-// Championships & runner-ups from matchup results
-for (const m of champMatchups ?? []) {
-  const aWins = m.score_a > m.score_b;
-  const winnerSleeperId = String(aWins ? m.roster_id_a : m.roster_id_b);
-  const loserSleeperId = String(aWins ? m.roster_id_b : m.roster_id_a);
-  const winner = activeBySleeperId.get(winnerSleeperId);
-  const loser = activeBySleeperId.get(loserSleeperId);
-  if (winner) champCounts[winner.abbr] = (champCounts[winner.abbr] || 0) + 1;
-  if (loser) runnerUpCounts[loser.abbr] = (runnerUpCounts[loser.abbr] || 0) + 1;
+const titlesBySleeperId = new Map<string, number[]>();
+for (const m of champMatchups) {
+  const id = String(m.score_a > m.score_b ? m.roster_id_a : m.roster_id_b);
+  titlesBySleeperId.set(id, [...(titlesBySleeperId.get(id) ?? []), m.year]);
 }
 
-// Conference titles from seasons
-for (const s of seasonRows ?? []) {
-  for (const confAbbr of [s.scc_champion, s.hcc_champion]) {
-    if (!confAbbr) continue;
-    const sleeperId = sleeperIdByAbbr.get(confAbbr);
-    if (!sleeperId) continue;
-    const active = activeBySleeperId.get(sleeperId);
-    if (active) confTitleCounts[active.abbr] = (confTitleCounts[active.abbr] || 0) + 1;
+const runnerUpBySleeperId = new Map<string, number>();
+for (const m of champMatchups) {
+  const id = String(m.score_a > m.score_b ? m.roster_id_b : m.roster_id_a);
+  runnerUpBySleeperId.set(id, (runnerUpBySleeperId.get(id) ?? 0) + 1);
+}
+
+const confTitlesBySleeperId = new Map<string, number>();
+for (const s of seasonsRes.data ?? []) {
+  for (const abbr of [s.scc_champion, s.hcc_champion]) {
+    if (!abbr) continue;
+    const id = sleeperIdByAbbr.get(abbr);
+    if (!id) continue;
+    confTitlesBySleeperId.set(id, (confTitlesBySleeperId.get(id) ?? 0) + 1);
   }
 }
 
-const sccFranchises = activeFranchises.filter(f => f.conf === 'SCC');
-const hccFranchises = activeFranchises.filter(f => f.conf === 'HCC');
+// ── One register row per active franchise ──────────────────────────────────
+type Entry = {
+  abbr: string; name: string; owner: string; conf: string; colors: string[];
+  w: number; l: number; pct: number; pf: number; seasons: number;
+  titles: number[]; runnerUps: number; confTitles: number;
+  eras: number;
+};
+
+const register: Entry[] = activeFranchises.map(f => {
+  const rows = results.filter(r => r.sleeper_id === f.sleeper_id);
+  const w = rows.reduce((n, r) => n + (r.wins ?? 0), 0);
+  const l = rows.reduce((n, r) => n + (r.losses ?? 0), 0);
+  const t = rows.reduce((n, r) => n + (r.ties ?? 0), 0);
+  return {
+    abbr: f.abbr, name: f.name, owner: f.owner, conf: f.conf, colors: f.colors,
+    w, l,
+    pct: w + l + t === 0 ? 0 : (w + t / 2) / (w + l + t),
+    pf: rows.reduce((n, r) => n + Number(r.points_for ?? 0), 0),
+    seasons: rows.length,
+    titles: (titlesBySleeperId.get(f.sleeper_id) ?? []).sort((a, b) => a - b),
+    runnerUps: runnerUpBySleeperId.get(f.sleeper_id) ?? 0,
+    confTitles: confTitlesBySleeperId.get(f.sleeper_id) ?? 0,
+    // More than one identity era means this club has rebranded at least once.
+    eras: franchises.filter(x => x.sleeper_id === f.sleeper_id).length,
+  };
+});
+
+const byPct = (a: Entry, b: Entry) => b.pct - a.pct || b.pf - a.pf;
+
+const conferences = [
+  {
+    key: 'SCC',
+    name: 'Senatorial Canadian Conference',
+    blurb: `The SCC embraces the everyman's approach to football: hard-nosed, down and dirty blue collar football that the people love. However, some wonder whether or not they are willing to adapt to the way the game is changing.`,
+    teams: register.filter(f => f.conf === 'SCC').sort(byPct),
+  },
+  {
+    key: 'HCC',
+    name: 'House of Commons Conference',
+    blurb: `The HCC is the older and more prestigious conference. They pride themselves on their refined strategies, but opponents might say that their lackadaisical temperament has made them no longer representative of what their cities want in a football team.`,
+    teams: register.filter(f => f.conf === 'HCC').sort(byPct),
+  },
+];
+
+const rebrands = register.filter(f => f.eras > 1).length;
+
+// Spelled out: running almanac prose takes words, figures are for the record.
+const NUMBER_WORDS = ['Zero','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen'];
+const rebrandsWord = NUMBER_WORDS[rebrands] ?? String(rebrands);
 ---
 
 <Layout title="Franchises" description="All 14 franchises of the Sixth City Dynasty Football League.">
 
-  <div style="max-width: 1200px; margin: 0 auto; padding: 4rem 1.5rem 0;">
-
-    <!-- Page header -->
-    <div style="padding-bottom: 2.5rem; border-bottom: 1px solid var(--color-border);">
-      <p class="section-label">League Membership</p>
-      <h1 class="page-title">Franchises</h1>
-      <p class="page-subtitle" style="margin-top: 0.75rem;">
-        Fourteen franchises across two conferences comprise Sixth City 
-        Dynasty. Many organizations are based in Canada, but the league 
-        stretches down to the US and across the globe to Australia.
+  <!-- ══ PLATE ═══════════════════════════════════════════════════════════ -->
+  <div class="plate">
+    <div class="wrap">
+      <h1 class="plate-title">League<br /><span>Franchises</span></h1>
+      <p class="plate-lede">
+        Fourteen franchises across two conferences comprise Sixth City Dynasty. Many organizations
+        are based in Canada, but the league stretches down to the US and across the globe to
+        Australia. {rebrandsWord} of them have changed their name or colors at least once, making for an interesting arc of the league across time.
       </p>
     </div>
-
-    <!-- SCC -->
-    <div style="margin-top: 3rem;">
-      <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
-        <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin: 0; color: var(--color-text-primary);">Senatorial Canadian Conference</h2>
-        <span class="label-badge badge-scc">SCC</span>
-      </div>
-      <div>
-        <p class="page-subtitle" style="margin: 0.75rem 0 1.5rem;">
-          The SCC embraces the everyman’s approach to football: hard-nosed,
-          down and dirty blue collar football that the people love. However, 
-          some wonder whether or not they are willing to adapt to the way
-          the game is changing.
-        </p>
-      </div>
-      <div class="franchise-grid">
-        {sccFranchises.map(franchise => {
-          const primaryColor = franchise.colors[0];
-          return (
-            <a href={`/franchises/${franchise.abbr}`} style="text-decoration: none; display: block;">
-              <div class="franchise-card" style={`border-left: 3px solid ${primaryColor};`}>
-                <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 0.75rem;">
-                  <div style="display: flex; align-items: center; gap: 0.75rem;">
-                    <img
-                      src={`/images/logos/${franchise.abbr}.png`}
-                      alt=""
-                      width="36"
-                      height="36"
-                      style="object-fit: contain; flex-shrink: 0;"
-                      onerror="this.style.display='none'"
-                    />
-                    <div>
-                      <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.3rem;">{franchise.abbr}</p>
-                      <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: var(--color-text-primary); margin: 0; line-height: 1.2;">{franchise.name}</h3>
-                      <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">{franchise.owner}</p>
-                    </div>
-                  </div>
-                  <div style="display: flex; flex-direction: column;">
-                    <div style="display: inline-flex; align-items: center; gap: 10px; justify-content: flex-end; margin: 0.75rem 0.25rem;">
-                      {franchise.colors.map((color: string) => (
-                        <span style={`display: inline-flex; width: 0.75rem; height: 0.75rem; background-color: ${color}; border-radius: 50%; line-height: 1;`}></span>
-                      ))}
-                    </div>
-                    {(() => {
-                      const champs = champCounts[franchise.abbr] || 0;
-                      const runnerUps = runnerUpCounts[franchise.abbr] || 0;
-                      const confTitles = confTitleCounts[franchise.abbr] || 0;
-                      const confColor = franchise.conf === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
-                      if (champs + runnerUps + confTitles === 0) return null;
-                      return (
-                        <div style="display: flex; gap: 1px; flex-shrink: 0; justify-content: flex-end;">
-                          {Array.from({ length: champs }).map(() => (
-                            <span style="display: inline-flex; align-items: flex-end; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-gold); font-size: 1.13rem; line-height: 1.3;">&#11042;</span>
-                          ))}
-                          {Array.from({ length: runnerUps }).map(() => (
-                            <span style="display: inline-flex; align-items: flex-end; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-text-primary); font-size: 1.13rem; line-height: 1.3;">&#11041;</span>
-                          ))}
-                          {Array.from({ length: confTitles }).map(() => (
-                            <span style={`display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; color: ${confColor}; font-size: 0.9rem; line-height: 1;`}>&#9650;</span>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-            </a>
-          );
-        })}
-      </div>
-    </div>
-
-    <!-- HCC -->
-    <div style="margin-top: 3rem; margin-bottom: 5rem;">
-      <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
-        <h2 style="font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; margin: 0; color: var(--color-text-primary);">House of Commons Conference</h2>
-        <span class="label-badge badge-hcc">HCC</span>
-      </div>
-      <div>
-        <p class="page-subtitle" style="margin: 0.75rem 0 1.5rem;">
-          The HCC is the older and more prestigious conference. They pride 
-          themselves on their refined strategies, but opponents might say 
-          that their lackadaisical temperament has made them no longer 
-          representative of what their cities want in a football team.
-        </p>
-      </div>
-      <div class="franchise-grid">
-        {hccFranchises.map(franchise => {
-          const champs = champCounts[franchise.abbr] || 0;
-          const primaryColor = franchise.colors[0];
-          return (
-            <a href={`/franchises/${franchise.abbr}`} style="text-decoration: none; display: block;">
-              <div class="franchise-card" style={`border-left: 3px solid ${primaryColor};`}>
-                <div style="display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 0.75rem;">
-                  <div style="display: flex; align-items: center; gap: 0.75rem;">
-                    <img
-                      src={`/images/logos/${franchise.abbr}.png`}
-                      alt=""
-                      width="36"
-                      height="36"
-                      style="object-fit: contain; flex-shrink: 0;"
-                      onerror="this.style.display='none'"
-                    />
-                    <div>
-                      <p style="font-family: var(--font-body); font-size: 0.65rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-muted); margin: 0 0 0.3rem;">{franchise.abbr}</p>
-                      <h3 style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; color: var(--color-text-primary); margin: 0; line-height: 1.2;">{franchise.name}</h3>
-                      <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">{franchise.owner}</p>
-                    </div>
-                  </div>
-                  <div style="display: flex; flex-direction: column;">
-                    <div style="display: inline-flex; align-items: center; gap: 10px; justify-content: flex-end; margin: 0.75rem 0.25rem;">
-                      {franchise.colors.map((color: string) => (
-                        <span style={`display: inline-flex; width: 0.75rem; height: 0.75rem; background-color: ${color}; border-radius: 50%; line-height: 1;`}></span>
-                      ))}
-                    </div>
-                    {(() => {
-                      const champs = champCounts[franchise.abbr] || 0;
-                      const runnerUps = runnerUpCounts[franchise.abbr] || 0;
-                      const confTitles = confTitleCounts[franchise.abbr] || 0;
-                      const confColor = franchise.conf === 'SCC' ? 'var(--color-scc)' : 'var(--color-hcc)';
-                      if (champs + runnerUps + confTitles === 0) return null;
-                      return (
-                        <div style="display: flex; gap: 1px; flex-shrink: 0; justify-content: flex-end;">
-                          {Array.from({ length: champs }).map(() => (
-                            <span style="display: inline-flex; align-items: flex-end; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-gold); font-size: 1.13rem; line-height: 1.3;">&#11042;</span>
-                          ))}
-                          {Array.from({ length: runnerUps }).map(() => (
-                            <span style="display: inline-flex; align-items: flex-end; justify-content: center; width: 1.3rem; height: 1.3rem; color: var(--color-text-primary); font-size: 1.13rem; line-height: 1.3;">&#11041;</span>
-                          ))}
-                          {Array.from({ length: confTitles }).map(() => (
-                            <span style={`display: inline-flex; align-items: center; justify-content: center; width: 1.3rem; height: 1.3rem; color: ${confColor}; font-size: 0.9rem; line-height: 1;`}>&#9650;</span>
-                          ))}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </div>
-            </a>
-          );
-        })}
-      </div>
-    </div>
-
   </div>
 
-  <style>
-    /* 2-3-2 layout: 6-col grid, each tile spans 2 cols, empty 1-col gutters
-       (= half a tile) center the rows of two. Exactly 7 tiles per conference. */
-    .franchise-grid {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: 1px;
-    }
-    .franchise-grid > a {
-      grid-column: span 2;
-      display: block;
-      text-decoration: none;
-    }
-    /* Top row of two — centered */
-    .franchise-grid > a:nth-child(1) { grid-row: 1; grid-column: 2 / span 2; }
-    .franchise-grid > a:nth-child(2) { grid-row: 1; grid-column: 4 / span 2; }
-    /* Middle row of three */
-    .franchise-grid > a:nth-child(3) { grid-row: 2; grid-column: 1 / span 2; }
-    .franchise-grid > a:nth-child(4) { grid-row: 2; grid-column: 3 / span 2; }
-    .franchise-grid > a:nth-child(5) { grid-row: 2; grid-column: 5 / span 2; }
-    /* Bottom row of two — centered */
-    .franchise-grid > a:nth-child(6) { grid-row: 3; grid-column: 2 / span 2; }
-    .franchise-grid > a:nth-child(7) { grid-row: 3; grid-column: 4 / span 2; }
+  <!-- ══ REGISTER ════════════════════════════════════════════════════════ -->
+  {conferences.map(conf => (
+    <section class="wrap conf-section">
+      <div class="almanac-head">
+        <h2>{conf.name}</h2>
+      </div>
+      <p class="conf-blurb">{conf.blurb}</p>
 
-    /* Mobile: single column, reset all explicit placement */
-    @media (max-width: 768px) {
-      .franchise-grid { grid-template-columns: 1fr; }
-      .franchise-grid > a { grid-column: 1 / -1 !important; grid-row: auto !important; }
-    }
-  </style>
+      <ol class="register">
+        {conf.teams.map(f => (
+          <li class="reg-row" style={`--keel: ${primaryColor(f.colors)};`}>
+            <a href={`/franchises/${f.abbr}`} class="reg-link">
+              <span class="reg-keel" aria-hidden="true"></span>
+
+              <img class="reg-logo" src={logoPath(f.abbr)} alt="" width="48" height="48" onerror="this.style.display='none'" />
+
+              <span class="reg-identity">
+                <span class="reg-name">{f.name}</span>
+                <span class="reg-sub">
+                  <span class="reg-abbr">{f.abbr}</span>
+                  <span class="reg-owner">{f.owner}</span>
+                </span>
+              </span>
+
+              <span class="reg-leader" aria-hidden="true"></span>
+
+              <span class="reg-swatches" aria-hidden="true">
+                {f.colors.map((c: string) => <span style={`background-color: ${c};`}></span>)}
+              </span>
+
+              <span class="reg-record">
+                <span class="reg-wl">{f.w}&ndash;{f.l}</span>
+                <span class="reg-pct">{f.pct.toFixed(3).replace(/^0/, '')}</span>
+              </span>
+
+              <span class="reg-honors">
+                {f.titles.length > 0 && (
+                  <span class="honor honor-title" title={`Dynasty Bowl: ${f.titles.join(', ')}`}>
+                    {'⬢'.repeat(f.titles.length)}
+                  </span>
+                )}
+                {f.runnerUps > 0 && (
+                  <span class="honor honor-runner" title={`${f.runnerUps} runner-up finish${f.runnerUps > 1 ? 'es' : ''}`}>
+                    {'⬡'.repeat(f.runnerUps)}
+                  </span>
+                )}
+                {f.confTitles > 0 && (
+                  <span class:list={['honor', `honor-conf-${f.conf.toLowerCase()}`]} title={`${f.confTitles} conference title${f.confTitles > 1 ? 's' : ''}`}>
+                    {'▲'.repeat(f.confTitles)}
+                  </span>
+                )}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </section>
+  ))}
+
+  <!-- Key, kept as a footnote rather than a legend card. -->
+  <div class="wrap key-note">
+    <p>
+      <span class="honor honor-title">⬢</span> Dynasty Bowl &nbsp;
+      <span class="honor honor-runner">⬡</span> Runner-up &nbsp;
+      <span class="honor honor-conf-scc">▲</span> Conference title<br />Records are all-time across every identity the franchise has held.
+    </p>
+  </div>
+
 </Layout>
+
+<style>
+  /* ── Plate ──────────────────────────────────────────────────────────── */
+  .plate { border-bottom: 3px solid var(--rule-ink); padding: 3rem 0 2rem; }
+  .plate-title {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 11vw, 8rem);
+    font-weight: 900;
+    line-height: 0.82;
+    letter-spacing: -0.035em;
+    text-transform: uppercase;
+    margin: 0 0 1.25rem;
+    color: var(--text-strong);
+  }
+  .plate-title span { color: var(--ink-300); }
+  .plate-lede {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    line-height: 1.7;
+    color: var(--text-body);
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  /* ── Conference sections ────────────────────────────────────────────── */
+  .conf-section { padding-top: 3.25rem; }
+  .conf-blurb {
+    font-family: var(--font-serif);
+    font-size: 0.96rem;
+    line-height: 1.68;
+    color: var(--text-muted);
+    max-width: 68ch;
+    margin: -0.75rem 0 1.5rem;
+  }
+
+  /* ── Register rows: ruled, keeled, no boxes ─────────────────────────── */
+  .register { list-style: none; margin: 0; padding: 0; }
+  .reg-row { border-bottom: 1px solid var(--border-hairline); }
+  .reg-row:first-child { border-top: 1px solid var(--border-hairline); }
+
+  .reg-link {
+    display: grid;
+    grid-template-columns: 4px 48px minmax(0, auto) minmax(1.5rem, 1fr) auto auto auto;
+    align-items: center;
+    gap: 1.1rem;
+    padding: 0.7rem 0.5rem;
+    text-decoration: none;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+  .reg-link:hover { text-decoration: none; background-color: var(--surface-card); }
+
+  .reg-keel { display: block; width: 4px; height: 40px; background-color: var(--keel); }
+  .reg-logo { object-fit: contain; }
+
+  .reg-identity { display: flex; flex-direction: column; min-width: 0; }
+  .reg-name {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 800;
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+    color: var(--text-strong);
+    transition: var(--transition-color);
+  }
+  .reg-link:hover .reg-name { color: var(--ember-700); }
+  .reg-sub { display: flex; align-items: baseline; gap: 0.6rem; }
+  .reg-abbr {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    color: var(--text-faint);
+  }
+  .reg-owner {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 0.82rem;
+    color: var(--text-muted);
+  }
+
+  /* Dotted leader, as in a printed index — carries the eye across the gap
+     between the club and its record instead of leaving a void. */
+  .reg-leader {
+    display: block;
+    height: 1px;
+    border-bottom: 1px dotted var(--border-strong);
+    align-self: end;
+    margin-bottom: 0.55rem;
+  }
+
+  .reg-swatches { display: flex; gap: 3px; }
+  .reg-swatches span {
+    display: block;
+    width: 9px;
+    height: 22px;
+    border: 1px solid rgba(28, 26, 23, 0.15);
+  }
+
+  .reg-record {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums lining-nums;
+    min-width: 4.5rem;
+  }
+  .reg-wl { font-size: 1.05rem; font-weight: 600; color: var(--text-strong); letter-spacing: -0.02em; }
+  .reg-pct { font-size: 0.68rem; color: var(--text-faint); }
+
+  .reg-honors {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 5rem;
+    letter-spacing: 0.08em;
+  }
+  .honor { font-size: 0.95rem; line-height: 1; }
+  .honor-title { color: var(--gold-600); }
+  .honor-runner { color: var(--ink-300); }
+  .honor-conf-scc { color: var(--slate-500); font-size: 0.7rem; }
+  .honor-conf-hcc { color: var(--ember-500); font-size: 0.7rem; }
+
+  /* ── Key ────────────────────────────────────────────────────────────── */
+  .key-note { padding-top: 2rem; padding-bottom: 1rem; }
+  .key-note p {
+    font-family: var(--font-sans);
+    font-size: 0.74rem;
+    color: var(--text-faint);
+    border-top: 1px solid var(--border-default);
+    padding-top: 0.75rem;
+    margin: 0;
+  }
+
+  /* ── Responsive ─────────────────────────────────────────────────────── */
+  @media (max-width: 820px) {
+    .reg-link { grid-template-columns: 4px 40px minmax(0, 1fr) auto; gap: 0.85rem; }
+    .reg-swatches, .reg-leader { display: none; }
+    .reg-honors {
+      grid-column: 3 / -1;
+      justify-content: flex-start;
+      min-width: 0;
+      margin-top: -1rem;
+    }
+    .reg-logo { width: 40px; height: 40px; }
+    .reg-name { font-size: 1.2rem; }
+    .plate-title { font-size: clamp(2.6rem, 15vw, 4rem); }
+  }
+</style>

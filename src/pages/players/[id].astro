@@ -2,6 +2,9 @@
 import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
 import { ROSTER_SLOTS } from '../../lib/roster-slots';
+import { franchiseForYear, logoPath, primaryColor } from '../../lib/franchise-identity';
+import { playerName, espnHeadshotUrl, draftPickLabel, formatPoints } from '../../lib/format';
+import { fetchPlayerTransactionRows, buildPlayerTransactionLog, firstAcquisition } from '../../lib/player-transactions';
 
 // ── Rendered on demand (SSR) — one serverless render per request instead of
 //    ~5k pre-rendered pages at build time ────────────────────────────────────
@@ -19,44 +22,54 @@ const [
   { data: statsRows },
   { data: startsRows },
   { data: allFranchiseRows },
+  { data: txRows },
 ] = await Promise.all([
   supabase
-    .schema('scdfl').from('v_players')
+    .schema('scdfl')
+    .from('v_players')
     .select('player_id, first_name, last_name, position, fantasy_positions, team, status, age, years_exp, height, weight, college, espn_id')
     .eq('player_id', pid)
     .single(),
   supabase
-    .schema('scdfl').from('rosters')
+    .schema('scdfl')
+    .from('rosters')
     .select('sleeper_id')
     .eq('player_id', pid)
     .limit(1)
     .single(),
   supabase
-    .schema('scdfl').from('draft_results')
+    .schema('scdfl')
+    .from('draft_results')
     .select('draft_id, round, pick_no, roster_id')
     .eq('player_id', pid)
     .limit(1)
     .single(),
   supabase
-    .schema('scdfl').from('v_medals')
+    .schema('scdfl')
+    .from('v_medals')
     .select('year, position')
     .eq('player_id', pid),
   supabase
-    .schema('scdfl').from('accolades')
+    .schema('scdfl')
+    .from('accolades')
     .select('year, award_desc')
     .eq('player_id', pid),
   supabase
-    .schema('scdfl').from('v_player_season_stats')
+    .schema('scdfl')
+    .from('v_player_season_stats')
     .select('*')
     .eq('player_id', pid)
     .order('year', { ascending: true }),
   supabase
-    .schema('scdfl').from('v_player_starts')
+    .schema('scdfl')
+    .from('v_player_starts')
     .select('year, week, roster_id')
     .eq('player_id', pid),
   supabase
-    .schema('scdfl').from('franchises')
-    .select('id, abbr, "from", "to"'),
+    .schema('scdfl')
+    .from('franchises')
+    .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"'),
+  fetchPlayerTransactionRows(pid!),
 ]);
 
 if (pErr || !playerRow) {
@@ -65,7 +78,7 @@ if (pErr || !playerRow) {
 
 const player = {
   id: playerRow.player_id,
-  name: `${playerRow.first_name ?? ''} ${playerRow.last_name ?? ''}`.trim(),
+  name: playerName(playerRow.first_name, playerRow.last_name, playerRow.player_id),
   position: playerRow.position ?? '—',
   nflTeam: playerRow.team ?? '—',
   age: playerRow.age,
@@ -86,7 +99,8 @@ async function resolveDynastyTeam(): Promise<DynastyTeam | null> {
   if (!rosterRow) return null;
 
   const { data: franchise } = await supabase
-    .schema('scdfl').from('franchises')
+    .schema('scdfl')
+    .from('franchises')
     .select('abbr, name, conf, colors')
     .eq('sleeper_id', String(rosterRow.sleeper_id))
     .is('to', null)
@@ -97,7 +111,7 @@ async function resolveDynastyTeam(): Promise<DynastyTeam | null> {
   return {
     abbr: franchise.abbr,
     name: franchise.name,
-    color: franchise.colors?.[0] ?? 'var(--color-border)',
+    color: primaryColor(franchise.colors),
     conf: franchise.conf,
   };
 }
@@ -106,7 +120,8 @@ async function resolveDraftInfo(): Promise<DraftInfo | null> {
   if (!draftRow) return null;
 
   const { data: draftMeta } = await supabase
-    .schema('scdfl').from('drafts')
+    .schema('scdfl')
+    .from('drafts')
     .select('year')
     .eq('draft_id', draftRow.draft_id)
     .single();
@@ -116,7 +131,8 @@ async function resolveDraftInfo(): Promise<DraftInfo | null> {
   const [{ data: drafter }, { data: activeFranchise }] = await Promise.all([
     // Identity that held the pick in the draft year
     supabase
-      .schema('scdfl').from('franchises')
+      .schema('scdfl')
+      .from('franchises')
       .select('abbr')
       .eq('id', draftRow.roster_id)
       .lte('from', draftMeta.year)
@@ -124,7 +140,8 @@ async function resolveDraftInfo(): Promise<DraftInfo | null> {
       .single(),
     // Current active abbr for linking
     supabase
-      .schema('scdfl').from('franchises')
+      .schema('scdfl')
+      .from('franchises')
       .select('abbr')
       .eq('id', draftRow.roster_id)
       .is('to', null)
@@ -133,7 +150,7 @@ async function resolveDraftInfo(): Promise<DraftInfo | null> {
 
   return {
     year: draftMeta.year,
-    pick: `${draftRow.round}.${String(((draftRow.pick_no - 1) % 14) + 1).padStart(2, '0')}`,
+    pick: draftPickLabel(draftRow.round, draftRow.pick_no),
     draftedByAbbr: drafter?.abbr ?? '—',
     draftedByActiveAbbr: activeFranchise?.abbr ?? '—',
   };
@@ -141,39 +158,24 @@ async function resolveDraftInfo(): Promise<DraftInfo | null> {
 
 const [dynastyTeam, draftInfo] = await Promise.all([resolveDynastyTeam(), resolveDraftInfo()]);
 
+// ── Transaction log ───────────────────────────────────────────────────────
+// Rows were fetched in the batch above; this regroups them into events and
+// only reaches back out to Supabase for the contents of trade packages.
+const txLog = await buildPlayerTransactionLog(txRows, pid!, allFranchiseRows ?? []);
+
 // ── UDFA acquisition info (only for undrafted players) ────────────────────
-let udfaInfo: { type: 'waiver' | 'free_agent'; waiverBid: number | null; acquiredByAbbr: string; acquiredByActiveAbbr: string; date: string } | null = null;
-
-if (!draftInfo) {
-  const { data: firstTx } = await supabase
-    .schema('scdfl').from('transactions')
-    .select('type, waiver_bid, roster_id, transaction_id, created')
-    .eq('player_id', pid)
-    .eq('action', 'add')
-    .eq('asset', 'player')
-    .in('type', ['waiver', 'free_agent'])
-    .order('created', { ascending: true })
-    .limit(1)
-    .single();
-
-  if (firstTx) {
-    const { data: eraFranchise } = await supabase
-      .schema('scdfl').from('franchises')
-      .select('abbr')
-      .eq('id', firstTx.roster_id)
-      .is('to', null)
-      .single();
-
-    const txDate = new Date(Number(firstTx.created));
-    udfaInfo = {
-      type: firstTx.type as 'waiver' | 'free_agent',
-      waiverBid: firstTx.waiver_bid,
-      acquiredByAbbr: eraFranchise?.abbr ?? '—',
-      acquiredByActiveAbbr: eraFranchise?.abbr ?? '—',
-      date: txDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    };
-  }
-}
+// The oldest completed waiver/FA pickup in the log — failed bids are already
+// excluded, so a losing claim can't masquerade as the acquisition.
+const udfaEvent = draftInfo ? null : firstAcquisition(txLog);
+const udfaInfo = udfaEvent
+  ? {
+      type: udfaEvent.type as 'waiver' | 'free_agent',
+      waiverBid: udfaEvent.waiverBid,
+      acquiredByAbbr: udfaEvent.to?.abbr ?? '—',
+      acquiredByActiveAbbr: udfaEvent.to?.activeAbbr ?? '—',
+      date: udfaEvent.date,
+    }
+  : null;
 
 // ── Accolades & Medals (fetched above) ─────────────────────────────────────
 const posColorMap = Object.fromEntries(
@@ -199,10 +201,7 @@ const accolades = [
 
 // ── Franchise starts per year (for team logo column) ──────────────────────
 function franchiseAbbrForId(id: number, year: number): string | null {
-  const row = (allFranchiseRows ?? []).find(
-    f => f.id === id && f.from <= year && (f.to === null || f.to >= year)
-  );
-  return row?.abbr ?? null;
+  return franchiseForYear(allFranchiseRows ?? [], String(id), year)?.abbr ?? null;
 }
 
 // Build map: year → ordered list of abbrs the player started for
@@ -288,9 +287,7 @@ const careerTotals = {
   fumbleRecovery: sum(r => r.fumbleRecovery), idpTd: sum(r => r.idpTd),
 };
 
-const headshotUrl = player.espnId
-  ? `https://a.espncdn.com/i/headshots/nfl/players/full/${player.espnId}.png`
-  : '/images/player-placeholder.png';
+const headshotUrl = espnHeadshotUrl(player.espnId);
 ---
 
 <Layout title={player.name} description={`Player profile for ${player.name} — SCDFL dynasty football.`}>
@@ -326,7 +323,7 @@ const headshotUrl = player.espnId
           {dynastyTeam ? (
             <div style="margin-top: 0.75rem; display: flex; align-items: center; gap: 0.6rem;">
               <img
-                src={`/images/logos/${dynastyTeam.abbr}.png`}
+                src={logoPath(dynastyTeam.abbr)}
                 alt={dynastyTeam.name}
                 width="24"
                 height="24"
@@ -439,7 +436,7 @@ const headshotUrl = player.espnId
                     <div style="display: flex; align-items: center; justify-content: center; gap: 0.2rem;">
                       {yearTeams.map(abbr => (
                         <img
-                          src={`/images/logos/${abbr}.png`}
+                          src={logoPath(abbr)}
                           alt={abbr}
                           width="20"
                           height="20"
@@ -449,7 +446,7 @@ const headshotUrl = player.espnId
                       ))}
                     </div>
                   </td>
-                  <td style="text-align: right; font-weight: 600; color: var(--color-gold);">{row.fpts.toFixed(2)}</td>
+                  <td style="text-align: right; font-weight: 600; color: var(--color-gold);">{formatPoints(row.fpts)}</td>
                   {posGroup === 'qb' && (<>
                     <td class="col-hide-mobile" style="text-align: center;">{row.passComp}</td>
                     <td class="col-hide-mobile" style="text-align: center;">{row.passAtt}</td>
@@ -492,7 +489,7 @@ const headshotUrl = player.espnId
                 <td style="font-weight: 700; border-top: 2px solid var(--color-border);">Career</td>
                 <td style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.gs}</td>
                 <td class="col-team-logo" style="border-top: 2px solid var(--color-border);"></td>
-                <td style="text-align: right; font-weight: 700; color: var(--color-gold); border-top: 2px solid var(--color-border);">{careerTotals.fpts.toFixed(2)}</td>
+                <td style="text-align: right; font-weight: 700; color: var(--color-gold); border-top: 2px solid var(--color-border);">{formatPoints(careerTotals.fpts)}</td>
                 {posGroup === 'qb' && (<>
                   <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passComp}</td>
                   <td class="col-hide-mobile" style="text-align: center; font-weight: 700; border-top: 2px solid var(--color-border);">{careerTotals.passAtt}</td>
@@ -620,10 +617,58 @@ const headshotUrl = player.espnId
           )}
         </div>
 
-        <!-- Transaction history card (placeholder) -->
+        <!-- Transaction history card -->
         <div style="background-color: var(--color-surface); border: 1px solid var(--color-border); padding: 1.25rem 1.5rem; margin-top: 1rem;">
           <p class="section-label" style="margin-bottom: 0.75rem;">Transaction History</p>
-          <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">Coming soon</p>
+          {txLog.length === 0 ? (
+            <p style="font-size: 0.8rem; color: var(--color-text-muted); font-style: italic; margin: 0;">No recorded transactions</p>
+          ) : (
+            <ol class="tx-log">
+              {txLog.map(tx => (
+                <li class="tx-row">
+                  <div class="tx-meta">
+                    <span>{tx.year} &middot; Wk {tx.week}</span>
+                    <span>{tx.date}</span>
+                  </div>
+
+                  {tx.kind === 'moved' ? (
+                    <p class="tx-headline">
+                      {tx.type === 'commissioner' ? 'Commissioner move' : 'Traded'}
+                      {tx.from && <> from <a href={`/franchises/${tx.from.activeAbbr}`}>{tx.from.abbr}</a></>}
+                      {tx.to && <> to <a href={`/franchises/${tx.to.activeAbbr}`}>{tx.to.abbr}</a></>}
+                    </p>
+                  ) : tx.kind === 'acquired' ? (
+                    <p class="tx-headline">
+                      {tx.type === 'waiver' ? 'Claimed off waivers' : tx.type === 'commissioner' ? 'Awarded by the commissioner' : 'Signed as a free agent'}
+                      {tx.waiverBid !== null && <> for ${tx.waiverBid}</>}
+                      {tx.to && <> {tx.type === 'commissioner' ? 'to' : 'by'} <a href={`/franchises/${tx.to.activeAbbr}`}>{tx.to.abbr}</a></>}
+                    </p>
+                  ) : (
+                    <p class="tx-headline">
+                      Released{tx.from && <> by <a href={`/franchises/${tx.from.activeAbbr}`}>{tx.from.abbr}</a></>}
+                    </p>
+                  )}
+
+                  {tx.sides.length > 0 && (
+                    <ul class="tx-package">
+                      {tx.sides.map(side => (
+                        <li>
+                          <span class="tx-package-team">{side.team?.abbr ?? '—'}</span>
+                          <span>{side.received.map(a => (a.kind === 'pick' ? a.label : a.name)).join(', ') || 'nothing'}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {tx.contestedBids.length > 0 && (
+                    <p class="tx-contested">
+                      Outbid: {tx.contestedBids.map(b => `${b.team?.abbr ?? '—'} $${b.bid ?? 0}`).join(', ')}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
       </div>
 
@@ -633,6 +678,71 @@ const headshotUrl = player.espnId
 </Layout>
 
 <style>
+  /* Transaction log — newest first, each event a single indented entry */
+  .tx-log {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    max-height: 30rem;
+    overflow-y: auto;
+  }
+
+  .tx-row {
+    border-left: 2px solid var(--color-border);
+    padding-left: 0.7rem;
+  }
+
+  .tx-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    font-family: var(--font-body);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+
+  .tx-headline {
+    margin: 0.2rem 0 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--color-text-secondary);
+  }
+
+  .tx-headline a {
+    font-weight: 600;
+  }
+
+  .tx-package {
+    list-style: none;
+    margin: 0.35rem 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    line-height: 1.35;
+    color: var(--color-text-muted);
+  }
+
+  .tx-package-team {
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    margin-right: 0.35rem;
+  }
+
+  .tx-contested {
+    margin: 0.3rem 0 0;
+    font-size: 0.7rem;
+    font-style: italic;
+    color: var(--color-text-muted);
+  }
+
   @media (max-width: 768px) {
     .player-page-wrap {
       padding: 0 1rem !important;

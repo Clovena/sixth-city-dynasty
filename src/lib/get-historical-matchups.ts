@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { isPlayablePostseasonGame } from './game-utils';
 
 interface HistoricalMatchup {
   year: number;
@@ -41,7 +42,8 @@ export async function getHistoricalMatchups(
       `and(roster_id_a.eq.${idA},roster_id_b.eq.${idB}),and(roster_id_a.eq.${idB},roster_id_b.eq.${idA})`
     )
     .order('year', { ascending: false })
-    .order('week', { ascending: false });
+    .order('week', { ascending: false })
+    .limit(1000);
 
   if (mError || !matchupRows) return [];
 
@@ -50,9 +52,7 @@ export async function getHistoricalMatchups(
     // consolation bracket with placeholder (random) opponents before the
     // postseason begins; these show up as 0–0 and don't reflect the real
     // slate. Regular-season games (game_type 0) are always kept, even at 0–0.
-    const isPostseason = row.game_type !== 0;
-    const notStarted = (row.score_a ?? 0) === 0 && (row.score_b ?? 0) === 0;
-    return !(isPostseason && notStarted);
+    return isPlayablePostseasonGame(row.game_type, row.score_a, row.score_b);
   }).map(row => {
     // Normalize so teamA/teamB scores match the caller's abbr order
     const aIsFirst = row.roster_id_a === idA;

@@ -1,6 +1,8 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import { loadFranchises, loadSeasonPodiums, type PodiumEntry, type SeasonPodium } from '../../lib/hall-of-fame';
+import { loadSeasonPodiums, type PodiumEntry, type SeasonPodium } from '../../lib/hall-of-fame';
+import { loadFranchises, logoPath } from '../../lib/franchise-identity';
+import { formatPoints } from '../../lib/format';
 
 const franchises = await loadFranchises();
 const podiums = await loadSeasonPodiums(franchises);
@@ -27,9 +29,6 @@ function tiersFor(podium: SeasonPodium): Tier[] {
   ];
 }
 
-function fmt(score: number | null): string {
-  return score === null ? '—' : score.toFixed(2);
-}
 ---
 
 <Layout
@@ -71,7 +70,7 @@ function fmt(score: number | null): string {
                 {tier.entry ? (
                   <Fragment>
                     <img
-                      src={`/images/logos/${tier.entry.abbr}.png`}
+                      src={logoPath(tier.entry.abbr)}
                       alt=""
                       width={tier.key === 'gold' ? 72 : 48}
                       height={tier.key === 'gold' ? 72 : 48}
@@ -107,7 +106,7 @@ function fmt(score: number | null): string {
                   <a href={`/franchises/${conf.activeAbbr}`} class="foot-team">
                     <span class={`label-badge badge-${conf.conf.toLowerCase()}`}>{conf.conf}</span>
                     <img
-                      src={`/images/logos/${conf.abbr}.png`}
+                      src={logoPath(conf.abbr)}
                       alt=""
                       width="22"
                       height="22"
@@ -125,7 +124,7 @@ function fmt(score: number | null): string {
               {podium.consolation ? (
                 <a href={`/franchises/${podium.consolation.activeAbbr}`} class="foot-team">
                   <img
-                    src={`/images/logos/${podium.consolation.abbr}.png`}
+                    src={logoPath(podium.consolation.abbr)}
                     alt=""
                     width="22"
                     height="22"
@@ -135,7 +134,7 @@ function fmt(score: number | null): string {
                   <span class="foot-team-name">{podium.consolation.name}</span>
                   {podium.consolationRunnerUp && (
                     <span class="foot-note sc-tabular">
-                      def. {podium.consolationRunnerUp.abbr} {fmt(podium.consolation.score)}&ndash;{fmt(podium.consolation.opponentScore)}
+                      def. {podium.consolationRunnerUp.abbr} {formatPoints(podium.consolation.score)}&ndash;{formatPoints(podium.consolation.opponentScore)}
                     </span>
                   )}
                 </a>

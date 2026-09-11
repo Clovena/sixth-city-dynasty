@@ -1,6 +1,9 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import { loadFranchises, loadRecords, gameHref, GAME_TYPE_LABEL } from '../../lib/hall-of-fame';
+import { loadRecords } from '../../lib/hall-of-fame';
+import { loadFranchises, logoPath } from '../../lib/franchise-identity';
+import { gameHref, GAME_TYPE_LABEL } from '../../lib/game-utils';
+import { formatPoints } from '../../lib/format';
 
 const TOP_N = 10;
 
@@ -55,12 +58,12 @@ const { teamScores: topTeamScores, playerScores: topPlayerScores } = await loadR
                   onclick={href ? `window.location='${href}'` : undefined}
                 >
                   <td class="col-rank rank-cell">{i + 1}</td>
-                  <td class="score-cell">{record.score.toFixed(2)}</td>
+                  <td class="score-cell">{formatPoints(record.score)}</td>
                   <td>
                     {record.team ? (
                       <span class="entity">
                         <img
-                          src={`/images/logos/${record.team.abbr}.png`}
+                          src={logoPath(record.team.abbr)}
                           alt=""
                           width="24"
                           height="24"
@@ -78,7 +81,7 @@ const { teamScores: topTeamScores, playerScores: topPlayerScores } = await loadR
                     {record.opponent ? (
                       <span class="entity">
                         <img
-                          src={`/images/logos/${record.opponent.abbr}.png`}
+                          src={logoPath(record.opponent.abbr)}
                           alt=""
                           width="20"
                           height="20"
@@ -91,7 +94,7 @@ const { teamScores: topTeamScores, playerScores: topPlayerScores } = await loadR
                   </td>
                   <td class="col-hide-mobile">
                     <span class={won ? 'result-win' : 'result-loss'}>
-                      {won ? 'W' : 'L'} {record.score.toFixed(2)}&ndash;{record.opponentScore.toFixed(2)}
+                      {won ? 'W' : 'L'} {formatPoints(record.score)}&ndash;{formatPoints(record.opponentScore)}
                     </span>
                   </td>
                   <td class="col-hide-mobile game-cell">
@@ -134,7 +137,7 @@ const { teamScores: topTeamScores, playerScores: topPlayerScores } = await loadR
                   onclick={href ? `window.location='${href}'` : undefined}
                 >
                   <td class="col-rank rank-cell">{i + 1}</td>
-                  <td class="score-cell">{record.points.toFixed(2)}</td>
+                  <td class="score-cell">{formatPoints(record.points)}</td>
                   <td>
                     <a href={`/players/${record.playerId}`} class="entity-name entity-link" onclick="event.stopPropagation()">
                       {record.name}
@@ -145,7 +148,7 @@ const { teamScores: topTeamScores, playerScores: topPlayerScores } = await loadR
                     {record.team ? (
                       <span class="entity">
                         <img
-                          src={`/images/logos/${record.team.abbr}.png`}
+                          src={logoPath(record.team.abbr)}
                           alt=""
                           width="20"
                           height="20"
@@ -160,7 +163,7 @@ const { teamScores: topTeamScores, playerScores: topPlayerScores } = await loadR
                     {record.opponent ? (
                       <span class="entity">
                         <img
-                          src={`/images/logos/${record.opponent.abbr}.png`}
+                          src={logoPath(record.opponent.abbr)}
                           alt=""
                           width="20"
                           height="20"
