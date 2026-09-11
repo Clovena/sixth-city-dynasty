@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
+import { loadFranchises, franchiseForYear, primaryColor, logoPath } from '../../lib/franchise-identity';
 
 // ── Fetch projections (latest year) ────────────────────────────────────────
 const { data: projRows, error: pErr } = await supabase
@@ -16,20 +17,7 @@ const currentYear = projRows[0].year;
 const projections = projRows.filter(p => p.year === currentYear);
 
 // ── Fetch all franchise identities, resolve the one active for this year ───
-const { data: allFranchises, error: fErr } = await supabase
-  .schema('scdfl')
-  .from('franchises')
-  .select('id, sleeper_id, abbr, name, conf, colors, "from", "to"');
-
-if (fErr || !allFranchises) throw new Error(`Franchises query failed: ${fErr?.message || 'No data returned'}`);
-
-const franchises = allFranchises;
-
-function franchiseForYear(sleeperId: number, yr: number) {
-  return franchises.find(f =>
-    Number(f.sleeper_id) === sleeperId && f.from <= yr && (f.to === null || f.to >= yr)
-  );
-}
+const franchises = await loadFranchises();
 
 type BetRow = {
   abbr: string;
@@ -46,13 +34,13 @@ type BetRow = {
 };
 
 const rows: BetRow[] = projections.flatMap(p => {
-  const f = franchiseForYear(p.sleeper_id, currentYear);
+  const f = franchiseForYear(franchises, String(p.sleeper_id), currentYear);
   if (!f) return [];
   return [{
     abbr: f.abbr,
     name: f.name,
     conf: f.conf,
-    color: f.colors?.[0] ?? 'var(--border-default)',
+    color: primaryColor(f.colors),
     winOu: p.win_ou,
     winLine: p.win_line,
     playoffLine: p.playoff_line,
@@ -129,7 +117,7 @@ function line(n: number | null): string {
           {winRows.map(r => (
             <div class="board-row board-row-wins" style={`--team-color: ${r.color};`}>
               <a class="board-team" href={`/franchises/${r.abbr}`}>
-                <img src={`/images/logos/${r.abbr}.png`} alt="" width="28" height="28" class="board-logo" onerror="this.style.display='none'" />
+                <img src={logoPath(r.abbr)} alt="" width="28" height="28" class="board-logo" onerror="this.style.display='none'" />
                 <span class="board-abbr">{r.abbr}</span>
                 <span class="board-name">{r.name}</span>
               </a>
@@ -156,7 +144,7 @@ function line(n: number | null): string {
           {playoffRows.map(r => (
             <div class="board-row board-row-two" style={`--team-color: ${r.color};`}>
               <a class="board-team" href={`/franchises/${r.abbr}`}>
-                <img src={`/images/logos/${r.abbr}.png`} alt="" width="28" height="28" class="board-logo" onerror="this.style.display='none'" />
+                <img src={logoPath(r.abbr)} alt="" width="28" height="28" class="board-logo" onerror="this.style.display='none'" />
                 <span class="board-abbr">{r.abbr}</span>
                 <span class="board-name">{r.name}</span>
               </a>
@@ -186,7 +174,7 @@ function line(n: number | null): string {
               {group.rows.map(r => (
                 <div class="board-row board-row-conf" style={`--team-color: ${r.color};`}>
                   <a class="board-team" href={`/franchises/${r.abbr}`}>
-                    <img src={`/images/logos/${r.abbr}.png`} alt="" width="28" height="28" class="board-logo" onerror="this.style.display='none'" />
+                    <img src={logoPath(r.abbr)} alt="" width="28" height="28" class="board-logo" onerror="this.style.display='none'" />
                     <span class="board-abbr">{r.abbr}</span>
                     <span class="board-name">{r.name}</span>
                   </a>

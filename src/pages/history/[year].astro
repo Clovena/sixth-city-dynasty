@@ -2,12 +2,18 @@
 import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
 import { getEntry, render } from 'astro:content';
+import { logoPath } from '../../lib/franchise-identity';
+import { toRoman, draftPickLabel, playerName as sharedPlayerName, formatPoints } from '../../lib/format';
+import { buildSlug as makeSlug } from '../../lib/game-utils';
 
 // ── Fetch all season years for static paths ────────────────────────────────
 
 export async function getStaticPaths() {
   const { supabase: sb } = await import('../../lib/supabase');
-  const { data: rows } = await sb.schema('scdfl').from('seasons').select('year');
+  const { data: rows } = await sb
+    .schema('scdfl')
+    .from('seasons')
+    .select('year');
   return (rows ?? []).map(s => ({ params: { year: String(s.year) } }));
 }
 
@@ -76,8 +82,7 @@ if (exErr) throw new Error(`Exhibitions query failed: ${exErr.message}`);
 
 const yearExhibitions = (exhibRows ?? []).map(e => {
   const match = (e.exhibition_matchups as any)?.[0] ?? e.exhibition_matchups ?? {};
-  const slugParts = [e.team_a_slug, e.team_b_slug].sort((a: string, b: string) => a.localeCompare(b)).map((s: string) => s.toLowerCase());
-  const slug = `${String(e.week).padStart(2, '0')}-${slugParts[0]}-${slugParts[1]}`;
+  const slug = makeSlug(e.team_a_slug, e.team_b_slug, e.week);
   return {
     year: e.year,
     week: e.week,
@@ -110,18 +115,6 @@ const POSITION_COLOR_MAP: Record<string, string> = {
   LB: 'purple', ILB: 'purple', OLB: 'purple', MLB: 'purple',
   CB: 'pink', S: 'pink', SS: 'pink', FS: 'pink', DB: 'pink',
 };
-
-// ── Roman numeral helper ───────────────────────────────────────────────────
-
-function toRoman(n: number): string {
-  const vals = [1000,900,500,400,100,90,50,40,10,9,5,4,1];
-  const syms = ['M','CM','D','CD','C','XC','L','XL','X','IX','V','IV','I'];
-  let result = '';
-  for (let i = 0; i < vals.length; i++) {
-    while (n >= vals[i]) { result += syms[i]; n -= vals[i]; }
-  }
-  return result;
-}
 
 const dynastyBowlLabel = `Dynasty Bowl ${toRoman(yearNum - 2020)}`;
 
@@ -216,7 +209,8 @@ const { data: playoffMatchups, error: pmErr } = await supabase
   .from('matchups')
   .select('week, matchup_id, roster_id_a, roster_id_b, score_a, score_b')
   .eq('year', yearNum)
-  .eq('game_type', 1);
+  .eq('game_type', 1)
+  .limit(1000);
 
 if (pmErr) throw new Error(`Playoff matchups query failed: ${pmErr.message}`);
 
@@ -233,8 +227,7 @@ for (const m of (playoffMatchups ?? []).filter(m => m.week === 15)) {
 // Build slug for game recap link: [week]-[abbr1]-[abbr2] (alphabetized, lowercased)
 function buildSlug(teamA: StandingsRow | null | undefined, teamB: StandingsRow | null | undefined, week: number): string | null {
   if (!teamA || !teamB) return null;
-  const abbrs = [teamA.effectiveAbbr, teamB.effectiveAbbr].sort().map(a => a.toLowerCase());
-  return `${String(week).padStart(2, '0')}-${abbrs[0]}-${abbrs[1]}`;
+  return makeSlug(teamA.effectiveAbbr, teamB.effectiveAbbr, week);
 }
 
 // Return winner of a matchup between two teams; if b is null, a gets a bye
@@ -380,8 +373,8 @@ for (const draft of (draftRows ?? [])) {
       const position = fantasyPositions.join(',').toUpperCase();
       const firstPos = (fantasyPositions[0] ?? '').toUpperCase();
       const colorVar = POSITION_COLOR_MAP[firstPos] ?? 'white';
-      const pickLabel = `${pick.round}.${String(((pick.pick_no - 1) % 14) + 1).padStart(2, '0')}`;
-      const playerName = `${player?.first_name ?? ''} ${player?.last_name ?? ''}`.trim();
+      const pickLabel = draftPickLabel(pick.round, pick.pick_no);
+      const playerName = sharedPlayerName(player?.first_name, player?.last_name, '');
 
       const isTrade = pick.original_roster_id != null && pick.roster_id !== pick.original_roster_id;
       const tradeToSleeperId = isTrade ? String(pick.roster_id) : null;
@@ -431,7 +424,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
     <!-- Season summary -->
     {SeasonSummary ? 
     <div class="section-rule">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">Season Summary</h2>
+      <h2 class="sect-head">Season Summary</h2>
       <div class="season-summary" style="max-width: 72ch; font-size: 0.95rem; color: var(--color-text-secondary); text-align: justify; line-height: 1.7;">
         <SeasonSummary />
       </div>
@@ -439,7 +432,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
     <!-- Conference standings -->
     <div class="section-rule">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.5rem;">Final Standings</h2>
+      <h2 class="sect-head">Final Standings</h2>
       <div class="standings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
 
         <!-- SCC -->
@@ -461,7 +454,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                 <tr>
                   <td style="text-align: left;">
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
-                      <img src={`/images/logos/${row.effectiveAbbr}.png`} alt="" width="20" height="20"
+                      <img src={logoPath(row.effectiveAbbr)} alt="" width="20" height="20"
                         style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
                       <a href={`/franchises/${row.abbr}`}
                         style={`font-size: 0.85rem; ${row.playoff ? 'color: var(--color-text-primary); font-weight: 600;' : 'color: var(--color-text-muted);'}`}>
@@ -471,8 +464,8 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   </td>
                   <td style="text-align: left;">{row.wins}</td>
                   <td style="text-align: left;">{row.losses}</td>
-                  <td style="text-align: left; font-size: 0.8rem;">{row.points_for.toFixed(2)}</td>
-                  <td class="col-hide-mobile" style="text-align: left; font-size: 0.8rem;">{row.points_against.toFixed(2)}</td>
+                  <td style="text-align: left; font-size: 0.8rem;">{formatPoints(row.points_for)}</td>
+                  <td class="col-hide-mobile" style="text-align: left; font-size: 0.8rem;">{formatPoints(row.points_against)}</td>
                   <td style="text-align: right;">
                     <span style={`font-size: 0.75rem; ${row.finish === 'Champion' ? 'color: var(--color-gold); font-weight: 700;' : row.finish === 'Runner-up' ? 'color: var(--color-text-primary);' : row.playoff ? 'color: var(--color-text-secondary);' : 'color: var(--color-text-muted);'}`}>
                       {row.finish}
@@ -503,7 +496,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                 <tr>
                   <td style="text-align: left;">
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
-                      <img src={`/images/logos/${row.effectiveAbbr}.png`} alt="" width="20" height="20"
+                      <img src={logoPath(row.effectiveAbbr)} alt="" width="20" height="20"
                         style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
                       <a href={`/franchises/${row.abbr}`}
                         style={`font-size: 0.85rem; ${row.playoff ? 'color: var(--color-text-primary); font-weight: 600;' : 'color: var(--color-text-muted);'}`}>
@@ -513,8 +506,8 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   </td>
                   <td style="text-align: left;">{row.wins}</td>
                   <td style="text-align: left;">{row.losses}</td>
-                  <td style="text-align: left; font-size: 0.8rem;">{row.points_for.toFixed(2)}</td>
-                  <td class="col-hide-mobile" style="text-align: left; font-size: 0.8rem;">{row.points_against.toFixed(2)}</td>
+                  <td style="text-align: left; font-size: 0.8rem;">{formatPoints(row.points_for)}</td>
+                  <td class="col-hide-mobile" style="text-align: left; font-size: 0.8rem;">{formatPoints(row.points_against)}</td>
                   <td style="text-align: right;">
                     <span style={`font-size: 0.75rem; ${row.finish === 'Champion' ? 'color: var(--color-gold); font-weight: 700;' : row.finish === 'Runner-up' ? 'color: var(--color-text-primary);' : row.playoff ? 'color: var(--color-text-secondary);' : 'color: var(--color-text-muted);'}`}>
                       {row.finish}
@@ -531,7 +524,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
     <!-- Playoff bracket -->
     <div class="section-rule">
-      <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 0.5rem;">Playoff Bracket</h2>
+      <h2 class="sect-head">Playoff Bracket</h2>
       <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2rem;">
         Click a matchup for more details →
       </p>
@@ -551,7 +544,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class={`bracket-slot top${!is8Team && leftTop[1] === null ? ' bye-slot' : ''}`}>
                     {leftTop[0] && (
                       <>
-                        <img src={`/images/logos/${leftTop[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(leftTop[0].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{leftTop[0].seed}</span>
                         <span class="slot-name">{leftTop[0].effectiveAbbr}</span>
                         {!is8Team && leftTop[1] === null && <span class="bye-label">BYE</span>}
@@ -564,7 +557,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                       <div class="bracket-slot bottom">
                         {leftTop[1] && (
                           <>
-                            <img src={`/images/logos/${leftTop[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                            <img src={logoPath(leftTop[1].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                             <span class="slot-seed">{leftTop[1].seed}</span>
                             <span class="slot-name">{leftTop[1].effectiveAbbr}</span>
                           </>
@@ -584,7 +577,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class="bracket-slot top">
                     {leftBottom[0] && (
                       <>
-                        <img src={`/images/logos/${leftBottom[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(leftBottom[0].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{leftBottom[0].seed}</span>
                         <span class="slot-name">{leftBottom[0].effectiveAbbr}</span>
                       </>
@@ -594,7 +587,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class="bracket-slot bottom">
                     {leftBottom[1] && (
                       <>
-                        <img src={`/images/logos/${leftBottom[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(leftBottom[1].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{leftBottom[1].seed}</span>
                         <span class="slot-name">{leftBottom[1].effectiveAbbr}</span>
                       </>
@@ -615,7 +608,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class="bracket-slot semi-slot top">
                     {leftSemiTop && (
                       <>
-                        <img src={`/images/logos/${leftSemiTop.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(leftSemiTop.effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{leftSemiTop.seed}</span>
                         <span class="slot-name">{leftSemiTop.effectiveAbbr}</span>
                       </>
@@ -625,7 +618,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class="bracket-slot semi-slot bottom">
                     {leftSemiBottom && (
                       <>
-                        <img src={`/images/logos/${leftSemiBottom.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(leftSemiBottom.effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{leftSemiBottom.seed}</span>
                         <span class="slot-name">{leftSemiBottom.effectiveAbbr}</span>
                       </>
@@ -650,7 +643,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
               <div class="bracket-final-slot">
                 {champion && (
                   <div class="final-team champion-team">
-                    <img src={`/images/logos/${champion.effectiveAbbr}.png`} alt="" width="32" height="32" onerror="this.style.display='none'" />
+                    <img src={logoPath(champion.effectiveAbbr)} alt="" width="32" height="32" onerror="this.style.display='none'" />
                     <span class="final-seed">{champion.seed}</span>
                     <span class="final-name">{champion.effectiveAbbr}</span>
                   </div>
@@ -658,7 +651,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                 <div class="final-defeated">defeated</div>
                 {runnerUp && (
                   <div class="final-team">
-                    <img src={`/images/logos/${runnerUp.effectiveAbbr}.png`} alt="" width="32" height="32" onerror="this.style.display='none'" />
+                    <img src={logoPath(runnerUp.effectiveAbbr)} alt="" width="32" height="32" onerror="this.style.display='none'" />
                     <span class="final-seed">{runnerUp.seed}</span>
                     <span class="final-name">{runnerUp.effectiveAbbr}</span>
                   </div>
@@ -681,7 +674,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class="bracket-slot semi-slot top">
                     {rightSemiTop && (
                       <>
-                        <img src={`/images/logos/${rightSemiTop.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(rightSemiTop.effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{rightSemiTop.seed}</span>
                         <span class="slot-name">{rightSemiTop.effectiveAbbr}</span>
                       </>
@@ -691,7 +684,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class="bracket-slot semi-slot bottom">
                     {rightSemiBottom && (
                       <>
-                        <img src={`/images/logos/${rightSemiBottom.effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(rightSemiBottom.effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{rightSemiBottom.seed}</span>
                         <span class="slot-name">{rightSemiBottom.effectiveAbbr}</span>
                       </>
@@ -713,7 +706,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class="bracket-slot top">
                     {rightTop[0] && (
                       <>
-                        <img src={`/images/logos/${rightTop[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(rightTop[0].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{rightTop[0].seed}</span>
                         <span class="slot-name">{rightTop[0].effectiveAbbr}</span>
                       </>
@@ -723,7 +716,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class="bracket-slot bottom">
                     {rightTop[1] && (
                       <>
-                        <img src={`/images/logos/${rightTop[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(rightTop[1].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{rightTop[1].seed}</span>
                         <span class="slot-name">{rightTop[1].effectiveAbbr}</span>
                       </>
@@ -741,7 +734,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class="bracket-slot top">
                     {rightBottom[0] && (
                       <>
-                        <img src={`/images/logos/${rightBottom[0].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(rightBottom[0].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{rightBottom[0].seed}</span>
                         <span class="slot-name">{rightBottom[0].effectiveAbbr}</span>
                       </>
@@ -751,7 +744,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <div class="bracket-slot bottom">
                     {rightBottom[1] && (
                       <>
-                        <img src={`/images/logos/${rightBottom[1].effectiveAbbr}.png`} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                        <img src={logoPath(rightBottom[1].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{rightBottom[1].seed}</span>
                         <span class="slot-name">{rightBottom[1].effectiveAbbr}</span>
                       </>
@@ -769,7 +762,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
       {yearExhibitions.length > 0 && (
         <div class="section-rule">
-          <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">
+          <h2 class="sect-head">
             Exhibition Games
           </h2>
           <div style="display:grid; grid-template-columns:1fr; gap:1rem; max-width:72ch;">
@@ -783,22 +776,22 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                       <div class={`team-row ${aWins ? 'winner' : bWins ? 'loser' : 'tied'}`}>
                         <span style="display:flex;gap:4px;flex-shrink:0;">
                           {e.team_a.members.map((abbr: string) => (
-                            <img src={`/images/logos/${abbr}.png`} alt={abbr} width="36" height="36"
+                            <img src={logoPath(abbr)} alt={abbr} width="36" height="36"
                                  style="object-fit:contain;" onerror="this.style.display='none'" />
                           ))}
                         </span>
                         <span class="team-name">{e.team_a.display_name}</span>
-                        <span class="team-score">{e.team_a.score.toFixed(2)}</span>
+                        <span class="team-score">{formatPoints(e.team_a.score)}</span>
                       </div>
                       <div class={`team-row ${bWins ? 'winner' : aWins ? 'loser' : 'tied'}`}>
                         <span style="display:flex;gap:4px;flex-shrink:0;">
                           {e.team_b.members.map((abbr: string) => (
-                            <img src={`/images/logos/${abbr}.png`} alt={abbr} width="36" height="36"
+                            <img src={logoPath(abbr)} alt={abbr} width="36" height="36"
                                  style="object-fit:contain;" onerror="this.style.display='none'" />
                           ))}
                         </span>
                         <span class="team-name">{e.team_b.display_name}</span>
-                        <span class="team-score">{e.team_b.score.toFixed(2)}</span>
+                        <span class="team-score">{formatPoints(e.team_b.score)}</span>
                       </div>
                     </div>
                   </div>
@@ -811,7 +804,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
       {draftBoards.length > 0 && (
         <div class="section-rule draft-section">
-          <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 600; margin-bottom: 1.25rem;">
+          <h2 class="sect-head">
             Draft Board{draftBoards.length > 1 ? 's' : ''}
           </h2>
 
@@ -825,7 +818,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                 <div class="draft-corner"></div>
                 {board.headers.map(h => (
                   <div class="draft-col-header">
-                    <img src={`/images/logos/${h.abbr}.png`} alt={h.abbr} width="28" height="28" onerror="this.style.display='none'" />
+                    <img src={logoPath(h.abbr)} alt={h.abbr} width="28" height="28" onerror="this.style.display='none'" />
                     <span class="draft-col-abbr">{h.abbr}</span>
                   </div>
                 ))}
@@ -869,6 +862,20 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
 
 <style>
+  /* Section heads match the archive elsewhere: display caps over a heavy rule. */
+  .sect-head {
+    font-family: var(--font-display);
+    font-size: 1.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: -0.005em;
+    line-height: 1;
+    color: var(--text-strong);
+    margin: 0 0 1.2rem;
+    padding-bottom: 0.45rem;
+    border-bottom: 2px solid var(--rule-ink);
+  }
+
   /* ── Season summary ──────────────────────────────── */
   .season-summary :global(p) {
     margin-bottom: 1rem;
@@ -1134,13 +1141,6 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
     background-color: transparent;
   }
 
-  .team-logo {
-    width: 36px;
-    height: 36px;
-    object-fit: contain;
-    flex-shrink: 0;
-  }
-
   .team-name {
     font-family: var(--font-body);
     font-size: 0.9rem;
@@ -1169,10 +1169,6 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
   /* ── Draft board ──────────────────────────────────── */
   .draft-section {
     margin-top: 2.5rem;
-  }
-
-  .draft-board {
-    /* responsive, no scroll */
   }
 
   .draft-board + .draft-board {

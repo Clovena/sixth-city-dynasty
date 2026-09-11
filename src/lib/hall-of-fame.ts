@@ -1,4 +1,16 @@
 import { supabase } from './supabase';
+import { toRoman, playerName } from './format';
+import {
+  type FranchiseRow,
+  type SideIdentity,
+  franchiseForYear,
+  activeFranchise,
+  franchiseByAbbrForYear,
+  identityFor,
+} from './franchise-identity';
+import { isPlayablePostseasonGame } from './game-utils';
+
+export type { FranchiseRow };
 
 /**
  * Shared Hall of Fame data loaders.
@@ -8,18 +20,6 @@ import { supabase } from './supabase';
  * across pages. Everything runs at build time (all Hall of Fame routes are
  * pre-rendered), so the cost is paid once.
  */
-
-export type FranchiseRow = {
-  id: number;
-  sleeper_id: string;
-  abbr: string;
-  name: string;
-  owner: string;
-  conf: string;
-  colors: string[];
-  from: number;
-  to: number | null;
-};
 
 /** One placement on a season's podium, resolved to the identity of that year. */
 export type PodiumEntry = {
@@ -50,55 +50,6 @@ export type SeasonPodium = {
   scc: PodiumEntry | null;
   hcc: PodiumEntry | null;
 };
-
-const ROMAN_VALUES = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
-const ROMAN_SYMBOLS = ['M', 'CM', 'D', 'CD', 'C', 'XC', 'L', 'XL', 'X', 'IX', 'V', 'IV', 'I'];
-
-export function toRoman(n: number): string {
-  let remaining = n;
-  let result = '';
-  for (let i = 0; i < ROMAN_VALUES.length; i++) {
-    while (remaining >= ROMAN_VALUES[i]) {
-      result += ROMAN_SYMBOLS[i];
-      remaining -= ROMAN_VALUES[i];
-    }
-  }
-  return result;
-}
-
-/** The identity a franchise carried during a given season. */
-export function franchiseForYear(
-  rows: FranchiseRow[],
-  sleeperId: string,
-  year: number,
-): FranchiseRow | undefined {
-  return rows.find(
-    f => f.sleeper_id === sleeperId && f.from <= year && (f.to === null || f.to >= year),
-  );
-}
-
-/** The identity a franchise carries today (for linking). */
-export function activeFranchise(rows: FranchiseRow[], sleeperId: string): FranchiseRow | undefined {
-  return rows.find(f => f.sleeper_id === sleeperId && f.to === null);
-}
-
-export function franchiseByAbbrForYear(
-  rows: FranchiseRow[],
-  abbr: string,
-  year: number,
-): FranchiseRow | undefined {
-  return rows.find(f => f.abbr === abbr && f.from <= year && (f.to === null || f.to >= year));
-}
-
-export async function loadFranchises(): Promise<FranchiseRow[]> {
-  const { data, error } = await supabase
-    .schema('scdfl')
-    .from('franchises')
-    .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"');
-
-  if (error || !data) throw new Error(`Franchises query failed: ${error?.message ?? 'No data returned'}`);
-  return data as FranchiseRow[];
-}
 
 type ResultRow = {
   year: number;
@@ -136,7 +87,7 @@ function toPostseasonSides(rows: any[]): PostseasonSide[] {
     if (!m.matchup_id) continue;
     const a = Number(m.score_a ?? 0);
     const b = Number(m.score_b ?? 0);
-    if (a === 0 && b === 0) continue;
+    if (!isPlayablePostseasonGame(m.game_type, a, b)) continue;
 
     sides.push(
       { year: m.year, week: m.week, gameType: m.game_type, rid: m.roster_id_a, score: a, oppRid: m.roster_id_b, oppScore: b, won: a > b },
@@ -307,14 +258,6 @@ export async function loadMedals(): Promise<MedalRow[]> {
    Single-game record books
    ──────────────────────────────────────────────────────────────────────────── */
 
-export type SideIdentity = {
-  /** Identity as branded in that season — drives logos */
-  abbr: string;
-  /** Current identity — drives /franchises/[abbr] links */
-  activeAbbr: string;
-  name: string;
-};
-
 export type TeamScoreRecord = {
   score: number;
   opponentScore: number;
@@ -336,41 +279,6 @@ export type PlayerScoreRecord = {
   team: SideIdentity | null;
   opponent: SideIdentity | null;
 };
-
-export const GAME_TYPE_LABEL: Record<number, string> = {
-  0: 'Regular Season',
-  1: 'Playoffs',
-  [-1]: 'Consolation',
-};
-
-export function identityFor(
-  franchises: FranchiseRow[],
-  rosterId: number,
-  year: number,
-): SideIdentity | null {
-  const sleeperId = String(rosterId);
-  const era = franchiseForYear(franchises, sleeperId, year);
-  const active = activeFranchise(franchises, sleeperId);
-  const identity = era ?? active;
-  if (!identity) return null;
-  return { abbr: identity.abbr, activeAbbr: active?.abbr ?? identity.abbr, name: identity.name };
-}
-
-/** Canonical recap slug: [week_padded]-[abbr_a]-[abbr_b], teams alphabetised. */
-export function buildSlug(abbrA: string, abbrB: string, week: number): string {
-  const [first, second] = [abbrA.toLowerCase(), abbrB.toLowerCase()].sort();
-  return `${String(week).padStart(2, '0')}-${first}-${second}`;
-}
-
-export function gameHref(
-  year: number,
-  week: number,
-  a: SideIdentity | null,
-  b: SideIdentity | null,
-): string | null {
-  if (!a || !b) return null;
-  return `/games/${year}/${buildSlug(a.abbr, b.abbr, week)}`;
-}
 
 /**
  * Highest single-game team totals and individual starts, all-time.
@@ -419,8 +327,7 @@ export async function loadRecords(
   const games = (matchupRows ?? []).filter(m => {
     if (!m.matchup_id) return false;
     if (m.score_a === null || m.score_b === null) return false;
-    const notStarted = Number(m.score_a) === 0 && Number(m.score_b) === 0;
-    return !(m.game_type !== 0 && notStarted);
+    return isPlayablePostseasonGame(m.game_type, m.score_a, m.score_b);
   });
 
   const teamSides: TeamScoreRecord[] = [];
@@ -450,7 +357,7 @@ export async function loadRecords(
     return {
       points: Number(start.points),
       playerId: start.player_id,
-      name: player ? `${player.first_name ?? ''} ${player.last_name ?? ''}`.trim() : start.player_id,
+      name: playerName(player?.first_name, player?.last_name, start.player_id),
       position: player?.position ?? '—',
       year: start.year,
       week: start.week,

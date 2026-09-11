@@ -3,6 +3,9 @@ import { getCollection, render } from 'astro:content';
 import Layout from '../../../layouts/Layout.astro';
 import { supabase } from '../../../lib/supabase';
 import { mapStartersToSlots, mapExhibitionStartersToSlots } from '../../../lib/lineup';
+import { franchiseForYear, activeFranchise, logoPath } from '../../../lib/franchise-identity';
+import { playerName as joinName, espnHeadshotUrl, formatPoints } from '../../../lib/format';
+import { buildSlug } from '../../../lib/game-utils';
 
 // ── Static paths — self-contained, no module-scope variable access ────────────
 export async function getStaticPaths() {
@@ -10,12 +13,18 @@ export async function getStaticPaths() {
 
   // Fetch all matchups and franchise identities in parallel
   const [matchupsRes, franchisesRes, exhibitionsRes] = await Promise.all([
-    sb.schema('scdfl').from('matchups')
+    sb
+      .schema('scdfl')
+      .from('matchups')
       .select('year, week, roster_id_a, roster_id_b')
       .limit(1000),
-    sb.schema('scdfl').from('franchises')
-      .select('sleeper_id, abbr, "from", "to"'),
-    sb.schema('scdfl').from('exhibitions')
+    sb
+      .schema('scdfl')
+      .from('franchises')
+      .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"'),
+    sb
+      .schema('scdfl')
+      .from('exhibitions')
       .select('id, year, week, exhib_type, team_a_slug, team_a_display_name, team_a_members, team_b_slug, team_b_display_name, team_b_members'),
   ]);
 
@@ -23,26 +32,15 @@ export async function getStaticPaths() {
   const franchises = franchisesRes.data ?? [];
   const exhibitions = exhibitionsRes.data ?? [];
 
-  // Resolve roster_id → effective abbr for a given year
-  function getEffectiveAbbr(rosterId: number, year: number): string | null {
-    const sleeperId = String(rosterId);
-    const identity = franchises.find(
-      (f: any) => f.sleeper_id === sleeperId && f.from <= year && (f.to === null || f.to >= year)
-    );
-    return identity?.abbr ?? null;
-  }
-
   const paths: any[] = [];
 
   // Regular game paths
   for (const m of matchups) {
-    const abbrA = getEffectiveAbbr(m.roster_id_a, m.year);
-    const abbrB = getEffectiveAbbr(m.roster_id_b, m.year);
+    const abbrA = franchiseForYear(franchises, String(m.roster_id_a), m.year)?.abbr;
+    const abbrB = franchiseForYear(franchises, String(m.roster_id_b), m.year)?.abbr;
     if (!abbrA || !abbrB) continue;
 
-    const weekPad = String(m.week).padStart(2, '0');
-    const [t1, t2] = [abbrA.toLowerCase(), abbrB.toLowerCase()].sort();
-    const slug = `${weekPad}-${t1}-${t2}`;
+    const slug = buildSlug(abbrA, abbrB, m.week);
 
     paths.push({
       params: { year: String(m.year), slug },
@@ -52,9 +50,7 @@ export async function getStaticPaths() {
 
   // Exhibition paths
   for (const ex of exhibitions) {
-    const weekPad = String(ex.week).padStart(2, '0');
-    const [s1, s2] = [ex.team_a_slug.toLowerCase(), ex.team_b_slug.toLowerCase()].sort();
-    const slug = `${weekPad}-${s1}-${s2}`;
+    const slug = buildSlug(ex.team_a_slug, ex.team_b_slug, ex.week);
 
     paths.push({
       params: { year: String(ex.year), slug },
@@ -85,12 +81,14 @@ if (isExhibition && exhib) {
   // ── Exhibition game ─────────────────────────────────────────────────────────
   const [{ data: exhibMatchup }, { data: exhibFranchises }] = await Promise.all([
     supabase
-      .schema('scdfl').from('exhibition_matchups')
+      .schema('scdfl')
+      .from('exhibition_matchups')
       .select('score_a, score_b, starters_a, starter_points_a, starters_b, starter_points_b')
       .eq('exhibition_id', exhibitionId)
       .single(),
     supabase
-      .schema('scdfl').from('franchises')
+      .schema('scdfl')
+      .from('franchises')
       .select('id, abbr, "to"'),
   ]);
 
@@ -142,7 +140,9 @@ if (isExhibition && exhib) {
 
   // Fetch matchup data, franchise identities, and records in parallel
   const [matchupRes, franchisesRes, recordsRes] = await Promise.all([
-    supabase.schema('scdfl').from('matchups')
+    supabase
+      .schema('scdfl')
+      .from('matchups')
       .select('*')
       .eq('year', year).eq('week', week)
       .or(`roster_id_a.eq.${rosterIdA},roster_id_b.eq.${rosterIdA}`)
@@ -150,9 +150,13 @@ if (isExhibition && exhib) {
       .single(),
     // All eras — the page needs the year's identity for display *and* the
     // current identity for franchise links
-    supabase.schema('scdfl').from('franchises')
-      .select('sleeper_id, abbr, name, conf, colors, "from", "to"'),
-    supabase.schema('scdfl').from('matchups')
+    supabase
+      .schema('scdfl')
+      .from('franchises')
+      .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"'),
+    supabase
+      .schema('scdfl')
+      .from('matchups')
       .select('roster_id_a, roster_id_b, score_a, score_b')
       .eq('year', year).eq('game_type', 0).lte('week', week)
       .or(`roster_id_a.in.(${rosterIdA},${rosterIdB}),roster_id_b.in.(${rosterIdA},${rosterIdB})`)
@@ -166,14 +170,8 @@ if (isExhibition && exhib) {
   // Resolve franchise identity for each team
   const sleeperA = String(rosterIdA);
   const sleeperB = String(rosterIdB);
-  const eraFor = (sleeperId: string) => franchises.find(
-    (f: any) => f.sleeper_id === sleeperId && f.from <= year && (f.to === null || f.to >= year)
-  );
-  const activeFor = (sleeperId: string) => franchises.find(
-    (f: any) => f.sleeper_id === sleeperId && f.to === null
-  );
-  fA = eraFor(sleeperA);
-  fB = eraFor(sleeperB);
+  fA = franchiseForYear(franchises, sleeperA, year);
+  fB = franchiseForYear(franchises, sleeperB, year);
 
   // Determine which side of the matchup row corresponds to which roster
   // The matchup row may have roster_id_a = rosterIdA or roster_id_b = rosterIdA
@@ -205,8 +203,8 @@ if (isExhibition && exhib) {
   }
 
   // Effective identity — name/logo from the era, link to the current abbr
-  const activeA = activeFor(sleeperA);
-  const activeB = activeFor(sleeperB);
+  const activeA = activeFranchise(franchises, sleeperA);
+  const activeB = activeFranchise(franchises, sleeperB);
   effA = {
     name: fA?.name ?? 'Unknown',
     logoAbbr: fA?.abbr ?? 'UNKNOWN',
@@ -236,25 +234,22 @@ const playerMap = new Map<string, { full_name: string; espn_id: string | null }>
 
 if (allPlayerIds.length > 0) {
   const { data: players } = await supabase
-    .schema('scdfl').from('v_players')
+    .schema('scdfl')
+    .from('v_players')
     .select('player_id, first_name, last_name, fantasy_positions, espn_id')
     .in('player_id', allPlayerIds)
     .limit(100);
 
   for (const p of players ?? []) {
-    const fullName = [p.first_name, p.last_name].filter(Boolean).join(' ') || p.player_id;
     playerMap.set(p.player_id, {
-      full_name: fullName,
+      full_name: joinName(p.first_name, p.last_name, p.player_id),
       espn_id: p.espn_id ?? null,
     });
   }
 }
 
 function playerName(id: string) { return playerMap.get(id)?.full_name || id; }
-function espnHeadshotUrl(id: string) {
-  const espnId = playerMap.get(id)?.espn_id;
-  return espnId ? `https://a.espncdn.com/i/headshots/nfl/players/full/${espnId}.png` : null;
-}
+function playerHeadshot(id: string) { return espnHeadshotUrl(playerMap.get(id)?.espn_id); }
 
 // ── Recap ─────────────────────────────────────────────────────────────────────
 const allRecaps = await getCollection('recaps');
@@ -291,22 +286,22 @@ if (recap) {
             {effA.memberLinks.map((m: any) => (
               m.href ? (
                 <a href={m.href} class="team-logo-link" aria-label={m.abbr}>
-                  <img src={`/images/logos/${m.abbr}.png`} alt={m.abbr} width="36" height="36"
+                  <img src={logoPath(m.abbr)} alt={m.abbr} width="36" height="36"
                        style="object-fit: contain;" onerror="this.style.display='none'" />
                 </a>
               ) : (
-                <img src={`/images/logos/${m.abbr}.png`} alt={m.abbr} width="36" height="36"
+                <img src={logoPath(m.abbr)} alt={m.abbr} width="36" height="36"
                      style="object-fit: contain;" onerror="this.style.display='none'" />
               )
             ))}
           </div>
         ) : effA.href ? (
           <a href={effA.href} class="team-logo-link" aria-label={effA.name}>
-            <img src={`/images/logos/${effA.logoAbbr}.png`} alt={effA.name} width="52" height="52"
+            <img src={logoPath(effA.logoAbbr)} alt={effA.name} width="52" height="52"
                  style="object-fit: contain;" onerror="this.style.display='none'" />
           </a>
         ) : (
-          <img src={`/images/logos/${effA.logoAbbr}.png`} alt={effA.name} width="52" height="52"
+          <img src={logoPath(effA.logoAbbr)} alt={effA.name} width="52" height="52"
                style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
         )}
         <div style="flex: 1; min-width: 0;">
@@ -315,7 +310,7 @@ if (recap) {
           </div>
           {!isExhibition && <div class="game-record">{winsA}–{lossesA}</div>}
         </div>
-        <span class:list={['game-score', aWins ? 'winner' : '']}>{scoreA.toFixed(2)}</span>
+        <span class:list={['game-score', aWins ? 'winner' : '']}>{formatPoints(scoreA)}</span>
       </div>
 
       <div style="height: 1px; background: var(--color-border);"></div>
@@ -326,22 +321,22 @@ if (recap) {
             {effB.memberLinks.map((m: any) => (
               m.href ? (
                 <a href={m.href} class="team-logo-link" aria-label={m.abbr}>
-                  <img src={`/images/logos/${m.abbr}.png`} alt={m.abbr} width="36" height="36"
+                  <img src={logoPath(m.abbr)} alt={m.abbr} width="36" height="36"
                        style="object-fit: contain;" onerror="this.style.display='none'" />
                 </a>
               ) : (
-                <img src={`/images/logos/${m.abbr}.png`} alt={m.abbr} width="36" height="36"
+                <img src={logoPath(m.abbr)} alt={m.abbr} width="36" height="36"
                      style="object-fit: contain;" onerror="this.style.display='none'" />
               )
             ))}
           </div>
         ) : effB.href ? (
           <a href={effB.href} class="team-logo-link" aria-label={effB.name}>
-            <img src={`/images/logos/${effB.logoAbbr}.png`} alt={effB.name} width="52" height="52"
+            <img src={logoPath(effB.logoAbbr)} alt={effB.name} width="52" height="52"
                  style="object-fit: contain;" onerror="this.style.display='none'" />
           </a>
         ) : (
-          <img src={`/images/logos/${effB.logoAbbr}.png`} alt={effB.name} width="52" height="52"
+          <img src={logoPath(effB.logoAbbr)} alt={effB.name} width="52" height="52"
                style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
         )}
         <div style="flex: 1; min-width: 0;">
@@ -350,7 +345,7 @@ if (recap) {
           </div>
           {!isExhibition && <div class="game-record">{winsB}–{lossesB}</div>}
         </div>
-        <span class:list={['game-score', bWins ? 'winner' : '']}>{scoreB.toFixed(2)}</span>
+        <span class:list={['game-score', bWins ? 'winner' : '']}>{formatPoints(scoreB)}</span>
       </div>
 
     </div>
@@ -365,12 +360,12 @@ if (recap) {
           {isExhibition && effA.members ? (
             <div style="display: flex; gap: 2px;">
               {effA.members.map((abbr: string) => (
-                <img src={`/images/logos/${abbr}.png`} alt={abbr} width="18" height="18"
+                <img src={logoPath(abbr)} alt={abbr} width="18" height="18"
                      style="object-fit: contain;" onerror="this.style.display='none'" />
               ))}
             </div>
           ) : (
-            <img src={`/images/logos/${effA.logoAbbr}.png`} alt="" width="22" height="22"
+            <img src={logoPath(effA.logoAbbr)} alt="" width="22" height="22"
                  style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
           )}
           <span>{effA.name}</span>
@@ -380,12 +375,12 @@ if (recap) {
           {isExhibition && effB.members ? (
             <div style="display: flex; gap: 2px;">
               {effB.members.map((abbr: string) => (
-                <img src={`/images/logos/${abbr}.png`} alt={abbr} width="18" height="18"
+                <img src={logoPath(abbr)} alt={abbr} width="18" height="18"
                      style="object-fit: contain;" onerror="this.style.display='none'" />
               ))}
             </div>
           ) : (
-            <img src={`/images/logos/${effB.logoAbbr}.png`} alt="" width="22" height="22"
+            <img src={logoPath(effB.logoAbbr)} alt="" width="22" height="22"
                  style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />
           )}
         </div>
@@ -403,12 +398,10 @@ if (recap) {
               >
                 <span class="lineup-pos">{slotA.position}</span>
                 <span class="lineup-thumb">
-                  {espnHeadshotUrl(slotA.playerId)
-                    ? <img src={espnHeadshotUrl(slotA.playerId)!} alt={playerName(slotA.playerId)} width="28" height="28" loading="lazy" decoding="async" onerror="this.src='/images/player-placeholder.png';this.onerror=null;" />
-                    : null}
+                  <img src={playerHeadshot(slotA.playerId)} alt={playerName(slotA.playerId)} width="28" height="28" loading="lazy" decoding="async" onerror="this.src='/images/player-placeholder.png';this.onerror=null;" />
                 </span>
                 <span class="lineup-name">{playerName(slotA.playerId)}</span>
-                <span class="lineup-score">{slotA.points.toFixed(2)}</span>
+                <span class="lineup-score">{formatPoints(slotA.points)}</span>
               </a>
               <a
                 href={`/players/${slotB.playerId}`}
@@ -417,12 +410,10 @@ if (recap) {
               >
                 <span class="lineup-pos">{slotB.position}</span>
                 <span class="lineup-thumb">
-                  {espnHeadshotUrl(slotB.playerId)
-                    ? <img src={espnHeadshotUrl(slotB.playerId)!} alt={playerName(slotB.playerId)} width="28" height="28" loading="lazy" decoding="async" onerror="this.src='/images/player-placeholder.png';this.onerror=null;" />
-                    : null}
+                  <img src={playerHeadshot(slotB.playerId)} alt={playerName(slotB.playerId)} width="28" height="28" loading="lazy" decoding="async" onerror="this.src='/images/player-placeholder.png';this.onerror=null;" />
                 </span>
                 <span class="lineup-name">{playerName(slotB.playerId)}</span>
-                <span class="lineup-score">{slotB.points.toFixed(2)}</span>
+                <span class="lineup-score">{formatPoints(slotB.points)}</span>
               </a>
             </>
           );

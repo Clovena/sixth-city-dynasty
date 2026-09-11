@@ -42,6 +42,7 @@ All league data lives in Supabase (schema `scdfl`). Sync scripts fetch from exte
 ```bash
 # Routine syncs — run weekly during the NFL season
 npm run sync              # all routine syncs (results, matchups, rosters, transactions, drafts, exhibitions, stats)
+npm run sync:recent       # same chain, clamped to the most recent season
 npm run sync:results      # win/loss/points per franchise per season
 npm run sync:matchups     # all weekly matchups (regular + playoff + consolation)
 npm run sync:rosters      # current-season roster assignments
@@ -55,6 +56,19 @@ npm run sync:players      # Sleeper player database (~20k+ players, ≤ 1x/day)
 npm run sync:pids         # DynastyProcess player ID crosswalk (ESPN, PFF, etc.)
 npm run sync:player-meta  # sync:players then sync:pids sequentially
 ```
+
+### Scoping a sync to one season
+
+`npm run sync` walks all of league history, re-fetching completed seasons that will never change. Any routine sync can be clamped to a single season:
+
+```bash
+npm run sync:recent                 # whole chain, most recent season only
+SCDFL_SEASON=2023 npm run sync      # whole chain, one specific season
+npm run sync:matchups -- --latest   # one script, most recent season
+npm run sync:matchups -- --year 2023
+```
+
+`sync:rosters` is the exception — it only ever tracks the current season, so it skips (with a message) when scoped to any other year.
 
 See [`scripts/lib/CLAUDE.md`](scripts/lib/CLAUDE.md) for full details on each script, data flow, and debugging.
 

@@ -1,7 +1,6 @@
 # SCDFL Site — Task Board
 
 ## TODO
-1. Transaction log on player pages
 1. Low priority QOL cleanup
     - Season recap brackets on mobile
 1. More content 
@@ -14,11 +13,6 @@
   - Brackets generated on season recap pages
 
 ## Codebase
-- Centralize functions
-  - `effectiveAbbr()`
-  - `toRoman()`
-- Pull data in the same way always
-  - `.schema()` first
 
 ## QA
 
@@ -60,3 +54,9 @@
 - WIDGETS.md
   - Franchise game-by-game line chart
   - Commish tool: trade heat map
+- Centralize functions
+  - `effectiveAbbr()`
+  - `toRoman()`
+- Pull data in the same way always
+  - `.schema()` first
+- Transaction log on player pages

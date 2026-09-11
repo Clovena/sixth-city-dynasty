@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
+import { isPlayablePostseasonGame } from '../../lib/game-utils';
 
 // Season 1 was 2021, so the first class is voted after the Season 6 (2026)
 // campaign closes. Derived rather than hard-coded so the copy stays correct.
@@ -9,10 +10,21 @@ const FIRST_CLASS_SEASON = 6;
 const firstClassYear = SEASON_ONE_YEAR + FIRST_CLASS_SEASON - 1;
 
 const [{ data: seasonRows, error: sErr }, { data: finalRows, error: fErr }] = await Promise.all([
-  supabase.schema('scdfl').from('seasons').select('year').order('year', { ascending: false }).limit(1),
+  supabase
+    .schema('scdfl')
+    .from('seasons')
+    .select('year')
+    .order('year', { ascending: false })
+    .limit(1),
   // A season only counts as finished once its Dynasty Bowl has been played —
   // the `seasons` row exists from the moment the league is created on Sleeper.
-  supabase.schema('scdfl').from('matchups').select('year, score_a, score_b').eq('week', 17).eq('game_type', 1),
+  supabase
+    .schema('scdfl')
+    .from('matchups')
+    .select('year, score_a, score_b')
+    .eq('week', 17)
+    .eq('game_type', 1)
+    .limit(1000),
 ]);
 
 if (sErr) throw new Error(`Seasons query failed: ${sErr.message}`);
@@ -22,7 +34,7 @@ const currentYear = seasonRows?.[0]?.year ?? firstClassYear;
 const currentSeasonNumber = currentYear - SEASON_ONE_YEAR + 1;
 
 const completedYears = (finalRows ?? [])
-  .filter(f => Number(f.score_a ?? 0) > 0 || Number(f.score_b ?? 0) > 0)
+  .filter(f => isPlayablePostseasonGame(1, f.score_a, f.score_b))
   .map(f => f.year as number);
 const lastCompletedYear = completedYears.length ? Math.max(...completedYears) : null;
 const seasonsRemaining = firstClassYear - (lastCompletedYear ?? SEASON_ONE_YEAR - 1);
@@ -217,7 +229,6 @@ const steps = [
   .gallery-caption { font-size: 0.85rem; margin: 1rem 0 0; }
 
   @media (max-width: 768px) {
-    .status-inner { grid-template-columns: 1fr !important; }
     .process-grid { grid-template-columns: 1fr !important; }
     .gallery-grid { grid-template-columns: repeat(2, 1fr) !important; }
   }

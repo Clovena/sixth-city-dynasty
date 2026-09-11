@@ -14,6 +14,7 @@
 
 import type { Root, Paragraph, Node } from 'mdast';
 import { createClient } from '@supabase/supabase-js';
+import { logoPath, primaryColor } from './format';
 
 function extractText(node: Node): string {
   if ('value' in node) return (node as { value: string }).value;
@@ -88,8 +89,8 @@ export function remarkTeamHeaders({ supabaseUrl, supabaseKey }: { supabaseUrl: s
         // ── Matchup header: two teams ──────────────────────────────────
         const teamA = matches[0];
         const teamB = matches[1];
-        const colorA = teamA.colors[0];
-        const colorB = teamB.colors[0];
+        const colorA = primaryColor(teamA.colors);
+        const colorB = primaryColor(teamB.colors);
 
         html = [
           `<div class="team-entry team-entry--matchup" style="`,
@@ -99,7 +100,7 @@ export function remarkTeamHeaders({ supabaseUrl, supabaseKey }: { supabaseUrl: s
           `margin: 2.25rem 0 0.25rem;`,
           `display: flex; align-items: center; gap: 0.75rem;`,
           `">`,
-          `<img src="/images/logos/${teamA.abbr}.png" alt="" width="48" height="48"`,
+          `<img src="${logoPath(teamA.abbr)}" alt="" width="48" height="48"`,
           ` style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />`,
           `<div style="flex: 1; text-align: center;">`,
           `<span style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600;`,
@@ -109,7 +110,7 @@ export function remarkTeamHeaders({ supabaseUrl, supabaseKey }: { supabaseUrl: s
               ` margin: 0.3rem 0 0;">${emText}</span>`
             : '',
           `</div>`,
-          `<img src="/images/logos/${teamB.abbr}.png" alt="" width="48" height="48"`,
+          `<img src="${logoPath(teamB.abbr)}" alt="" width="48" height="48"`,
           ` style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />`,
           `</div>`,
         ].join('');
@@ -117,13 +118,13 @@ export function remarkTeamHeaders({ supabaseUrl, supabaseKey }: { supabaseUrl: s
       } else {
         // ── Single-team header ────────────────────────────────────────
         const { abbr, colors } = matches[0];
-        const color = colors[0];
+        const color = primaryColor(colors);
         const emIndent = '60px';
 
         html = [
           `<div class="team-entry" style="border-left: 3px solid ${color}; padding: 0.65rem 0 0.65rem 1.25rem; margin: 2.25rem 0 0.25rem;">`,
           `<div style="display: flex; align-items: center; gap: 0.75rem;">`,
-          `<img src="/images/logos/${abbr}.png" alt="" width="48" height="48"`,
+          `<img src="${logoPath(abbr)}" alt="" width="48" height="48"`,
           ` style="object-fit: contain; flex-shrink: 0;" onerror="this.style.display='none'" />`,
           `<span style="font-family: var(--font-display); font-size: 1.1rem; font-weight: 600;`,
           ` color: var(--color-text-primary); line-height: 1.2;">${strongText}</span>`,

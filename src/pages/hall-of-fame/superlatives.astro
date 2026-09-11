@@ -1,7 +1,8 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
-import { loadFranchises, franchiseForYear, activeFranchise } from '../../lib/hall-of-fame';
+import { loadFranchises, franchiseForYear, activeFranchise, logoPath } from '../../lib/franchise-identity';
+import { ordinal, playerName as sharedPlayerName, espnHeadshotUrl } from '../../lib/format';
 
 const franchises = await loadFranchises();
 
@@ -59,7 +60,7 @@ const playerById = new Map((playerRows ?? []).map(p => [p.player_id, p]));
 function playerName(id: string | null): string {
   if (!id) return '—';
   const p = playerById.get(id);
-  return p ? `${p.first_name ?? ''} ${p.last_name ?? ''}`.trim() : id;
+  return sharedPlayerName(p?.first_name, p?.last_name, id);
 }
 
 type TeamIdentity = { abbr: string; activeAbbr: string; name: string; owner: string; conf: string };
@@ -101,8 +102,6 @@ type AwardTimeline = {
   code: string;
   name: string;
   winners: Winner[];
-  /** Names/abbrs that appear more than once — flagged in the timeline */
-  repeats: Set<string>;
 };
 
 function buildTimelines(rows: typeof accolades, order: string[]): AwardTimeline[] {
@@ -111,7 +110,7 @@ function buildTimelines(rows: typeof accolades, order: string[]): AwardTimeline[
   for (const row of rows) {
     let timeline = byCode.get(row.award_code);
     if (!timeline) {
-      timeline = { code: row.award_code, name: row.award_desc, winners: [], repeats: new Set() };
+      timeline = { code: row.award_code, name: row.award_desc, winners: [] };
       byCode.set(row.award_code, timeline);
     }
 
@@ -135,15 +134,6 @@ function buildTimelines(rows: typeof accolades, order: string[]): AwardTimeline[
 
   for (const timeline of byCode.values()) {
     timeline.winners.sort((a, b) => b.year - a.year);
-
-    // A repeat winner is the whole point of reading an award as a timeline.
-    const seen = new Map<string, number>();
-    for (const winner of timeline.winners) {
-      const key = winner.player?.id ?? winner.team?.activeAbbr;
-      if (!key) continue;
-      seen.set(key, (seen.get(key) ?? 0) + 1);
-    }
-    for (const [key, count] of seen) if (count > 1) timeline.repeats.add(key);
   }
 
   const rank = (code: string) => {
@@ -160,14 +150,6 @@ const playerTimelines = buildTimelines(playerAccolades, PLAYER_AWARD_ORDER);
 const managerTimelines = buildTimelines(managerAccolades, MANAGER_AWARD_ORDER);
 
 // ── Trade awards — multi-manager by nature, so no single "winner" ─────────
-function ordinal(n: number): string {
-  const suffix = n % 10 === 1 && n % 100 !== 11 ? 'st'
-    : n % 10 === 2 && n % 100 !== 12 ? 'nd'
-    : n % 10 === 3 && n % 100 !== 13 ? 'rd'
-    : 'th';
-  return `${n}${suffix}`;
-}
-
 type TradeSide = { team: TeamIdentity | null; received: string[] };
 
 /** One year's winner of a trade award — the analogue of a `Winner` row. */
@@ -277,15 +259,13 @@ function pct(share: number | null): string | null {
             </div>
             <ol class="timeline">
               {award.winners.map(winner => (
-                <li class={`timeline-row${winner.player && award.repeats.has(winner.player.id) ? ' is-repeat' : ''}`}>
+                <li class="timeline-row">
                   <span class="timeline-year sc-tabular">{winner.year}</span>
                   <span class="timeline-body">
                     {winner.player ? (
                       <Fragment>
                         <img
-                          src={winner.player.espnId
-                            ? `https://a.espncdn.com/i/headshots/nfl/players/full/${winner.player.espnId}.png`
-                            : '/images/player-placeholder.png'}
+                          src={espnHeadshotUrl(winner.player.espnId)}
                           alt=""
                           width="38"
                           height="38"
@@ -328,13 +308,13 @@ function pct(share: number | null): string | null {
             </div>
             <ol class="timeline">
               {award.winners.map(winner => (
-                <li class={`timeline-row${winner.team && award.repeats.has(winner.team.activeAbbr) ? ' is-repeat' : ''}`}>
+                <li class="timeline-row">
                   <span class="timeline-year sc-tabular">{winner.year}</span>
                   <span class="timeline-body">
                     {winner.team ? (
                       <Fragment>
                         <img
-                          src={`/images/logos/${winner.team.abbr}.png`}
+                          src={logoPath(winner.team.abbr)}
                           alt=""
                           width="38"
                           height="38"
@@ -392,7 +372,7 @@ function pct(share: number | null): string | null {
                             {side.team && (
                               <Fragment>
                                 <img
-                                  src={`/images/logos/${side.team.abbr}.png`}
+                                  src={logoPath(side.team.abbr)}
                                   alt=""
                                   width="34"
                                   height="34"
@@ -539,9 +519,6 @@ function pct(share: number | null): string | null {
     border-bottom: 1px solid var(--border-hairline);
   }
   .timeline-row:last-child { border-bottom: none; }
-
-  /* Repeat winners get an ember spine so a dynasty reads at a glance. */
-  .timeline-row.is-repeat { border-left: 3px solid var(--ember-500); padding-left: calc(1.25rem - 3px); }
 
   .timeline-year {
     font-family: var(--font-display);
