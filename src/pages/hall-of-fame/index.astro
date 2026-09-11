@@ -27,10 +27,10 @@ const accolades = accoladeRows ?? [];
 // Each wing carries its own tally, so the index reads as a table of contents
 // with weights rather than five identical tiles.
 const wings = [
-  { name: 'Champions', slug: 'champions', line: 'What we all play for.', locked: false, note: `${podiums.length} seasons decided` },
-  { name: 'Superlatives', slug: 'superlatives', line: 'Awards for the people, by the people.', locked: false, note: `${accolades.length} awards voted` },
-  { name: 'Medals', slug: 'medals', line: 'Players who reached the summit.', locked: false, note: `${medals.length} medals struck` },
-  { name: 'Records', slug: 'records', line: 'The league\'s most unforgettable moments.', locked: false, note: 'Team and player highs' },
+  { name: 'Champions', slug: 'champions', line: 'What we all play for.', locked: false, note: '' },
+  { name: 'Superlatives', slug: 'superlatives', line: 'Awards for the people, by the people.', locked: false, note: '' },
+  { name: 'Medals', slug: 'medals', line: 'Players who reached the summit.', locked: false, note: '' },
+  { name: 'Records', slug: 'records', line: 'The league\'s most unforgettable moments.', locked: false, note: '' },
   { name: 'Hall of Famers', slug: 'inductees', line: 'The legends of Sixth City.', locked: true, note: 'Opens after Season VI' },
 ];
 
@@ -191,7 +191,7 @@ if (newestRecord) {
        one 150px below it reads as a repeated component rather than a motif. -->
   <section class="hof-hero" data-theme="ink">
     <div class="hof-hero-inner">
-      <img src="/brand/emblem_white.svg" width="120" height="120" alt="" class="hof-hero-emblem" />
+      <img src="/brand/emblem_white.svg" width="240" height="240" alt="" class="hof-hero-emblem" />
       <p class="hof-hero-eyebrow">Sixth City Dynasty</p>
       <h1 class="hof-hero-title">HALL OF FAME</h1>
       <p class="hof-hero-lede">
@@ -227,7 +227,6 @@ if (newestRecord) {
       <div class="wrap">
         <div class="almanac-head">
           <h2>Recent Additions</h2>
-          <span class="folio">The newest entry in each wing</span>
         </div>
 
         <div class="recent-index">
@@ -409,7 +408,7 @@ if (newestRecord) {
 
   @media (max-width: 768px) {
     .hof-hero-inner { padding: 2.25rem 1.5rem 2rem; }
-    .hof-hero-emblem { width: 84px; height: 84px; }
+    .hof-hero-emblem { width: 180px; height: 180px; }
 
     .wing-link { grid-template-columns: 2rem minmax(0, 1fr); gap: 0.85rem; }
     .wing-note { grid-column: 2; margin-top: 0.35rem; }
