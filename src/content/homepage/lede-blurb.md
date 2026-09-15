@@ -1,7 +1,7 @@
 ---
-title: "Railfans vs Mounties"
-subtitle: "2026 Inaugural Week"
+title: "Hogs vs Trout"
+subtitle: "Dynasty Bowl IV Rematch"
 status: "active"
 ---
 
-It's a tripleheader of Dynasty Bowl rematches in Week 1, with Choccolocco and Vancouver headlining the slate. Despite their recent woes, this matchup is a chance for each team to turn back the clock and get the season started off right.
+After a dominant Week 1 win, the Hogs (1-0) look to stay on track against their DBIV opponent. Iqaluit (0-1) hopes for a bounce-back performance after being stifled vs Sarnia last week. 
