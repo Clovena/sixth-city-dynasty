@@ -1,7 +1,7 @@
 ---
 title: "Railfans vs Mounties"
 subtitle: "2026 Inaugural Week"
-status: "active"
+status: "final"
 ---
 
-It's a tripleheader of Dynasty Bowl rematches in Week 1, with Choccolocco and Vancouver headlining the slate. Despite their recent woes, this matchup is a chance for each team to turn back the clock and get the season started off right.
+Choccolocco wins two straight vs Vancouver, with Jeanty (35.7) and Lawrence (26.1) powering a 63-point demolition. Vancouver loses their second consecutive season opener and limps to the week's lowest score. 
