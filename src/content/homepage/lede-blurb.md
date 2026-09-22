@@ -1,7 +1,7 @@
 ---
-title: "Hogs vs Trout"
-subtitle: "Dynasty Bowl IV Rematch"
-status: "final"
+title: "Mustangs vs Islanders"
+subtitle: "SCC vs HCC Headliner"
+status: "active"
 ---
 
-After a dominant Week 1 win, the Hogs (1-0) look to stay on track against their DBIV opponent. Iqaluit (0-1) hopes for a bounce-back performance after being stifled vs Sarnia last week. 
+The respective pennant winners of the SCC and HCC, the Thunder Bay Mustangs and the Prince Edward Islanders will clash for the first of two times this season. The Mustangs (0-2) will look to right the ship after two disappointing results, while PEI (1-1) will try to keep things afloat after a rough Week 2 loss.
