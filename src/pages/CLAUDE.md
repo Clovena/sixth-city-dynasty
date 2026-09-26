@@ -109,6 +109,7 @@ The **editorial** register. A `.desk-plate` title, an optional `.desk-bar` "Now 
 - The drop cap is applied via `.writeup-content :global(p:first-of-type)::first-letter`, a screen-only selector — the packer rebuilds the content DOM for print, so it correctly stops matching there
 
 ### `games/[year]/[slug].astro`
+- **On-demand (SSR) route** — `export const prerender = false`, no `getStaticPaths`. The slug is resolved per request (week from the slug prefix → that week's matchups/exhibitions → match on `buildSlug`); see "Rendering Modes" in the root CLAUDE.md. The recap is fetched with `getEntry('recaps', '<year>/<slug>')`, not a full `getCollection` scan, since this now runs on every pageview
 - `.lineup-grid`: 2-col side-by-side roster view collapses to 1 column
 - CSS `order` property resequences grid items so all Team A rows render first, then Team B header (`order: 50`), then all Team B rows (`order: 51`)
 - `.lineup-row-b` gets `flex-direction: row` on mobile (was `row-reverse` on desktop) so element order matches Team A: pos | thumb | name | score
@@ -148,7 +149,7 @@ The **editorial** register. A `.desk-plate` title, an optional `.desk-bar` "Now 
 - The gallery preview is `aria-hidden` and deliberately inert — dashed plaques showing the future grid shape
 
 ### `players/[id].astro`
-- **Only on-demand (SSR) route on the site** — `export const prerender = false`, no `getStaticPaths`. Data is fetched per request, so independent Supabase queries are batched in one `Promise.all` and only the roster→franchise and draft→drafts→drafter chains stay sequential. Adding a serial `await` here costs every visitor, not the build.
+- **On-demand (SSR) route** — `export const prerender = false`, no `getStaticPaths`. Data is fetched per request, so independent Supabase queries are batched in one `Promise.all` and only the roster→franchise and draft→drafts→drafter chains stay sequential. Adding a serial `await` here costs every visitor, not the build.
 - Page wrapper (`player-page-wrap`) constrains to screen width with `overflow-x: hidden` and tighter padding
 - Hero section reduces padding/margin
 - Layout grid (`player-layout-grid`) stacks to single column; sidebar moves below stats

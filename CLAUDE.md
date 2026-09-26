@@ -52,7 +52,7 @@ All sync scripts live in `scripts/lib/` and write directly to Supabase (schema `
 
 ## Routes
 
-Every route is pre-rendered at build time (`output: 'static'`) **except** `/players/[id]`, which is rendered on demand — see "Rendering Modes" below.
+Every route is pre-rendered at build time (`output: 'static'`) **except** `/players/[id]` and `/games/[year]/[slug]`, which are rendered on demand — see "Rendering Modes" below.
 
 | URL | File |
 |-----|------|
@@ -63,7 +63,7 @@ Every route is pre-rendered at build time (`output: 'static'`) **except** `/play
 | `/spotlight-games` | `src/pages/spotlight-games/index.astro` |
 | `/spotlight-games/[slug]` | `src/pages/spotlight-games/[slug].astro` |
 | `/scores` | `src/pages/scores.astro` |
-| `/games/[year]/[slug]` | `src/pages/games/[year]/[slug].astro` |
+| `/games/[year]/[slug]` | `src/pages/games/[year]/[slug].astro` (SSR) |
 | `/content` | `src/pages/content.astro` |
 | `/hall-of-fame` | `src/pages/hall-of-fame/index.astro` |
 | `/hall-of-fame/champions` | `src/pages/hall-of-fame/champions.astro` |
@@ -79,16 +79,20 @@ Every route is pre-rendered at build time (`output: 'static'`) **except** `/play
 
 The site default is `output: 'static'` — `npm run build` emits plain HTML for every route. `astro.config.mjs` also registers `adapter: netlify()`, which exists solely so a route can opt out of pre-rendering.
 
-**`/players/[id]` is the only on-demand route.** Pre-rendering it meant one HTML file per started player, each firing ~8 Supabase queries at build time, which pushed Netlify builds past 15 minutes. It now carries:
+**Two routes render on demand:**
+- **`/players/[id]`** — pre-rendering meant one HTML file per started player, each firing ~8 Supabase queries at build time, which pushed Netlify builds past 15 minutes.
+- **`/games/[year]/[slug]`** — one page per matchup row plus exhibitions (~700 in 2026, growing ~120/season). Converting it cut a local build from ~2:45 to ~30s. There is no params→row mapping from `getStaticPaths` anymore, so the page **resolves the slug itself**: week = the slug's first two digits, then it fetches that `(year, week)`'s matchups and exhibitions and picks the row whose `buildSlug(...)` equals the slug — the same rule the old `getStaticPaths` used, run in reverse. An unmatched or malformed slug redirects to `/scores`. Slugs use the *era* abbr for that year (`2021/01-cgy-toh`, not `-tor`), exactly as before.
+
+Each carries:
 
 ```ts
 export const prerender = false;   // no getStaticPaths — Astro errors if both are present
 ```
 
 Consequences worth remembering:
-- **Queries run per request, not per build.** Independent queries in that page are batched with `Promise.all`; only genuinely dependent lookups (roster → franchise, draft → drafts → drafter) stay chained. Keep it that way — each new serial `await` is latency on every pageview.
+- **Queries run per request, not per build.** Independent queries are batched with `Promise.all`; only genuinely dependent lookups stay chained (players: roster → franchise, draft → drafts → drafter; games: slug lookup → records or exhibition score → player names). Keep it that way — each new serial `await` is latency on every pageview.
 - **Supabase credentials are baked in at build, not read at runtime.** `import.meta.env.SUPABASE_URL` / `SUPABASE_ANON_KEY` are compile-time substitutions — Vite emits them as string literals into the SSR function bundle, so no runtime env var is required on Netlify. The `?? process.env` fallback in `src/lib/supabase.ts` only engages if the var was absent *at build time*. **Consequence: rotating the Supabase anon key requires a redeploy** — changing it in Netlify's environment variables alone leaves the old key compiled into the deployed function.
-- **Build output.** The adapter writes a `.netlify/v1/functions/ssr` bundle (gitignored) alongside `dist/`. The function is registered at `/*` with `preferStatic: true`, so static files always win and only unmatched paths (player pages) invoke it.
+- **Build output.** The adapter writes a `.netlify/v1/functions/ssr` bundle (gitignored) alongside `dist/`. The function is registered at `/*` with `preferStatic: true`, so static files always win and only unmatched paths (player and game pages) invoke it.
 - **A failed query degrades silently.** Supabase errors are ignored throughout the page (`.single()` results are read without checking `error`), so a transient network failure renders a player as "Free Agent" / "Undrafted" rather than erroring. At build time this was a one-off; at request time it can vary between pageviews.
 
 To add another on-demand route: add `export const prerender = false`, delete its `getStaticPaths`, and confirm any data it needs is available from the runtime environment.
@@ -309,7 +313,7 @@ The retained legacy classes (`.data-table`, `.franchise-card`, `.bowl-card`, `.p
 ### Layout chrome
 
 `Layout.astro` renders an **almanac masthead**, not an app header:
-- A nameplate that scrolls away (`.masthead-plate`) flanked by publication data — "Established 2021 / Cleveland, Ohio" and "Volume {N} / Fourteen Clubs". The volume is **derived, not queried** (`toRoman(leagueYear - 2020)`, league year rolling in March) because the masthead also renders on the on-demand `/players/[id]` route, where a DB round-trip would cost every pageview.
+- A nameplate that scrolls away (`.masthead-plate`) flanked by publication data — "Established 2021 / Cleveland, Ohio" and "Volume {N} / Fourteen Clubs". The volume is **derived, not queried** (`toRoman(leagueYear - 2020)`, league year rolling in March) because the masthead also renders on the on-demand `/players/[id]` and `/games/[year]/[slug]` routes, where a DB round-trip would cost every pageview.
 - A sticky **section rail** (`.section-rail`, ~34px tall) set in the display face and ruled rather than boxed, with an ember underline on the active section. Pages that stick their own control bar beneath it (see `/scores`) offset by `top: 34px`.
 - A **colophon** footer — league blurb, index, and a typesetting note — rather than a nav footer.
 
