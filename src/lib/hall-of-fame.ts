@@ -254,6 +254,152 @@ export async function loadMedals(): Promise<MedalRow[]> {
   return (data ?? []) as MedalRow[];
 }
 
+/**
+ * Collapses a player's `fantasy_positions` to the single position a medal is
+ * contested at.
+ *
+ * This mirrors the `pos_coalesce` CASE inside `v_medals` exactly, including the
+ * branch order: a multi-position player is tested for K, then DL, then DB, then
+ * LB. Keep the two in step — if the view's mapping changes, change this too.
+ */
+export function medalPosition(fantasyPositions: string[] | null | undefined): string {
+  const joined = (fantasyPositions ?? []).join(', ');
+  if (['QB', 'RB', 'WR', 'TE'].includes(joined)) return joined;
+  if (joined.includes('K')) return 'K';
+  if (joined.includes('DL')) return 'DL';
+  if (joined.includes('DB')) return 'DB';
+  if (joined.includes('LB')) return 'LB';
+  return 'UNK';
+}
+
+/** A player-franchise pairing's standing in the race for a position's medal. */
+export type PositionLeader = {
+  rank: number;
+  position: string;
+  playerId: string;
+  name: string;
+  espnId: string | null;
+  /** The franchise that started them — `franchises.sleeper_id` */
+  sleeperId: string;
+  fpts: number;
+  gamesStarted: number;
+};
+
+/**
+ * The in-progress medal race: the top `topN` scorers at each position for one
+ * season.
+ *
+ * This is the live-season counterpart to `loadMedals`, which reads the settled
+ * winners out of `v_medals`. The grouping is deliberately the same as that
+ * view's — **by (player, roster), not by player** — so a player started by two
+ * different franchises accrues a separate total under each. That is the rule the
+ * medal itself is awarded on.
+ *
+ * `weeks` must list only the weeks that have actually been scored. Sleeper
+ * writes starter arrays for the whole schedule the moment a league is created,
+ * so an unfiltered read counts fourteen games started for every player in week
+ * two. (`v_medals` gets this for free by joining `nfl_stats`; passing the played
+ * weeks in is cheaper than reaching through the crosswalk.)
+ */
+export async function loadPositionLeaders(
+  year: number,
+  weeks: number[],
+  topN = 5,
+): Promise<PositionLeader[]> {
+  if (weeks.length === 0) return [];
+
+  // One team-week is ~15 starters, so a full 14-week season clears the client's
+  // 1,000-row cap several times over — page through it.
+  const PAGE_SIZE = 1000;
+  const starts: { roster_id: number; player_id: string; points: number | null }[] = [];
+
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .schema('scdfl')
+      .from('v_player_starts')
+      .select('week, roster_id, player_id, points')
+      .eq('year', year)
+      .in('week', weeks)
+      .order('week')
+      .order('roster_id')
+      .order('player_id')
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) throw new Error(`Player starts query failed: ${error.message}`);
+
+    starts.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+
+  if (starts.length === 0) return [];
+
+  // ── Aggregate by player-franchise pairing ────────────────────────────────
+  type Tally = { playerId: string; rosterId: number; fpts: number; gamesStarted: number };
+  const tallies = new Map<string, Tally>();
+
+  for (const start of starts) {
+    if (!start.player_id) continue;
+    const key = `${start.player_id}|${start.roster_id}`;
+    let tally = tallies.get(key);
+    if (!tally) {
+      tally = { playerId: start.player_id, rosterId: start.roster_id, fpts: 0, gamesStarted: 0 };
+      tallies.set(key, tally);
+    }
+    tally.fpts += Number(start.points ?? 0);
+    tally.gamesStarted += 1;
+  }
+
+  const { data: playerRows, error: pErr } = await supabase
+    .schema('scdfl')
+    .from('v_players')
+    .select('player_id, first_name, last_name, fantasy_positions, espn_id')
+    .in('player_id', [...new Set([...tallies.values()].map(t => t.playerId))]);
+
+  if (pErr) throw new Error(`Players query failed: ${pErr.message}`);
+
+  const playerById = new Map((playerRows ?? []).map(p => [p.player_id, p]));
+
+  // ── Rank within each contested position ─────────────────────────────────
+  const byPosition = new Map<string, (Tally & { position: string })[]>();
+
+  for (const tally of tallies.values()) {
+    const player = playerById.get(tally.playerId);
+    const position = medalPosition(player?.fantasy_positions);
+    if (!MEDAL_POSITION_ORDER.includes(position)) continue;
+
+    const bucket = byPosition.get(position);
+    if (bucket) bucket.push({ ...tally, position });
+    else byPosition.set(position, [{ ...tally, position }]);
+  }
+
+  const leaders: PositionLeader[] = [];
+
+  for (const [position, bucket] of byPosition) {
+    bucket
+      // Player id is the final key purely for determinism: ties on points are
+      // real (two pairings can finish level), and without a stable tiebreak the
+      // cutoff row could differ between builds of the same data.
+      .sort((a, b) => b.fpts - a.fpts || a.playerId.localeCompare(b.playerId))
+      .slice(0, topN)
+      .forEach((tally, i) => {
+        const player = playerById.get(tally.playerId);
+        leaders.push({
+          rank: i + 1,
+          position,
+          playerId: tally.playerId,
+          name: playerName(player?.first_name, player?.last_name, tally.playerId),
+          espnId: player?.espn_id ?? null,
+          sleeperId: String(tally.rosterId),
+          // Sum of two-decimal figures — round off the float drift.
+          fpts: Math.round(tally.fpts * 100) / 100,
+          gamesStarted: tally.gamesStarted,
+        });
+      });
+  }
+
+  return leaders;
+}
+
 /* ────────────────────────────────────────────────────────────────────────────
    Single-game record books
    ──────────────────────────────────────────────────────────────────────────── */

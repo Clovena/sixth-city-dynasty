@@ -51,6 +51,23 @@ Reframed as **the archive**: a large `.archive-plate` title, prose at a real mea
 - **`.season-ledger td` overrides `vertical-align` to `middle`.** The shared `.ledger td` uses `baseline`, and a flex container takes its baseline from its first item — here the 24px logo, whose baseline is its bottom edge. That sits well below the text baseline of the neighbouring cells, so baseline alignment drags the champion cell's content visibly upward. Don't revert this to inherit from `.ledger` without re-checking that column
 
 ### `history/[year].astro`
+
+**The page has two registers, switched on `isActiveSeason`.** A completed season is the archival view described below; the season in progress is a live one. The switch is `allRows.every(r => !r.finish)` — a completed season records a placement for every team, an in-progress one has `finish IS NULL` across the board. Don't switch this to `MAX(year)`: `seasons` and `results` rows exist from the moment a Sleeper league is created.
+
+What the active season changes, and nothing else:
+- **"Current Standings"** in place of "Final Standings". The table itself is unchanged apart from **dropping the Finish column** (header and cells), which would otherwise be a live header over fourteen blank cells. Row order still comes from `sortStandings`, which falls through to wins → points for when no team has a `finish`
+- **"Current Playoff Picture"** in place of "Playoff Bracket", seeded by `computePlayoffPicture` from `src/lib/playoff-picture.ts` (see root CLAUDE.md). The derived seeds are **written back onto the `allRows` objects**, so `getBySeed`/`getByConfSeed` and the whole bracket template read them exactly as they read a completed season's manual seeds — that is why the bracket needed almost no changes
+- **Winners are not propagated.** This falls out for free rather than needing a guard: `getMatchupWinner` reads week-15 `game_type = 1` rows, and an active season has none (Sleeper files weeks 15–17 as `game_type = -1` until the bracket is set), so every semifinal slot resolves to null and renders as the existing dashed empty state. The seed-1 bye still shows, because that advancement is structural rather than a result
+- **The bracket renders unlinked.** Projected matchups have no `matchups` row and therefore no `/games/[year]/[slug]` route, so the local `buildSlug` returns null outright when the season is active — one gate covering all seven matchup slots. Do not "fix" that by linking them; they 404
+- **The Dynasty Bowl block reads `TBD`** in place of "defeated", with two `.final-team-open` dashed placeholders keeping the block's silhouette
+- **The subhead** reads "In progress — through Week N" rather than "Won by X over Y", which would render as "Won by  over ". N is the last regular-season week carrying a score, not the live NFL week
+- **A "Medal Race" section** sits between the bracket and the draft board — the top five scorers at each of the eight contested positions, via `loadPositionLeaders`. It reuses the Medals wing's card and timeline shapes deliberately (`.medal-card` / `.timeline`, accent from `MEDAL_POSITION_COLOR`, Offense and Kicker & Defense bands), with a rank column where that page has a year column. Those styles are **copied into this page's scoped block** rather than shared, which is the established per-page pattern here
+- The active season also runs **two extra queries** (regular-season matchups for head-to-head and scored weeks, then the starts aggregation). Both are gated on `isActiveSeason`, so historical pages build exactly as before
+
+Ties at the leaderboard cutoff are real — two player-franchise pairings can finish level, and `loadPositionLeaders` breaks them on player id purely so a static rebuild of unchanged data doesn't shuffle the row.
+
+Everything below describes the archival view and the mobile behaviour, both of which are shared by the two registers:
+
 - Final Standings grid goes vertical (HCC below SCC, each full width)
 - Playoff bracket `bracket-wrap` goes vertical
 - **Playoff bracket interaction**: All matchup elements are clickable links to game recaps. Each matchup wraps in an `<a href="/games/{year}/{slug}">` tag where slug is built using a local `buildSlug(teamA, teamB, week)` that takes `StandingsRow` objects and delegates to the shared `buildSlug(abbrA, abbrB, week)` in `src/lib/game-utils.ts` — see root CLAUDE.md's "Shared Utility Libraries":
