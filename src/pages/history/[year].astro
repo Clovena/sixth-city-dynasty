@@ -3,8 +3,10 @@ import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
 import { getEntry, render } from 'astro:content';
 import { logoPath } from '../../lib/franchise-identity';
-import { toRoman, draftPickLabel, playerName as sharedPlayerName, formatPoints } from '../../lib/format';
+import { toRoman, draftPickLabel, playerName as sharedPlayerName, formatPoints, espnHeadshotUrl } from '../../lib/format';
 import { buildSlug as makeSlug } from '../../lib/game-utils';
+import { computePlayoffPicture, type SeedingGame, type SeedingTeam } from '../../lib/playoff-picture';
+import { loadPositionLeaders, MEDAL_POSITION_ORDER, MEDAL_POSITION_COLOR, type PositionLeader } from '../../lib/hall-of-fame';
 
 // ── Fetch all season years for static paths ────────────────────────────────
 
@@ -176,6 +178,65 @@ for (const r of resultRows) {
   });
 }
 
+// ── Active season ───────────────────────────────────────────────────────────
+// A completed season records a placement for every team; an in-progress one has
+// `finish IS NULL` across the board. That is the switch between the archival
+// view of a season and the live one.
+const isActiveSeason = allRows.length > 0 && allRows.every(r => !r.finish);
+
+/** Last regular-season week with a score on it. 0 before the season starts. */
+let throughWeek = 0;
+let positionLeaders: PositionLeader[] = [];
+
+if (isActiveSeason) {
+  const { data: seasonGames, error: sgErr } = await supabase
+    .schema('scdfl')
+    .from('matchups')
+    .select('week, matchup_id, roster_id_a, roster_id_b, score_a, score_b')
+    .eq('year', yearNum)
+    .eq('game_type', 0)
+    .limit(1000);
+
+  if (sgErr) throw new Error(`Regular season matchups query failed: ${sgErr.message}`);
+
+  // Sleeper writes the whole schedule the day a league is created, so a row only
+  // counts as played once it carries a score.
+  const playedRows = (seasonGames ?? []).filter(
+    m => m.matchup_id && (Number(m.score_a ?? 0) !== 0 || Number(m.score_b ?? 0) !== 0),
+  );
+
+  const playedWeeks = [...new Set(playedRows.map(m => m.week))].sort((a, b) => a - b);
+  throughWeek = playedWeeks.length > 0 ? Math.max(...playedWeeks) : 0;
+
+  const seedingTeams: SeedingTeam[] = allRows.map(r => ({
+    rosterId: r.roster_id,
+    conf: r.conference,
+    wins: Number(r.wins),
+    // `points_for` is a Postgres numeric, which can arrive as a string.
+    pointsFor: Number(r.points_for),
+  }));
+
+  const seedingGames: SeedingGame[] = playedRows.map(m => ({
+    rosterIdA: m.roster_id_a,
+    rosterIdB: m.roster_id_b,
+    scoreA: Number(m.score_a ?? 0),
+    scoreB: Number(m.score_b ?? 0),
+  }));
+
+  // The derived seeds are written back onto the standings rows, so everything
+  // downstream reads them exactly as it reads a completed season's manual seeds.
+  for (const { seed, rosterId } of computePlayoffPicture(
+    seedingTeams,
+    seedingGames,
+    seasonRow.playoff_teams ?? 7,
+  )) {
+    const row = allRows.find(r => r.roster_id === rosterId);
+    if (row) row.seed = seed;
+  }
+
+  positionLeaders = await loadPositionLeaders(yearNum, playedWeeks);
+}
+
 function sortStandings(rows: StandingsRow[]): StandingsRow[] {
   return [...rows].sort((a, b) => {
     if (b.wins !== a.wins) return b.wins - a.wins;
@@ -193,6 +254,16 @@ const hccRows = sortStandings(allRows.filter(r => r.conference === 'HCC'));
 // ── Playoff bracket ─────────────────────────────────────────────────────────
 
 const is8Team = (seasonRow.playoff_teams ?? 7) >= 8;
+
+// The two-conference bracket keys off per-conference seeds, which only exist on
+// a season seeded by hand. The live picture is a single overall 1..N seeding, so
+// an active season always draws the overall-seed shape.
+//
+// The league has run a 7-team field since 2023, which is what that shape holds.
+// If an active season is ever configured for 8, the picture would compute an
+// 8th seed that this bracket has no slot for — the shape needs revisiting then,
+// since the seeding rules above don't define per-conference seeds.
+const conferenceBracket = is8Team && !isActiveSeason;
 
 const playoffTeams = allRows.filter(r => r.seed > 0);
 
@@ -225,7 +296,12 @@ for (const m of (playoffMatchups ?? []).filter(m => m.week === 15)) {
 }
 
 // Build slug for game recap link: [week]-[abbr1]-[abbr2] (alphabetized, lowercased)
+//
+// The active season's bracket is a projection — those games have no rows in
+// `matchups` and therefore no recap route, so it renders unlinked. Returning
+// null here covers all seven matchup slots from one place.
 function buildSlug(teamA: StandingsRow | null | undefined, teamB: StandingsRow | null | undefined, week: number): string | null {
+  if (isActiveSeason) return null;
   if (!teamA || !teamB) return null;
   return makeSlug(teamA.effectiveAbbr, teamB.effectiveAbbr, week);
 }
@@ -250,7 +326,7 @@ let leftBottom: [StandingsRow | null, StandingsRow | null];
 let rightTop:   [StandingsRow | null, StandingsRow | null];
 let rightBottom:[StandingsRow | null, StandingsRow | null];
 
-if (is8Team) {
+if (conferenceBracket) {
   leftTop    = [getByConfSeed('SCC', 1), getByConfSeed('SCC', 4)];
   leftBottom = [getByConfSeed('SCC', 2), getByConfSeed('SCC', 3)];
   rightTop   = [getByConfSeed('HCC', 1), getByConfSeed('HCC', 4)];
@@ -391,6 +467,45 @@ for (const draft of (draftRows ?? [])) {
 // Sort draft boards by draft_id ascending
 draftBoards.sort((a, b) => a.draft_id - b.draft_id);
 
+// ── Medal race (active season only) ─────────────────────────────────────────
+// The live counterpart to the Medals wing: same card-per-position shape, but the
+// rows are this season's top five at the position rather than one row per year.
+
+const OFFENSE_POSITIONS = ['QB', 'RB', 'WR', 'TE'];
+
+const POSITION_NAME: Record<string, string> = {
+  QB: 'Quarterback',
+  RB: 'Running Back',
+  WR: 'Wide Receiver',
+  TE: 'Tight End',
+  K: 'Kicker',
+  DL: 'Defensive Line',
+  LB: 'Linebacker',
+  DB: 'Defensive Back',
+};
+
+const leadersByPosition = new Map<string, PositionLeader[]>();
+for (const leader of positionLeaders) {
+  const bucket = leadersByPosition.get(leader.position);
+  if (bucket) bucket.push(leader);
+  else leadersByPosition.set(leader.position, [leader]);
+}
+for (const bucket of leadersByPosition.values()) bucket.sort((a, b) => a.rank - b.rank);
+
+// Offense on top, kicker and the IDP groups below — mirrors the Medals wing,
+// where the defensive cards read better as their own band.
+const medalRaceSections = [
+  { title: 'Offense', positions: OFFENSE_POSITIONS },
+  { title: 'Kicker & Defense', positions: MEDAL_POSITION_ORDER.filter(p => !OFFENSE_POSITIONS.includes(p)) },
+]
+  .map(section => ({
+    title: section.title,
+    cards: section.positions
+      .map(position => ({ position, leaders: leadersByPosition.get(position) ?? [] }))
+      .filter(card => card.leaders.length > 0),
+  }))
+  .filter(section => section.cards.length > 0);
+
 // ── Season summary markdown ──────────────────────────────────────────────────
 
 const seasonEntry = await getEntry('seasons', year);
@@ -412,12 +527,21 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
     <!-- Page header -->
     <div>
-      <p class="section-label">Season Archive</p>
       <h1 class="page-title">{yearNum} Season</h1>
       <p style="font-size: 0.9rem; color: var(--color-text-muted); margin-top: 0.5rem;">
         {dynastyBowlLabel} &bull;
-        Won by <strong style="color: var(--color-text-primary);">{champion?.effectiveAbbr}</strong>
-        {' '}over <strong style="color: var(--color-text-primary);">{runnerUp?.effectiveAbbr}</strong>
+        {isActiveSeason ? (
+          <span>
+            In progress &mdash; {throughWeek > 0
+              ? <>through Week <strong style="color: var(--color-text-primary);">{throughWeek}</strong></>
+              : 'season not yet under way'}
+          </span>
+        ) : (
+          <span>
+            Won by <strong style="color: var(--color-text-primary);">{champion?.effectiveAbbr}</strong>
+            {' '}over <strong style="color: var(--color-text-primary);">{runnerUp?.effectiveAbbr}</strong>
+          </span>
+        )}
       </p>
     </div>
 
@@ -432,7 +556,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
     <!-- Conference standings -->
     <div class="section-rule">
-      <h2 class="sect-head">Final Standings</h2>
+      <h2 class="sect-head">{isActiveSeason ? 'Current Standings' : 'Final Standings'}</h2>
       <div class="standings-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
 
         <!-- SCC -->
@@ -446,7 +570,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                 <th>L</th>
                 <th>PF</th>
                 <th class="col-hide-mobile">PA</th>
-                <th style="text-align: right;">Finish</th>
+                {!isActiveSeason && <th style="text-align: right;">Finish</th>}
               </tr>
             </thead>
             <tbody>
@@ -466,11 +590,13 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <td style="text-align: left;">{row.losses}</td>
                   <td style="text-align: left; font-size: 0.8rem;">{formatPoints(row.points_for)}</td>
                   <td class="col-hide-mobile" style="text-align: left; font-size: 0.8rem;">{formatPoints(row.points_against)}</td>
-                  <td style="text-align: right;">
-                    <span style={`font-size: 0.75rem; ${row.finish === 'Champion' ? 'color: var(--color-gold); font-weight: 700;' : row.finish === 'Runner-up' ? 'color: var(--color-text-primary);' : row.playoff ? 'color: var(--color-text-secondary);' : 'color: var(--color-text-muted);'}`}>
-                      {row.finish}
-                    </span>
-                  </td>
+                  {!isActiveSeason && (
+                    <td style="text-align: right;">
+                      <span style={`font-size: 0.75rem; ${row.finish === 'Champion' ? 'color: var(--color-gold); font-weight: 700;' : row.finish === 'Runner-up' ? 'color: var(--color-text-primary);' : row.playoff ? 'color: var(--color-text-secondary);' : 'color: var(--color-text-muted);'}`}>
+                        {row.finish}
+                      </span>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -488,7 +614,7 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                 <th>L</th>
                 <th>PF</th>
                 <th class="col-hide-mobile">PA</th>
-                <th style="text-align: right;">Finish</th>
+                {!isActiveSeason && <th style="text-align: right;">Finish</th>}
               </tr>
             </thead>
             <tbody>
@@ -508,11 +634,13 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
                   <td style="text-align: left;">{row.losses}</td>
                   <td style="text-align: left; font-size: 0.8rem;">{formatPoints(row.points_for)}</td>
                   <td class="col-hide-mobile" style="text-align: left; font-size: 0.8rem;">{formatPoints(row.points_against)}</td>
-                  <td style="text-align: right;">
-                    <span style={`font-size: 0.75rem; ${row.finish === 'Champion' ? 'color: var(--color-gold); font-weight: 700;' : row.finish === 'Runner-up' ? 'color: var(--color-text-primary);' : row.playoff ? 'color: var(--color-text-secondary);' : 'color: var(--color-text-muted);'}`}>
-                      {row.finish}
-                    </span>
-                  </td>
+                  {!isActiveSeason && (
+                    <td style="text-align: right;">
+                      <span style={`font-size: 0.75rem; ${row.finish === 'Champion' ? 'color: var(--color-gold); font-weight: 700;' : row.finish === 'Runner-up' ? 'color: var(--color-text-primary);' : row.playoff ? 'color: var(--color-text-secondary);' : 'color: var(--color-text-muted);'}`}>
+                        {row.finish}
+                      </span>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -524,9 +652,11 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
     <!-- Playoff bracket -->
     <div class="section-rule">
-      <h2 class="sect-head">Playoff Bracket</h2>
+      <h2 class="sect-head">{isActiveSeason ? 'Current Playoff Picture' : 'Playoff Bracket'}</h2>
       <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2rem;">
-        Click a matchup for more details →
+        {isActiveSeason
+          ? 'Seeded on the current standings. Ties are broken by head-to-head, then by points scored.'
+          : 'Click a matchup for more details →'}
       </p>
 
       <div class="bracket-wrap">
@@ -541,13 +671,13 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
               const slug = buildSlug(leftTop[0], leftTop[1], 15);
               const matchupContent = (
                 <div class="bracket-matchup">
-                  <div class={`bracket-slot top${!is8Team && leftTop[1] === null ? ' bye-slot' : ''}`}>
+                  <div class={`bracket-slot top${!conferenceBracket && leftTop[1] === null ? ' bye-slot' : ''}`}>
                     {leftTop[0] && (
                       <>
                         <img src={logoPath(leftTop[0].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
                         <span class="slot-seed">{leftTop[0].seed}</span>
                         <span class="slot-name">{leftTop[0].effectiveAbbr}</span>
-                        {!is8Team && leftTop[1] === null && <span class="bye-label">BYE</span>}
+                        {!conferenceBracket && leftTop[1] === null && <span class="bye-label">BYE</span>}
                       </>
                     )}
                   </div>
@@ -641,21 +771,21 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
             const slug = buildSlug(champion, runnerUp, 17);
             const finalContent = (
               <div class="bracket-final-slot">
-                {champion && (
+                {champion ? (
                   <div class="final-team champion-team">
                     <img src={logoPath(champion.effectiveAbbr)} alt="" width="32" height="32" onerror="this.style.display='none'" />
                     <span class="final-seed">{champion.seed}</span>
                     <span class="final-name">{champion.effectiveAbbr}</span>
                   </div>
-                )}
-                <div class="final-defeated">defeated</div>
-                {runnerUp && (
+                ) : <div class="final-team final-team-open"></div>}
+                <div class="final-defeated">{isActiveSeason ? 'TBD' : 'defeated'}</div>
+                {runnerUp ? (
                   <div class="final-team">
                     <img src={logoPath(runnerUp.effectiveAbbr)} alt="" width="32" height="32" onerror="this.style.display='none'" />
                     <span class="final-seed">{runnerUp.seed}</span>
                     <span class="final-name">{runnerUp.effectiveAbbr}</span>
                   </div>
-                )}
+                ) : <div class="final-team final-team-open"></div>}
               </div>
             );
             return slug ? <a href={`/games/${year}/${slug}`} class="bracket-final-link">{finalContent}</a> : finalContent;
@@ -759,6 +889,80 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
         </div><!-- end bracket-right -->
 
       </div><!-- end bracket-wrap -->
+
+      {isActiveSeason && medalRaceSections.length > 0 && (
+        <div class="section-rule medal-race">
+          <h2 class="sect-head">Medal Race</h2>
+          <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2rem;">
+            Top five at each position through Week {throughWeek}, counted only from
+            the weeks a Sixth City franchise actually started them. A player started
+            by two clubs accrues a separate total under each.
+          </p>
+
+          {medalRaceSections.map(section => (
+            <section class="medal-section">
+              <div class="medal-section-head">
+                <h3 class="medal-section-title">{section.title}</h3>
+              </div>
+              <div class="medal-grid">
+                {section.cards.map(card => (
+                  <article
+                    class="medal-card"
+                    style={`--accent: var(--color-${MEDAL_POSITION_COLOR[card.position] ?? 'grey'}-glow);
+                            --accent-surface: var(--color-${MEDAL_POSITION_COLOR[card.position] ?? 'grey'}-surface);`}
+                  >
+                    <div class="medal-card-head">
+                      <span class="pos-chip">{card.position}</span>
+                      <h4 class="medal-position-name">{POSITION_NAME[card.position] ?? card.position}</h4>
+                    </div>
+                    <ol class="timeline">
+                      {card.leaders.map(leader => (
+                        <li class="timeline-row">
+                          <span class="timeline-rank sc-tabular">{leader.rank}</span>
+                          <span class="timeline-body">
+                            <img
+                              src={espnHeadshotUrl(leader.espnId)}
+                              alt=""
+                              width="40"
+                              height="40"
+                              loading="lazy"
+                              decoding="async"
+                              class="headshot"
+                              onerror="this.src='/images/player-placeholder.png';this.onerror=null;"
+                            />
+                            <span class="timeline-names">
+                              <a href={`/players/${leader.playerId}`} class="winner-name">{leader.name}</a>
+                              <span class="winner-meta">
+                                <span class="sc-tabular">{formatPoints(leader.fpts)}</span> pts &bull;
+                                {' '}<span class="sc-tabular">{leader.gamesStarted}</span> starts
+                              </span>
+                            </span>
+                          </span>
+                          <a
+                            href={`/franchises/${getActiveAbbr(leader.sleeperId)}`}
+                            class="timeline-team"
+                            title={`Started by ${getEffectiveAbbr(leader.sleeperId)}`}
+                          >
+                            <img
+                              src={logoPath(getEffectiveAbbr(leader.sleeperId))}
+                              alt={getEffectiveAbbr(leader.sleeperId)}
+                              width="26"
+                              height="26"
+                              loading="lazy"
+                              decoding="async"
+                              onerror="this.style.display='none'"
+                            />
+                          </a>
+                        </li>
+                      ))}
+                    </ol>
+                  </article>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      )}
 
       {yearExhibitions.length > 0 && (
         <div class="section-rule">
@@ -1088,6 +1292,13 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
     color: var(--color-gold);
   }
 
+  /* Placeholder finalist on a bracket that hasn't been decided yet. */
+  .final-team-open {
+    height: 2.5rem;
+    border: 1px dashed var(--color-gold-dim);
+    opacity: 0.5;
+  }
+
   .final-defeated {
     font-size: 0.6rem;
     font-weight: 700;
@@ -1164,6 +1375,141 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
   .winner .team-score {
     color: var(--color-gold);
+  }
+
+  /* ── Medal race ────────────────────
+     Deliberately the same card and timeline shapes as the Medals wing
+     (hall-of-fame/medals.astro), so the live race and the settled record read as
+     one thing. The rank column replaces that page's year column. */
+  .medal-race { margin-top: 2.5rem; }
+
+  .medal-section { margin-top: 2.25rem; }
+
+  .medal-section-head {
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 0.6rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .medal-section-title {
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    margin: 0;
+    color: var(--text-strong);
+  }
+
+  .medal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .medal-card {
+    background-color: var(--surface-card);
+    border: 1px solid var(--border-hairline);
+    border-top: 3px solid var(--accent);
+    box-shadow: var(--shadow-1);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .medal-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1.1rem 1.25rem 0.9rem;
+    background-color: var(--accent-surface);
+    border-bottom: 1px solid var(--border-hairline);
+  }
+
+  .pos-chip {
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 0.3rem 0.5rem;
+    border: 1px solid var(--accent);
+    background-color: var(--surface-card);
+    color: var(--text-strong);
+    border-radius: var(--radius-xs);
+    flex-shrink: 0;
+  }
+
+  .medal-position-name {
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.15;
+    margin: 0;
+    color: var(--text-strong);
+  }
+
+  .timeline { list-style: none; margin: 0; padding: 0; }
+
+  .timeline-row {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding: 0.85rem 1.25rem;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+  .timeline-row:last-child { border-bottom: none; }
+
+  .timeline-rank {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 900;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+    min-width: 1.4rem;
+    text-align: center;
+  }
+
+  .timeline-body {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+    flex: 1;
+  }
+  .timeline-names { min-width: 0; }
+
+  .headshot {
+    object-fit: cover;
+    border-radius: 50%;
+    background-color: var(--surface-sunken);
+    flex-shrink: 0;
+  }
+
+  .timeline-team {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    opacity: 0.85;
+  }
+  .timeline-team:hover { opacity: 1; }
+  .timeline-team img { object-fit: contain; }
+
+  .winner-name {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--text-strong);
+  }
+  .winner-name:hover { color: var(--ember-700); }
+
+  .winner-meta {
+    display: block;
+    font-family: var(--font-body);
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
   }
 
   /* ── Draft board ──────────────────────────────────── */
@@ -1299,6 +1645,10 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
     opacity: 0.25;
   }
 
+  @media (max-width: 900px) {
+    .medal-grid { grid-template-columns: 1fr; }
+  }
+
   /* ── Mobile ──────────────────────────────────────── */
   @media (max-width: 768px) {
     /* Standings: stack SCC above HCC */
@@ -1324,6 +1674,15 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
     .bracket-side {
       flex: none !important;
       width: 100%;
+    }
+
+    /* Medal race: one card per row */
+    .medal-grid {
+      grid-template-columns: 1fr !important;
+    }
+
+    .timeline-row {
+      padding: 0.85rem 1rem;
     }
 
     /* Draft board: hide on mobile */

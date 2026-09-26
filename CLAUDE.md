@@ -210,6 +210,12 @@ This file has **no imports of its own** — that's deliberate, not an oversight.
 
 **Why this exists:** `matchups` rows are created for the entire season the moment a Sleeper league is created, so "latest week with rows" runs *ahead* of the week actually being played. Any page that leads with "the current week" needs the real-world state, not the archive. Used by `index.astro` (which game leads the front page). `scores.astro` still carries its own inline copy of the fetch — converting it is a pending one-line cleanup, not a second intentional implementation.
 
+### `src/lib/playoff-picture.ts` — live playoff seeding
+- `computePlayoffPicture(teams, games, playoffTeams)` — derives the current field, seeded 1..N, from standings plus played games. Pure; the caller supplies `SeedingTeam[]` (roster id, conference, wins, points for) and `SeedingGame[]` (the played regular-season results).
+- **Why it exists:** `results.seed` is set by hand once a bracket is known, so an in-progress season has `seed IS NULL` for all 14 teams and the bracket would render blank. This fills that gap; it is not a second source of truth for a completed season.
+- The rules, in order: each conference's leader is its win leader (ties → head-to-head among *only* the tied same-conference teams → points for); those two leaders take seeds 1–2 (record → head-to-head → points for); the rest are wild cards ranked on win total across both conferences. A tie of three or more is reduced to one representative per conference first, then those are compared — and after a spot is awarded the procedure restarts on whoever is left, the iterative shape the NFL uses.
+- A team that hasn't met anyone in its tie group scores a neutral 0.5 rather than a loss, so early-season groups fall through to points for instead of being ordered by an accident of scheduling.
+
 ### Scope: build-time only
 These are for **frontmatter / build-time use**. A client-side `<script>` can only import them if the script has no `is:inline` attribute (Astro then bundles it through Vite, so a normal `import` resolves) — `scores.astro`'s script qualifies but currently still carries local copies of this logic as a deliberately deferred cleanup. `franchises/[abbr].astro`'s scripts use `is:inline` and cannot import at all, so their local `getIdentity`/`teamRow` duplicates are intentional, not a bug. Don't "fix" either without first resolving the `is:inline` question — that's a separate, riskier piece of work than the frontmatter consolidation.
 
@@ -446,7 +452,7 @@ Five wings hang off a lobby. The lobby's wing grid **is** the sub-navigation —
 | Records | `records` | `matchups` + `v_player_starts` |
 | Hall of Famers | `inductees` | None — placeholder/explainer until after Season 6 (2026) |
 
-Shared loaders live in `src/lib/hall-of-fame.ts` (`loadSeasonPodiums`, `loadRecords`, `loadMedals`, `MEDAL_POSITION_ORDER`/`MEDAL_POSITION_COLOR`). Franchise identity helpers and `buildSlug`/`gameHref` live in `src/lib/franchise-identity.ts` and `src/lib/game-utils.ts` respectively (see "Shared Utility Libraries" above) — `hall-of-fame.ts` imports them rather than redefining them, and pages should do the same. The lobby reuses all of these for its "Recent Additions" module, so put new cross-wing data in `hall-of-fame.ts` rather than in a page.
+Shared loaders live in `src/lib/hall-of-fame.ts` (`loadSeasonPodiums`, `loadRecords`, `loadMedals`, `loadPositionLeaders`, `medalPosition`, `MEDAL_POSITION_ORDER`/`MEDAL_POSITION_COLOR`). Franchise identity helpers and `buildSlug`/`gameHref` live in `src/lib/franchise-identity.ts` and `src/lib/game-utils.ts` respectively (see "Shared Utility Libraries" above) — `hall-of-fame.ts` imports them rather than redefining them, and pages should do the same. The lobby reuses all of these for its "Recent Additions" module, so put new cross-wing data in `hall-of-fame.ts` rather than in a page.
 
 ### Placement is derived, not read from `results.finish`
 
@@ -466,6 +472,10 @@ A season is only "complete" when its Week 17 `game_type = 1` matchup has been pl
 ### Medals are gold-only
 
 `v_medals` emits `row_number() = 1` per position per season across weeks 1–14 — one winner, no silver or bronze. The leaderboard is a career count of those. Defensive positions (DL/LB/DB) only appear from 2022, when IDP slots entered the league. Adding tiers would mean widening the view, not changing the page.
+
+**The medal is awarded to a player-franchise pairing, not to a player.** `v_medals` groups by `(roster_id, player_id, year)`, so a player started by two clubs in one season accrues a separate total under each. `loadPositionLeaders` (the live in-season race on `/history/[year]`) deliberately groups the same way, and `medalPosition()` ports the view's `pos_coalesce` CASE to JS **including its branch order** (K → DL → DB → LB). If the view's mapping ever changes, change that function with it.
+
+**`v_player_starts` is not a record of games played.** Sleeper writes starter arrays for the whole schedule the moment a league is created, so an unplayed week yields a full row set scoring 0. Points are unaffected but `count(*)` is not — an unfiltered read reports fourteen games started for everyone in week two. `v_medals` sidesteps this by joining `nfl_stats`; `loadPositionLeaders` takes the list of scored weeks from its caller instead, which is cheaper than reaching through the `player_ids` crosswalk.
 
 ---
 
@@ -505,7 +515,7 @@ const { data, error } = await supabase
 ```
 `src/` uses single quotes throughout; `scripts/` uses double quotes — each is internally consistent, don't mix within a file.
 
-**Before hand-writing a query, check whether a shared loader already exists:** `loadFranchises()` (all `franchises` rows, all eras) and `loadChampionshipMatchups()` (every played Dynasty Bowl, `.limit(1000)` and postseason-placeholder filtering included) in `src/lib/franchise-identity.ts`/`src/lib/game-utils.ts` cover two of the most commonly repeated queries — see "Shared Utility Libraries" above. `loadSeasonPodiums`/`loadRecords`/`loadMedals` in `src/lib/hall-of-fame.ts` cover the Hall of Fame-specific ones.
+**Before hand-writing a query, check whether a shared loader already exists:** `loadFranchises()` (all `franchises` rows, all eras) and `loadChampionshipMatchups()` (every played Dynasty Bowl, `.limit(1000)` and postseason-placeholder filtering included) in `src/lib/franchise-identity.ts`/`src/lib/game-utils.ts` cover two of the most commonly repeated queries — see "Shared Utility Libraries" above. `loadSeasonPodiums`/`loadRecords`/`loadMedals`/`loadPositionLeaders` in `src/lib/hall-of-fame.ts` cover the Hall of Fame-specific ones.
 
 **Important:** Supabase JS client silently caps results at 1,000 rows. For large tables (`matchups`: ~580, `transactions`: ~5,700, `nfl_stats`: ~95,000), always set an explicit `.limit()` or paginate. Small tables (`franchises`: ~22, `seasons`: ~6) are fine with defaults.
 
