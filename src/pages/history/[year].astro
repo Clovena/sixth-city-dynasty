@@ -893,11 +893,6 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
       {isActiveSeason && medalRaceSections.length > 0 && (
         <div class="section-rule medal-race">
           <h2 class="sect-head">Medal Race</h2>
-          <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2rem;">
-            Top five at each position through Week {throughWeek}, counted only from
-            the weeks a Sixth City franchise actually started them. A player started
-            by two clubs accrues a separate total under each.
-          </p>
 
           {medalRaceSections.map(section => (
             <section class="medal-section">
