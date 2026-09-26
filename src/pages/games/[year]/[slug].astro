@@ -1,5 +1,5 @@
 ---
-import { getCollection, render } from 'astro:content';
+import { getEntry, render } from 'astro:content';
 import Layout from '../../../layouts/Layout.astro';
 import { supabase } from '../../../lib/supabase';
 import { mapStartersToSlots, mapExhibitionStartersToSlots } from '../../../lib/lineup';
@@ -7,69 +7,61 @@ import { franchiseForYear, activeFranchise, logoPath } from '../../../lib/franch
 import { playerName as joinName, espnHeadshotUrl, formatPoints } from '../../../lib/format';
 import { buildSlug } from '../../../lib/game-utils';
 
-// ── Static paths — self-contained, no module-scope variable access ────────────
-export async function getStaticPaths() {
-  const { supabase: sb } = await import('../../../lib/supabase');
+// ── Rendered on demand (SSR) — one serverless render per request instead of
+//    every matchup and exhibition pre-rendered at build time ─────────────────
+export const prerender = false;
 
-  // Fetch all matchups and franchise identities in parallel
-  const [matchupsRes, franchisesRes, exhibitionsRes] = await Promise.all([
-    sb
-      .schema('scdfl')
-      .from('matchups')
-      .select('year, week, roster_id_a, roster_id_b')
-      .limit(1000),
-    sb
-      .schema('scdfl')
-      .from('franchises')
-      .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"'),
-    sb
-      .schema('scdfl')
-      .from('exhibitions')
-      .select('id, year, week, exhib_type, team_a_slug, team_a_display_name, team_a_members, team_b_slug, team_b_display_name, team_b_members'),
-  ]);
-
-  const matchups = matchupsRes.data ?? [];
-  const franchises = franchisesRes.data ?? [];
-  const exhibitions = exhibitionsRes.data ?? [];
-
-  const paths: any[] = [];
-
-  // Regular game paths
-  for (const m of matchups) {
-    const abbrA = franchiseForYear(franchises, String(m.roster_id_a), m.year)?.abbr;
-    const abbrB = franchiseForYear(franchises, String(m.roster_id_b), m.year)?.abbr;
-    if (!abbrA || !abbrB) continue;
-
-    const slug = buildSlug(abbrA, abbrB, m.week);
-
-    paths.push({
-      params: { year: String(m.year), slug },
-      props: { year: m.year, week: m.week, rosterIdA: m.roster_id_a, rosterIdB: m.roster_id_b },
-    });
-  }
-
-  // Exhibition paths
-  for (const ex of exhibitions) {
-    const slug = buildSlug(ex.team_a_slug, ex.team_b_slug, ex.week);
-
-    paths.push({
-      params: { year: String(ex.year), slug },
-      props: {
-        year: ex.year,
-        week: ex.week,
-        isExhibition: true,
-        exhibitionId: ex.id,
-        exhib: ex,
-      },
-    });
-  }
-
-  return paths;
+// ── Resolve the slug to a matchup or exhibition ───────────────────────────────
+// Slugs are `[week]-[a]-[b]` (see buildSlug), so the week is recoverable from the
+// slug itself. Fetch that one week and match on the slug each row would build —
+// the same rule getStaticPaths used, run in reverse.
+const { year: yearParam, slug } = Astro.params;
+const year = Number(yearParam);
+const week = Number(slug?.slice(0, 2));
+if (!Number.isInteger(year) || !Number.isInteger(week) || week < 1) {
+  return Astro.redirect('/scores');
 }
 
-// ── Page component ────────────────────────────────────────────────────────────
-const { year, week, isExhibition, exhibitionId, exhib, rosterIdA, rosterIdB } = Astro.props;
-const { slug } = Astro.params;
+const [{ data: weekMatchups }, { data: allFranchiseRows }, { data: weekExhibitions }] = await Promise.all([
+  supabase
+    .schema('scdfl')
+    .from('matchups')
+    .select('*')
+    .eq('year', year)
+    .eq('week', week)
+    .limit(50),
+  // All eras — the page needs the year's identity for display *and* the
+  // current identity for franchise links
+  supabase
+    .schema('scdfl')
+    .from('franchises')
+    .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"'),
+  supabase
+    .schema('scdfl')
+    .from('exhibitions')
+    .select('id, year, week, exhib_type, team_a_slug, team_a_display_name, team_a_members, team_b_slug, team_b_display_name, team_b_members')
+    .eq('year', year)
+    .eq('week', week),
+]);
+
+const allFranchises = allFranchiseRows ?? [];
+
+const matchup = (weekMatchups ?? []).find((m: any) => {
+  const abbrA = franchiseForYear(allFranchises, String(m.roster_id_a), year)?.abbr;
+  const abbrB = franchiseForYear(allFranchises, String(m.roster_id_b), year)?.abbr;
+  return abbrA && abbrB && buildSlug(abbrA, abbrB, week) === slug;
+}) ?? null;
+const exhib = matchup
+  ? null
+  : (weekExhibitions ?? []).find((ex: any) => buildSlug(ex.team_a_slug, ex.team_b_slug, week) === slug) ?? null;
+
+if (!matchup && !exhib) {
+  return Astro.redirect('/scores');
+}
+
+const isExhibition = !!exhib;
+const rosterIdA: number = matchup?.roster_id_a;
+const rosterIdB: number = matchup?.roster_id_b;
 
 let fA: any, fB: any, effA: any, effB: any, scoreA: number, scoreB: number, aWins: boolean, bWins: boolean;
 let winsA = 0, lossesA = 0, winsB = 0, lossesB = 0;
@@ -77,24 +69,18 @@ let lineupA: any[], lineupB: any[];
 let pageTitle: string;
 let allPlayerIds: string[] = [];
 
-if (isExhibition && exhib) {
+if (exhib) {
   // ── Exhibition game ─────────────────────────────────────────────────────────
-  const [{ data: exhibMatchup }, { data: exhibFranchises }] = await Promise.all([
-    supabase
-      .schema('scdfl')
-      .from('exhibition_matchups')
-      .select('score_a, score_b, starters_a, starter_points_a, starters_b, starter_points_b')
-      .eq('exhibition_id', exhibitionId)
-      .single(),
-    supabase
-      .schema('scdfl')
-      .from('franchises')
-      .select('id, abbr, "to"'),
-  ]);
+  const { data: exhibMatchup } = await supabase
+    .schema('scdfl')
+    .from('exhibition_matchups')
+    .select('score_a, score_b, starters_a, starter_points_a, starters_b, starter_points_b')
+    .eq('exhibition_id', exhib.id)
+    .single();
 
   // Member abbrs are stored as the identity in use at exhibition time — resolve
   // each to the franchise's current abbr so links land on a live franchise page
-  const franchises = exhibFranchises ?? [];
+  const franchises = allFranchises;
   function memberLinks(members: string[]) {
     return (members ?? []).map((abbr: string) => {
       const era = franchises.find((f: any) => f.abbr === abbr);
@@ -138,34 +124,19 @@ if (isExhibition && exhib) {
 } else {
   // ── Regular game ────────────────────────────────────────────────────────────
 
-  // Fetch matchup data, franchise identities, and records in parallel
-  const [matchupRes, franchisesRes, recordsRes] = await Promise.all([
-    supabase
-      .schema('scdfl')
-      .from('matchups')
-      .select('*')
-      .eq('year', year).eq('week', week)
-      .or(`roster_id_a.eq.${rosterIdA},roster_id_b.eq.${rosterIdA}`)
-      .limit(1)
-      .single(),
-    // All eras — the page needs the year's identity for display *and* the
-    // current identity for franchise links
-    supabase
-      .schema('scdfl')
-      .from('franchises')
-      .select('id, sleeper_id, abbr, name, owner, conf, colors, "from", "to"'),
-    supabase
-      .schema('scdfl')
-      .from('matchups')
-      .select('roster_id_a, roster_id_b, score_a, score_b')
-      .eq('year', year).eq('game_type', 0).lte('week', week)
-      .or(`roster_id_a.in.(${rosterIdA},${rosterIdB}),roster_id_b.in.(${rosterIdA},${rosterIdB})`)
-      .limit(500),
-  ]);
+  // Records through this week — the matchup row itself came from the slug lookup
+  const { data: recordsData } = await supabase
+    .schema('scdfl')
+    .from('matchups')
+    .select('roster_id_a, roster_id_b, score_a, score_b')
+    .eq('year', year)
+    .eq('game_type', 0)
+    .lte('week', week)
+    .or(`roster_id_a.in.(${rosterIdA},${rosterIdB}),roster_id_b.in.(${rosterIdA},${rosterIdB})`)
+    .limit(500);
 
-  const matchup = matchupRes.data;
-  const franchises = franchisesRes.data ?? [];
-  const recordRows = recordsRes.data ?? [];
+  const franchises = allFranchises;
+  const recordRows = recordsData ?? [];
 
   // Resolve franchise identity for each team
   const sleeperA = String(rosterIdA);
@@ -252,8 +223,7 @@ function playerName(id: string) { return playerMap.get(id)?.full_name || id; }
 function playerHeadshot(id: string) { return espnHeadshotUrl(playerMap.get(id)?.espn_id); }
 
 // ── Recap ─────────────────────────────────────────────────────────────────────
-const allRecaps = await getCollection('recaps');
-const recap = allRecaps.find(r => r.id === `${year}/${slug}`) ?? null;
+const recap = await getEntry('recaps', `${year}/${slug}`) ?? null;
 let Content: any = null;
 if (recap) {
   const rendered = await render(recap);
