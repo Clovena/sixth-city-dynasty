@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import "dotenv/config";
 import { computePlayoffPicture, type SeedingGame, type SeedingTeam } from "../src/lib/playoff-picture";
 
+// npx tsx scripts/check-playoff-picture.ts <year> <week>
+
 const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_KEY!);
 
 const YEAR = Number(process.argv[2]);

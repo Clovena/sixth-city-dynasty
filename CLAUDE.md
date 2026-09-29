@@ -315,6 +315,7 @@ The retained legacy classes (`.data-table`, `.franchise-card`, `.bowl-card`, `.p
 `Layout.astro` renders an **almanac masthead**, not an app header:
 - A nameplate that scrolls away (`.masthead-plate`) flanked by publication data — "Established 2021 / Cleveland, Ohio" and "Volume {N} / Fourteen Clubs". The volume is **derived, not queried** (`toRoman(leagueYear - 2020)`, league year rolling in March) because the masthead also renders on the on-demand `/players/[id]` and `/games/[year]/[slug]` routes, where a DB round-trip would cost every pageview.
 - A sticky **section rail** (`.section-rail`, ~34px tall) set in the display face and ruled rather than boxed, with an ember underline on the active section. Pages that stick their own control bar beneath it (see `/scores`) offset by `top: 34px`.
+  - The rail opens with a **"{year} Season" link** to `/history/{ACTIVE_SEASON}` (styled like every other rail link). `ACTIVE_SEASON` is a hand-set constant in `Layout.astro` — **bump it each new season**. It's manual because `seasons` rows exist as soon as a Sleeper league is created, so `MAX(year)` can run ahead of the season actually being played. On that page the "History" link isn't highlighted.
 - A **colophon** footer — league blurb, index, and a typesetting note — rather than a nav footer.
 
 The blanket stripe appears exactly twice per page, at the masthead and the colophon. Do not add a third; a second stripe within ~150px of the masthead reads as a repeated component rather than a motif.

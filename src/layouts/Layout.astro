@@ -32,8 +32,18 @@ const navLinks = [
   { href: '/hall-of-fame', label: 'Hall of Fame' },
 ];
 
-const path = Astro.url.pathname;
-const isActive = (href: string) => path === href || path.startsWith(href + '/');
+// The in-progress season is called out on its own at the head of the rail —
+// it deliberately isn't listed on /history, which is the archive of finished
+// seasons. Set by hand each year rather than derived: `seasons` rows exist from
+// the moment a Sleeper league is created, so MAX(year) can run ahead of the
+// season actually being played.
+const ACTIVE_SEASON = 2026;
+const activeSeasonHref = `/history/${ACTIVE_SEASON}`;
+
+const path = Astro.url.pathname.replace(/\/$/, '') || '/';
+const onActiveSeason = path === activeSeasonHref;
+const isActive = (href: string) =>
+  !onActiveSeason && (path === href || path.startsWith(href + '/'));
 ---
 
 <!doctype html>
@@ -94,6 +104,13 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
           >
         </button>
         <ul>
+          <li>
+            <a
+              href={activeSeasonHref}
+              class:list={['rail-link', { 'is-active': onActiveSeason }]}>
+              {ACTIVE_SEASON} Season
+            </a>
+          </li>
           {
             navLinks.map((link) => (
               <li>
@@ -116,7 +133,6 @@ const isActive = (href: string) => path === href || path.startsWith(href + '/');
       <slot />
     </main>
 
-    <!-- Colophon: the back matter of a printed annual, not a nav footer. -->
     <footer class="colophon">
       <div class="sc-stripe colophon-stripe" aria-hidden="true"></div>
       <div class="colophon-inner">
