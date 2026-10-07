@@ -1,7 +1,7 @@
 ---
-title: "2v2 Tag Team Title"
-subtitle: "Wranglers/Stars take on Benders/Blowers"
+title: "Dominion Classic"
+subtitle: "Toronto and Vancouver meet in a clash of Canada's two greatest metropolises"
 status: "active"
 ---
 
-The HCC heavyweights in Winnipeg and Bikini Bottom will look to defend their tag-team crown against the upstart Benders and their partner in Newfoundland.
+The struggling Mounties will look to notch their first win over a hot-and-cold Hogs team bent on seizing control of a wide-open SCC.
