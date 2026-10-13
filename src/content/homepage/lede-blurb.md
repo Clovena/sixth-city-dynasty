@@ -1,7 +1,7 @@
 ---
-title: "Dominion Classic"
-subtitle: "Toronto and Vancouver meet in a clash of Canada's two greatest metropolises"
+title: "Blue-Collar Classic"
+subtitle: "The league's original Bowl Game, rekindled"
 status: "active"
 ---
 
-The struggling Mounties will look to notch their first win over a hot-and-cold Hogs team bent on seizing control of a wide-open SCC.
+The Railfans will look to continue their stretch of dominance this season over the old friends in Iqaluit. The Trout are on a different path in 2026, but a victory over their storied rivals would be no less sweet. 
