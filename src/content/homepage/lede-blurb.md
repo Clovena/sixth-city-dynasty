@@ -1,7 +1,7 @@
 ---
-title: "Blue-Collar Classic"
-subtitle: "The league's original Bowl Game, rekindled"
+title: "Animation Altercation"
+subtitle: "Two HCC hopefuls in a made-for-TV clash"
 status: "active"
 ---
 
-The Railfans will look to continue their stretch of dominance this season over the old friends in Iqaluit. The Trout are on a different path in 2026, but a victory over their storied rivals would be no less sweet. 
+The dominant Benders look to continue their impressive run towards the postseason for the first time in team history, while the SeaSnakes hope to get back on track en route to a second straight playoffs berth
