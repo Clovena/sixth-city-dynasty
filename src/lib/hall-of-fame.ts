@@ -243,15 +243,24 @@ export type MedalRow = {
   fpts: number;
 };
 
-export async function loadMedals(): Promise<MedalRow[]> {
-  const { data, error } = await supabase
-    .schema('scdfl')
-    .from('v_medals')
-    .select('player_id, position, sleeper_id, year, games_started, fpts')
-    .limit(500);
+/**
+ * `v_medals` aggregates every started player-week against `nfl_stats`, which
+ * runs ~0.3s warm but has clocked 7s+ on a cold or busy instance — past the
+ * `anon` role's 3s `statement_timeout`. A timed-out attempt still warms the
+ * buffer cache, so the follow-up usually lands well inside the limit.
+ */
+export async function loadMedals(attempts = 3): Promise<MedalRow[]> {
+  for (let attempt = 1; ; attempt++) {
+    const { data, error } = await supabase
+      .schema('scdfl')
+      .from('v_medals')
+      .select('player_id, position, sleeper_id, year, games_started, fpts')
+      .limit(500);
 
-  if (error) throw new Error(`Medals query failed: ${error.message}`);
-  return (data ?? []) as MedalRow[];
+    if (!error) return (data ?? []) as MedalRow[];
+    if (attempt >= attempts) throw new Error(`Medals query failed: ${error.message}`);
+    await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+  }
 }
 
 /**
