@@ -678,3 +678,9 @@ Short and actionable: "⚠️ EFL Week 11: winners missing in `pickems.manual_ma
 | WPG | Wranglers | 🏇 | `:horse_racing:` |
 
 14. **Emoji placement and message layout follow the original spec** (§7.3 poll payload, §10 templates): each poll answer carries its own team's emoji and nickname/name, and matchup order carries no meaning. There is no mirrored left/right emoji layout in text lines; plain-text lines (header, recap, reminders) may show a team's emoji beside its name, but placement is not significant. Zac's earlier pasted pairings were purely illustrative.
+
+---
+
+## 19. Build footnotes (added during the Nov 2026 build)
+
+1. **Migration-ledger divergence (discovered applying M1, Nov 9 2026).** The remote project's `supabase_migrations.schema_migrations` table holds 28 versions (`20260402180203` … `20260824181808`) from earlier `scdfl` work that was applied outside this repo (dashboard / MCP), and those versions have no corresponding files in `supabase/migrations/`. Consequence: `supabase db push --remote` fails with `DbPushMissingLocalError` and will keep failing until the histories are reconciled. The pick'ems migrations were therefore applied through the Supabase MCP connection (recorded remotely as `pickems_schema` / `pickems_seed`); the files in `supabase/migrations/` are the source of truth and contain exactly the SQL that ran. If CLI pushes are ever wanted, reconcile first — either `supabase db pull --remote` (dumps the whole existing schema into a baseline migration) or `supabase migration repair` per the CLI's suggestion. Until then, treat `db push` errors on this project as expected and pre-existing, not as a pick'ems problem.
