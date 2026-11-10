@@ -559,11 +559,10 @@ URL and the `x-cron-secret` header read from Vault → the Edge Function
 (stateless, `verify_jwt = false`, auth = that header vs. the `CRON_SECRET`
 secret) acquires a one-row lease and executes whatever `pickems.calendar`
 says is due and `pickems.weeks` says isn't done. Nothing runs on any local
-machine. To schedule a new recurring task: add an action to the function's
-`index.ts`, then `cron.schedule` a second job posting that action's body —
-do **not** call external APIs from SQL directly (keeps the bot token in one
-place and every message behind the `dry_run` switch and `runs` log). Pause:
-`select cron.unschedule('pickems-tick');`.
+machine. Pause: `select cron.unschedule('pickems-tick');`. This pipeline
+is the template for every scheduled task, but new tasks do **not** go in
+this function unless they are pick'ems behaviour. See "Scheduled Jobs"
+below.
 
 **Rules that must survive refactors:** every step is safe to run twice
 (timestamps in `pickems.weeks` + upserts + deterministic Discord nonces);
@@ -583,6 +582,54 @@ spec §19.1); apply migrations via MCP/dashboard and keep the SQL files in
 `leagues.channel_id` mid-week (posted polls would be looked up in the wrong
 channel). Unlike the site's supabase-js client, the bot uses postgres.js
 directly — no API keys, no 1,000-row cap.
+
+---
+
+## Scheduled Jobs (pg_cron → Edge Functions)
+
+Everything that runs on a schedule uses the same pipeline: a `pg_cron` job
+POSTs with `pg_net` to a Supabase Edge Function, reading the function URL
+(Vault `project_url`) and a per-function cron secret from Vault. The
+function has `verify_jwt = false` and checks that secret in the
+`x-cron-secret` header itself. Nothing runs on a local machine.
+
+| Function | Concern | Cron job(s) | Secret (function / Vault) | Run log |
+|---|---|---|---|---|
+| `pickems` | Discord pick'ems bot | `pickems-tick` (every 5 min) | `CRON_SECRET` / `pickems_cron_secret` | `pickems.runs` |
+| `sync` | League data refresh + site rebuild | `ops-sync-recent` (midnight ET) | `OPS_CRON_SECRET` / `ops_cron_secret` | `ops.runs`, `ops.run_steps` |
+
+**One function per concern. Reuse the pattern, not an existing function.**
+A new scheduled task gets its own Edge Function, its own cron secret and its
+own run log. Don't add it as an action on a function that does something
+else. Specifically, never build non-bot work on top of `pickems`:
+- **Blast radius.** A bad deploy, crash or CPU-limit kill in one function
+  can't stop another. Data keeps refreshing while the bot is paused, and
+  vice versa.
+- **Separate secrets.** Rotating or leaking one cron secret doesn't touch
+  another function. Function secrets are project-wide env vars, so give
+  each a distinct name (`OPS_CRON_SECRET`, not a reused `CRON_SECRET`).
+- **No inherited state.** `pickems` carries Discord-specific machinery (the
+  run lease, `dry_run`, `pickems.weeks` step tracking) that unrelated work
+  neither needs nor should be gated by.
+- **Separate logs.** Each run log describes one system, so "what happened
+  last night" has one place to look.
+
+Before writing a new function, check whether the task fits an existing one
+**within its concern**. A new data job (e.g. scheduling `sync:player-meta`)
+is a new entry in `JOBS` in `supabase/functions/sync/jobs.ts`. That reuses
+the step chaining (one step per invocation, to stay under the Free plan's
+2 s CPU / 150 s wall-clock caps), the `ops` log and the shared sync modules.
+A new bot behaviour (posting to Discord, grading picks) is an action in
+`pickems/index.ts`. Anything else is a new function, following `sync` as
+the model: its own `supabase/functions/<name>/` with its own `deno.json`, a
+`[functions.<name>]` block in `supabase/config.toml`, a cron secret, and a
+run-log table (in `ops` for operational jobs, or its own schema if it owns
+domain state the way `pickems` does).
+
+Either way, **never call external APIs from SQL directly.** The SQL side
+only ever POSTs to our own function. That keeps credentials in function
+secrets and puts every call in a run log. Operator docs:
+`supabase/functions/pickems/README.md`, `supabase/functions/sync/README.md`.
 
 ---
 

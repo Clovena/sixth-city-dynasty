@@ -1,6 +1,21 @@
 # CLAUDE.md — Supabase Sync Scripts
 
-Data sync pipeline for the SCDFL site. Standalone TypeScript scripts that fetch from the Sleeper API (and other external sources) and upsert directly into Supabase (schema `scdfl`).
+Data sync pipeline for the SCDFL site. TypeScript syncs that fetch from the Sleeper API (and other external sources) and upsert directly into Supabase (schema `scdfl`).
+
+## Where the code lives (read first)
+
+The seven **routine** syncs run in two places, from one implementation:
+
+| Piece | Path | Runtime |
+|---|---|---|
+| Sync logic, one module per sync, plus `scope.ts` / `types.ts` / `mod.ts` (registry) | `supabase/functions/_shared/sync/` | Node **and** Deno |
+| npm entry points (`npm run sync:*`) — 6-line wrappers | `scripts/lib/sync-*.ts` | Node (tsx) |
+| argv / `SCDFL_SEASON` / dotenv / exit code | `scripts/lib/cli.ts` | Node |
+| Nightly job runner (pg_cron, midnight ET) | `supabase/functions/sync/` | Deno (Edge Function) |
+
+**Edit the shared module, not the wrapper.** The shared modules must stay runtime-agnostic: no `dotenv`, `process.*` or `Deno.*`, only `fetch`, `console` and the client passed in via `SyncContext`; import supabase-js as a *type* only; relative imports carry the `.ts` extension (Deno requires it, tsx accepts it). Each exports `syncX(ctx): Promise<SyncResult>` — per-season failures are caught, logged and pushed onto `result.errors` so the rest continue (the CLI still exits 0 for those, as before); anything that stops the whole sync throws. A new routine sync goes in `_shared/sync/`, gets a `SYNCS` entry in `mod.ts` and a wrapper here, and is added to the `sync` chain in `package.json` and, if it should run nightly, to `JOBS` in `supabase/functions/sync/jobs.ts`.
+
+`sync-players.ts` and `sync-pids.ts` have **not** been moved yet — they're still standalone Node scripts. Move them the same way when a scheduled job needs them (note Sleeper's ≤ 1x/day rule for `/players/nfl` and the ~5 MB payload against the Edge Function's 2 s CPU cap).
 
 ---
 
@@ -28,7 +43,7 @@ npm run sync:player-meta  # sync:players then sync:pids sequentially
 
 ---
 
-## Season Scoping (`season-scope.ts`)
+## Season Scoping (`_shared/sync/scope.ts` + `cli.ts`)
 
 Every routine sync defaults to walking all of league history, which re-fetches five completed seasons that will never change again. All seven accept an optional season clamp:
 
@@ -48,7 +63,7 @@ SCDFL_SEASON=2023 npm run sync     # the whole chain, one season
 
 **`sync:rosters` is the exception.** It already targets the current season only, and `rosters` is a snapshot table with no year column that it rebuilds via DELETE-all-then-INSERT. A scope naming any year other than the current season is therefore **skipped with a message** rather than honoured — running it for 2023 would replace the live rosters with a three-year-old snapshot. It accepts the flags purely so it can sit in a scoped chain without erroring.
 
-Usage per script: call `resolveSeasonScope(supabase)` once at the top of `main()`, then pass the fetched row list through `scopeToSeason(rows, scope)`. Any row type with a `year` field works — `seasons`, `drafts`, and `exhibitions` rows all qualify. The `seasons` lookup only fires when `latest` was actually requested.
+The scope is resolved once by the caller — `cli.ts` from argv/env, or the Edge Function from the job definition — via `resolveSeasonScope(supabase, token)`, and handed to the sync as `ctx.scope`. Inside a sync, pass the fetched row list through `scopeToSeason(rows, scope)`. Any row type with a `year` field works — `seasons`, `drafts`, and `exhibitions` rows all qualify. The `seasons` lookup only fires when `latest` was actually requested.
 
 ---
 
@@ -101,11 +116,11 @@ The most complex sync script. For each season:
 
 **Source:** Sleeper `/league/{league_id}/rosters` endpoint (current season only)
 **Target:** `scdfl.rosters`
-**Write strategy:** Full replace (DELETE all → INSERT)
+**Write strategy:** Full replace via the `scdfl.replace_rosters(jsonb)` SQL function — DELETE + INSERT in one transaction, so a failure leaves the previous snapshot intact instead of an empty table
 
 Fetches the most recent season from `scdfl.seasons` (by `MAX(year)`), calls the Sleeper rosters endpoint, and flattens `roster.players[]` into one row per `(player_id, sleeper_id)`.
 
-**Prerequisite:** `scdfl.players` must be populated first (`sync:players`) — FK constraint on `player_id`.
+**Prerequisite:** `scdfl.players` must be populated first (`sync:players`) — FK constraint on `player_id`. Players Sleeper rosters but `scdfl.players` lacks are **skipped** (not inserted) and reported as a warning listing their ids; run `sync:player-meta` to bring them in.
 
 **Note:** This is current-snapshot only. There is no historical roster table. If a page needs historical rosters, that requires a different approach.
 
@@ -242,7 +257,7 @@ These files wrote to local JSON files in `src/data/` and `src/data/raw/`. The ne
 ## Debugging
 
 Common issues:
-- **FK violation on `rosters` insert**: Run `sync:players` first to populate the `players` table
+- **`rosters` warning listing skipped player ids**: Run `sync:players` to populate the `players` table (the FK can no longer empty `rosters` — see above)
 - **FK violation on `player_ids`**: Same — `sync:pids` requires `players` to be populated
 - **Sleeper 429 / rate limit**: Space out calls; `sync:players` especially should be ≤ 1x/day
 - **nflverse "Not found"**: Normal for future seasons — `sync:stats` skips gracefully
