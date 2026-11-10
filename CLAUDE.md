@@ -29,9 +29,11 @@ npm run sync:pids         # sync DynastyProcess player ID crosswalk (ESPN, PFF, 
 npm run sync:player-meta  # run sync:players then sync:pids sequentially
 ```
 
-All sync scripts live in `scripts/lib/` and write directly to Supabase (schema `scdfl`). They use `SUPABASE_SERVICE_KEY` (not the anon key). See `scripts/lib/CLAUDE.md` for full documentation.
+The sync entry points live in `scripts/lib/` and write directly to Supabase (schema `scdfl`). They use `SUPABASE_SERVICE_KEY` (not the anon key). The sync *logic* lives in `supabase/functions/_shared/sync/`, shared with the nightly `sync` Edge Function — see `scripts/lib/CLAUDE.md` for full documentation.
 
-**Season scoping.** By default every routine sync walks all of league history, re-fetching completed seasons that will never change. `scripts/lib/season-scope.ts` lets any routine sync be clamped to one season via `--latest`, `--year YYYY`, or the `SCDFL_SEASON` env var (CLI flags win over the env var). `npm run sync:recent` is just `SCDFL_SEASON=latest npm run sync` — defining it that way rather than as a second `--latest` chain means a sync added to `sync` is covered automatically. See `scripts/lib/CLAUDE.md` for the resolution rules and the `sync:rosters` exception.
+**Season scoping.** By default every routine sync walks all of league history, re-fetching completed seasons that will never change. `scripts/lib/cli.ts` (argv/env parsing) and `supabase/functions/_shared/sync/scope.ts` (resolution) let any routine sync be clamped to one season via `--latest`, `--year YYYY`, or the `SCDFL_SEASON` env var (CLI flags win over the env var). `npm run sync:recent` is just `SCDFL_SEASON=latest npm run sync` — defining it that way rather than as a second `--latest` chain means a sync added to `sync` is covered automatically. See `scripts/lib/CLAUDE.md` for the resolution rules and the `sync:rosters` exception.
+
+**Nightly automation.** `sync:recent` plus a Netlify rebuild runs by itself every night at midnight ET: pg_cron → the `sync` Edge Function (`supabase/functions/sync/`), one step per invocation, logged to `ops.runs` / `ops.run_steps` (`select * from ops.latest_runs;`). Manual `npm run sync*` still works and runs the same code. Setup, operations and adding new jobs: `supabase/functions/sync/README.md`.
 
 ---
 
@@ -525,6 +527,62 @@ const { data, error } = await supabase
 **Important:** Supabase JS client silently caps results at 1,000 rows. For large tables (`matchups`: ~580, `transactions`: ~5,700, `nfl_stats`: ~95,000), always set an explicit `.limit()` or paginate. Small tables (`franchises`: ~22, `seasons`: ~6) are fine with defaults.
 
 **Reserved word quoting:** The `"to"` and `"from"` columns in `franchises` are SQL reserved words. Always quote them in raw SQL. The Supabase JS client handles this automatically when using `.eq('to', null)` etc.
+
+---
+
+## Pick'ems Discord Bot (`supabase/`)
+
+A zero-touch weekly pick'ems system for the DFL, live in the Discord sandbox
+since Nov 10, 2026. Built on branch `pickems`; spec (with its §18 amendments
+overriding earlier sections) at `docs/pickems-bot-spec.md`; deep detail for
+sessions working in it at `supabase/functions/pickems/CLAUDE.md` and
+operator docs at `supabase/functions/pickems/README.md`.
+
+```bash
+cd supabase/functions/pickems && deno test --allow-read   # 32 unit tests, no network
+deno check index.ts                                       # type-check (from that dir)
+npx supabase functions deploy pickems --yes               # deploy (from repo root)
+```
+
+**What it is:** one Supabase Edge Function (Deno, plain-JS-style TS, raw
+`fetch` against Discord REST v10 — no library, no gateway). Every Tuesday it
+posts standings + one native Discord poll per matchup to the league channel;
+Thursday it @mentions only players missing picks; Sunday 1 PM ET it expires
+the polls; the next Tuesday it grades against Sleeper results and posts the
+recap. All bot state lives in the `pickems` Postgres schema (separate
+migrations in `supabase/migrations/`); it reads `scdfl.*` but never writes it.
+
+**The cron pipeline (reusable for future scheduled tasks):** `pg_cron` runs
+*inside* the always-on Postgres server (job `pickems-tick`, every 5 min,
+UTC) → `pg_net` makes an HTTP POST from SQL to the function URL, with the
+URL and the `x-cron-secret` header read from Vault → the Edge Function
+(stateless, `verify_jwt = false`, auth = that header vs. the `CRON_SECRET`
+secret) acquires a one-row lease and executes whatever `pickems.calendar`
+says is due and `pickems.weeks` says isn't done. Nothing runs on any local
+machine. To schedule a new recurring task: add an action to the function's
+`index.ts`, then `cron.schedule` a second job posting that action's body —
+do **not** call external APIs from SQL directly (keeps the bot token in one
+place and every message behind the `dry_run` switch and `runs` log). Pause:
+`select cron.unschedule('pickems-tick');`.
+
+**Rules that must survive refactors:** every step is safe to run twice
+(timestamps in `pickems.weeks` + upserts + deterministic Discord nonces);
+Discord snowflake IDs are `text`, never parsed to `Number`; all times are
+stored UTC, converted from ET once at calendar-seed time; secrets
+(`DISCORD_BOT_TOKEN`, `CRON_SECRET`) live only in Supabase function secrets
+/ Vault / the git-ignored `.env` — never in code, chat, or logs (diagnose
+mismatches by comparing hashes, never values); render/calendar/label/grading
+logic stays pure and under `deno test`. The function directory has its own
+`deno.json` (`nodeModulesDir: "none"`) so Deno ignores this repo's
+package.json — don't delete it.
+
+**Gotchas:** `supabase db push` fails against this project for pre-existing
+reasons (remote migration ledger has 28 versions never saved as repo files —
+spec §19.1); apply migrations via MCP/dashboard and keep the SQL files in
+`supabase/migrations/` authoritative. Never flip `config.dry_run` or
+`leagues.channel_id` mid-week (posted polls would be looked up in the wrong
+channel). Unlike the site's supabase-js client, the bot uses postgres.js
+directly — no API keys, no 1,000-row cap.
 
 ---
 
