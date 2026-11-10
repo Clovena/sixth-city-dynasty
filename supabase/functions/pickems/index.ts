@@ -8,12 +8,13 @@
 // Anything else gets a 401 and does nothing.
 
 import { finishRun, startRun } from './db.ts';
-import { preview, postStandingsNow, rescore, runTick, skipWeek } from './tick.ts';
+import { announce, preview, postStandingsNow, rescore, runTick, skipWeek } from './tick.ts';
 
 type Body = {
-  action?: 'tick' | 'preview' | 'rescore' | 'post-standings' | 'skip';
+  action?: 'tick' | 'preview' | 'rescore' | 'post-standings' | 'skip' | 'announce';
   league?: string;
   week?: number;
+  message?: string;
 };
 
 Deno.serve(async (req) => {
@@ -50,6 +51,9 @@ Deno.serve(async (req) => {
         break;
       case 'skip':
         result = await skipWeek(requireLeague(body), requireWeek(body));
+        break;
+      case 'announce':
+        result = await announce(requireLeague(body), body.message ?? '');
         break;
       default:
         throw new Error(`unknown action ${action}`);

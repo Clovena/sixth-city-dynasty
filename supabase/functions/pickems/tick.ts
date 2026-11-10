@@ -597,6 +597,21 @@ export async function postStandingsNow(leagueKey: string): Promise<Summary> {
   return [{ step: 'post-standings', throughWeek: latest[0]?.week ?? null }];
 }
 
+// One-off plain message to a league's channel, respecting dry_run. Exists so
+// ad-hoc posts (extra cron jobs, smoke tests) still flow through the one
+// funnel — single token home, dry_run switch, runs log — instead of calling
+// Discord from SQL directly.
+export async function announce(leagueKey: string, message: string): Promise<Summary> {
+  if (!message.trim()) throw new Error('missing "message" in body');
+  const league = await getLeague(leagueKey);
+  if (!league) throw new Error(`unknown league ${leagueKey}`);
+  const config = await getConfig();
+  const msg = await postMessage(targetChannel(league, config), {
+    content: message,
+  }) as { id: string };
+  return [{ step: 'announce', messageId: msg.id }];
+}
+
 export async function skipWeek(leagueKey: string, week: number): Promise<Summary> {
   const league = await getLeague(leagueKey);
   if (!league) throw new Error(`unknown league ${leagueKey}`);
