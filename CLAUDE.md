@@ -29,9 +29,11 @@ npm run sync:pids         # sync DynastyProcess player ID crosswalk (ESPN, PFF, 
 npm run sync:player-meta  # run sync:players then sync:pids sequentially
 ```
 
-All sync scripts live in `scripts/lib/` and write directly to Supabase (schema `scdfl`). They use `SUPABASE_SERVICE_KEY` (not the anon key). See `scripts/lib/CLAUDE.md` for full documentation.
+The sync entry points live in `scripts/lib/` and write directly to Supabase (schema `scdfl`). They use `SUPABASE_SERVICE_KEY` (not the anon key). The sync *logic* lives in `supabase/functions/_shared/sync/`, shared with the nightly `sync` Edge Function — see `scripts/lib/CLAUDE.md` for full documentation.
 
-**Season scoping.** By default every routine sync walks all of league history, re-fetching completed seasons that will never change. `scripts/lib/season-scope.ts` lets any routine sync be clamped to one season via `--latest`, `--year YYYY`, or the `SCDFL_SEASON` env var (CLI flags win over the env var). `npm run sync:recent` is just `SCDFL_SEASON=latest npm run sync` — defining it that way rather than as a second `--latest` chain means a sync added to `sync` is covered automatically. See `scripts/lib/CLAUDE.md` for the resolution rules and the `sync:rosters` exception.
+**Season scoping.** By default every routine sync walks all of league history, re-fetching completed seasons that will never change. `scripts/lib/cli.ts` (argv/env parsing) and `supabase/functions/_shared/sync/scope.ts` (resolution) let any routine sync be clamped to one season via `--latest`, `--year YYYY`, or the `SCDFL_SEASON` env var (CLI flags win over the env var). `npm run sync:recent` is just `SCDFL_SEASON=latest npm run sync` — defining it that way rather than as a second `--latest` chain means a sync added to `sync` is covered automatically. See `scripts/lib/CLAUDE.md` for the resolution rules and the `sync:rosters` exception.
+
+**Nightly automation.** `sync:recent` plus a Netlify rebuild runs by itself every night at midnight ET: pg_cron → the `sync` Edge Function (`supabase/functions/sync/`), one step per invocation, logged to `ops.runs` / `ops.run_steps` (`select * from ops.latest_runs;`). Manual `npm run sync*` still works and runs the same code. Setup, operations and adding new jobs: `supabase/functions/sync/README.md`.
 
 ---
 
@@ -52,7 +54,7 @@ All sync scripts live in `scripts/lib/` and write directly to Supabase (schema `
 
 ## Routes
 
-Every route is pre-rendered at build time (`output: 'static'`) **except** `/players/[id]`, which is rendered on demand — see "Rendering Modes" below.
+Every route is pre-rendered at build time (`output: 'static'`) **except** `/players/[id]` and `/games/[year]/[slug]`, which are rendered on demand — see "Rendering Modes" below.
 
 | URL | File |
 |-----|------|
@@ -63,7 +65,7 @@ Every route is pre-rendered at build time (`output: 'static'`) **except** `/play
 | `/spotlight-games` | `src/pages/spotlight-games/index.astro` |
 | `/spotlight-games/[slug]` | `src/pages/spotlight-games/[slug].astro` |
 | `/scores` | `src/pages/scores.astro` |
-| `/games/[year]/[slug]` | `src/pages/games/[year]/[slug].astro` |
+| `/games/[year]/[slug]` | `src/pages/games/[year]/[slug].astro` (SSR) |
 | `/content` | `src/pages/content.astro` |
 | `/hall-of-fame` | `src/pages/hall-of-fame/index.astro` |
 | `/hall-of-fame/champions` | `src/pages/hall-of-fame/champions.astro` |
@@ -79,16 +81,20 @@ Every route is pre-rendered at build time (`output: 'static'`) **except** `/play
 
 The site default is `output: 'static'` — `npm run build` emits plain HTML for every route. `astro.config.mjs` also registers `adapter: netlify()`, which exists solely so a route can opt out of pre-rendering.
 
-**`/players/[id]` is the only on-demand route.** Pre-rendering it meant one HTML file per started player, each firing ~8 Supabase queries at build time, which pushed Netlify builds past 15 minutes. It now carries:
+**Two routes render on demand:**
+- **`/players/[id]`** — pre-rendering meant one HTML file per started player, each firing ~8 Supabase queries at build time, which pushed Netlify builds past 15 minutes.
+- **`/games/[year]/[slug]`** — one page per matchup row plus exhibitions (~700 in 2026, growing ~120/season). Converting it cut a local build from ~2:45 to ~30s. There is no params→row mapping from `getStaticPaths` anymore, so the page **resolves the slug itself**: week = the slug's first two digits, then it fetches that `(year, week)`'s matchups and exhibitions and picks the row whose `buildSlug(...)` equals the slug — the same rule the old `getStaticPaths` used, run in reverse. An unmatched or malformed slug redirects to `/scores`. Slugs use the *era* abbr for that year (`2021/01-cgy-toh`, not `-tor`), exactly as before.
+
+Each carries:
 
 ```ts
 export const prerender = false;   // no getStaticPaths — Astro errors if both are present
 ```
 
 Consequences worth remembering:
-- **Queries run per request, not per build.** Independent queries in that page are batched with `Promise.all`; only genuinely dependent lookups (roster → franchise, draft → drafts → drafter) stay chained. Keep it that way — each new serial `await` is latency on every pageview.
+- **Queries run per request, not per build.** Independent queries are batched with `Promise.all`; only genuinely dependent lookups stay chained (players: roster → franchise, draft → drafts → drafter; games: slug lookup → records or exhibition score → player names). Keep it that way — each new serial `await` is latency on every pageview.
 - **Supabase credentials are baked in at build, not read at runtime.** `import.meta.env.SUPABASE_URL` / `SUPABASE_ANON_KEY` are compile-time substitutions — Vite emits them as string literals into the SSR function bundle, so no runtime env var is required on Netlify. The `?? process.env` fallback in `src/lib/supabase.ts` only engages if the var was absent *at build time*. **Consequence: rotating the Supabase anon key requires a redeploy** — changing it in Netlify's environment variables alone leaves the old key compiled into the deployed function.
-- **Build output.** The adapter writes a `.netlify/v1/functions/ssr` bundle (gitignored) alongside `dist/`. The function is registered at `/*` with `preferStatic: true`, so static files always win and only unmatched paths (player pages) invoke it.
+- **Build output.** The adapter writes a `.netlify/v1/functions/ssr` bundle (gitignored) alongside `dist/`. The function is registered at `/*` with `preferStatic: true`, so static files always win and only unmatched paths (player and game pages) invoke it.
 - **A failed query degrades silently.** Supabase errors are ignored throughout the page (`.single()` results are read without checking `error`), so a transient network failure renders a player as "Free Agent" / "Undrafted" rather than erroring. At build time this was a one-off; at request time it can vary between pageviews.
 
 To add another on-demand route: add `export const prerender = false`, delete its `getStaticPaths`, and confirm any data it needs is available from the runtime environment.
@@ -210,6 +216,12 @@ This file has **no imports of its own** — that's deliberate, not an oversight.
 
 **Why this exists:** `matchups` rows are created for the entire season the moment a Sleeper league is created, so "latest week with rows" runs *ahead* of the week actually being played. Any page that leads with "the current week" needs the real-world state, not the archive. Used by `index.astro` (which game leads the front page). `scores.astro` still carries its own inline copy of the fetch — converting it is a pending one-line cleanup, not a second intentional implementation.
 
+### `src/lib/playoff-picture.ts` — live playoff seeding
+- `computePlayoffPicture(teams, games, playoffTeams)` — derives the current field, seeded 1..N, from standings plus played games. Pure; the caller supplies `SeedingTeam[]` (roster id, conference, wins, points for) and `SeedingGame[]` (the played regular-season results).
+- **Why it exists:** `results.seed` is set by hand once a bracket is known, so an in-progress season has `seed IS NULL` for all 14 teams and the bracket would render blank. This fills that gap; it is not a second source of truth for a completed season.
+- The rules, in order: each conference's leader is its win leader (ties → head-to-head among *only* the tied same-conference teams → points for); those two leaders take seeds 1–2 (record → head-to-head → points for); the rest are wild cards ranked on win total across both conferences. A tie of three or more is reduced to one representative per conference first, then those are compared — and after a spot is awarded the procedure restarts on whoever is left, the iterative shape the NFL uses.
+- A team that hasn't met anyone in its tie group scores a neutral 0.5 rather than a loss, so early-season groups fall through to points for instead of being ordered by an accident of scheduling.
+
 ### Scope: build-time only
 These are for **frontmatter / build-time use**. A client-side `<script>` can only import them if the script has no `is:inline` attribute (Astro then bundles it through Vite, so a normal `import` resolves) — `scores.astro`'s script qualifies but currently still carries local copies of this logic as a deliberately deferred cleanup. `franchises/[abbr].astro`'s scripts use `is:inline` and cannot import at all, so their local `getIdentity`/`teamRow` duplicates are intentional, not a bug. Don't "fix" either without first resolving the `is:inline` question — that's a separate, riskier piece of work than the frontmatter consolidation.
 
@@ -303,8 +315,9 @@ The retained legacy classes (`.data-table`, `.franchise-card`, `.bowl-card`, `.p
 ### Layout chrome
 
 `Layout.astro` renders an **almanac masthead**, not an app header:
-- A nameplate that scrolls away (`.masthead-plate`) flanked by publication data — "Established 2021 / Cleveland, Ohio" and "Volume {N} / Fourteen Clubs". The volume is **derived, not queried** (`toRoman(leagueYear - 2020)`, league year rolling in March) because the masthead also renders on the on-demand `/players/[id]` route, where a DB round-trip would cost every pageview.
+- A nameplate that scrolls away (`.masthead-plate`) flanked by publication data — "Established 2021 / Cleveland, Ohio" and "Volume {N} / Fourteen Clubs". The volume is **derived, not queried** (`toRoman(leagueYear - 2020)`, league year rolling in March) because the masthead also renders on the on-demand `/players/[id]` and `/games/[year]/[slug]` routes, where a DB round-trip would cost every pageview.
 - A sticky **section rail** (`.section-rail`, ~34px tall) set in the display face and ruled rather than boxed, with an ember underline on the active section. Pages that stick their own control bar beneath it (see `/scores`) offset by `top: 34px`.
+  - The rail opens with a **"{year} Season" link** to `/history/{ACTIVE_SEASON}` (styled like every other rail link). `ACTIVE_SEASON` is a hand-set constant in `Layout.astro` — **bump it each new season**. It's manual because `seasons` rows exist as soon as a Sleeper league is created, so `MAX(year)` can run ahead of the season actually being played. On that page the "History" link isn't highlighted.
 - A **colophon** footer — league blurb, index, and a typesetting note — rather than a nav footer.
 
 The blanket stripe appears exactly twice per page, at the masthead and the colophon. Do not add a third; a second stripe within ~150px of the masthead reads as a repeated component rather than a motif.
@@ -446,7 +459,7 @@ Five wings hang off a lobby. The lobby's wing grid **is** the sub-navigation —
 | Records | `records` | `matchups` + `v_player_starts` |
 | Hall of Famers | `inductees` | None — placeholder/explainer until after Season 6 (2026) |
 
-Shared loaders live in `src/lib/hall-of-fame.ts` (`loadSeasonPodiums`, `loadRecords`, `loadMedals`, `MEDAL_POSITION_ORDER`/`MEDAL_POSITION_COLOR`). Franchise identity helpers and `buildSlug`/`gameHref` live in `src/lib/franchise-identity.ts` and `src/lib/game-utils.ts` respectively (see "Shared Utility Libraries" above) — `hall-of-fame.ts` imports them rather than redefining them, and pages should do the same. The lobby reuses all of these for its "Recent Additions" module, so put new cross-wing data in `hall-of-fame.ts` rather than in a page.
+Shared loaders live in `src/lib/hall-of-fame.ts` (`loadSeasonPodiums`, `loadRecords`, `loadMedals`, `loadPositionLeaders`, `medalPosition`, `MEDAL_POSITION_ORDER`/`MEDAL_POSITION_COLOR`). Franchise identity helpers and `buildSlug`/`gameHref` live in `src/lib/franchise-identity.ts` and `src/lib/game-utils.ts` respectively (see "Shared Utility Libraries" above) — `hall-of-fame.ts` imports them rather than redefining them, and pages should do the same. The lobby reuses all of these for its "Recent Additions" module, so put new cross-wing data in `hall-of-fame.ts` rather than in a page.
 
 ### Placement is derived, not read from `results.finish`
 
@@ -466,6 +479,10 @@ A season is only "complete" when its Week 17 `game_type = 1` matchup has been pl
 ### Medals are gold-only
 
 `v_medals` emits `row_number() = 1` per position per season across weeks 1–14 — one winner, no silver or bronze. The leaderboard is a career count of those. Defensive positions (DL/LB/DB) only appear from 2022, when IDP slots entered the league. Adding tiers would mean widening the view, not changing the page.
+
+**The medal is awarded to a player-franchise pairing, not to a player.** `v_medals` groups by `(roster_id, player_id, year)`, so a player started by two clubs in one season accrues a separate total under each. `loadPositionLeaders` (the live in-season race on `/history/[year]`) deliberately groups the same way, and `medalPosition()` ports the view's `pos_coalesce` CASE to JS **including its branch order** (K → DL → DB → LB). If the view's mapping ever changes, change that function with it.
+
+**`v_player_starts` is not a record of games played.** Sleeper writes starter arrays for the whole schedule the moment a league is created, so an unplayed week yields a full row set scoring 0. Points are unaffected but `count(*)` is not — an unfiltered read reports fourteen games started for everyone in week two. `v_medals` sidesteps this by joining `nfl_stats`; `loadPositionLeaders` takes the list of scored weeks from its caller instead, which is cheaper than reaching through the `player_ids` crosswalk.
 
 ---
 
@@ -505,11 +522,114 @@ const { data, error } = await supabase
 ```
 `src/` uses single quotes throughout; `scripts/` uses double quotes — each is internally consistent, don't mix within a file.
 
-**Before hand-writing a query, check whether a shared loader already exists:** `loadFranchises()` (all `franchises` rows, all eras) and `loadChampionshipMatchups()` (every played Dynasty Bowl, `.limit(1000)` and postseason-placeholder filtering included) in `src/lib/franchise-identity.ts`/`src/lib/game-utils.ts` cover two of the most commonly repeated queries — see "Shared Utility Libraries" above. `loadSeasonPodiums`/`loadRecords`/`loadMedals` in `src/lib/hall-of-fame.ts` cover the Hall of Fame-specific ones.
+**Before hand-writing a query, check whether a shared loader already exists:** `loadFranchises()` (all `franchises` rows, all eras) and `loadChampionshipMatchups()` (every played Dynasty Bowl, `.limit(1000)` and postseason-placeholder filtering included) in `src/lib/franchise-identity.ts`/`src/lib/game-utils.ts` cover two of the most commonly repeated queries — see "Shared Utility Libraries" above. `loadSeasonPodiums`/`loadRecords`/`loadMedals`/`loadPositionLeaders` in `src/lib/hall-of-fame.ts` cover the Hall of Fame-specific ones.
 
 **Important:** Supabase JS client silently caps results at 1,000 rows. For large tables (`matchups`: ~580, `transactions`: ~5,700, `nfl_stats`: ~95,000), always set an explicit `.limit()` or paginate. Small tables (`franchises`: ~22, `seasons`: ~6) are fine with defaults.
 
 **Reserved word quoting:** The `"to"` and `"from"` columns in `franchises` are SQL reserved words. Always quote them in raw SQL. The Supabase JS client handles this automatically when using `.eq('to', null)` etc.
+
+---
+
+## Pick'ems Discord Bot (`supabase/`)
+
+A zero-touch weekly pick'ems system for the DFL, live in the Discord sandbox
+since Nov 10, 2026. Built on branch `pickems`; spec (with its §18 amendments
+overriding earlier sections) at `docs/pickems-bot-spec.md`; deep detail for
+sessions working in it at `supabase/functions/pickems/CLAUDE.md` and
+operator docs at `supabase/functions/pickems/README.md`.
+
+```bash
+cd supabase/functions/pickems && deno test --allow-read   # 32 unit tests, no network
+deno check index.ts                                       # type-check (from that dir)
+npx supabase functions deploy pickems --yes               # deploy (from repo root)
+```
+
+**What it is:** one Supabase Edge Function (Deno, plain-JS-style TS, raw
+`fetch` against Discord REST v10 — no library, no gateway). Every Tuesday it
+posts standings + one native Discord poll per matchup to the league channel;
+Thursday it @mentions only players missing picks; Sunday 1 PM ET it expires
+the polls; the next Tuesday it grades against Sleeper results and posts the
+recap. All bot state lives in the `pickems` Postgres schema (separate
+migrations in `supabase/migrations/`); it reads `scdfl.*` but never writes it.
+
+**The cron pipeline (reusable for future scheduled tasks):** `pg_cron` runs
+*inside* the always-on Postgres server (job `pickems-tick`, every 5 min,
+UTC) → `pg_net` makes an HTTP POST from SQL to the function URL, with the
+URL and the `x-cron-secret` header read from Vault → the Edge Function
+(stateless, `verify_jwt = false`, auth = that header vs. the `CRON_SECRET`
+secret) acquires a one-row lease and executes whatever `pickems.calendar`
+says is due and `pickems.weeks` says isn't done. Nothing runs on any local
+machine. Pause: `select cron.unschedule('pickems-tick');`. This pipeline
+is the template for every scheduled task, but new tasks do **not** go in
+this function unless they are pick'ems behaviour. See "Scheduled Jobs"
+below.
+
+**Rules that must survive refactors:** every step is safe to run twice
+(timestamps in `pickems.weeks` + upserts + deterministic Discord nonces);
+Discord snowflake IDs are `text`, never parsed to `Number`; all times are
+stored UTC, converted from ET once at calendar-seed time; secrets
+(`DISCORD_BOT_TOKEN`, `CRON_SECRET`) live only in Supabase function secrets
+/ Vault / the git-ignored `.env` — never in code, chat, or logs (diagnose
+mismatches by comparing hashes, never values); render/calendar/label/grading
+logic stays pure and under `deno test`. The function directory has its own
+`deno.json` (`nodeModulesDir: "none"`) so Deno ignores this repo's
+package.json — don't delete it.
+
+**Gotchas:** `supabase db push` fails against this project for pre-existing
+reasons (remote migration ledger has 28 versions never saved as repo files —
+spec §19.1); apply migrations via MCP/dashboard and keep the SQL files in
+`supabase/migrations/` authoritative. Never flip `config.dry_run` or
+`leagues.channel_id` mid-week (posted polls would be looked up in the wrong
+channel). Unlike the site's supabase-js client, the bot uses postgres.js
+directly — no API keys, no 1,000-row cap.
+
+---
+
+## Scheduled Jobs (pg_cron → Edge Functions)
+
+Everything that runs on a schedule uses the same pipeline: a `pg_cron` job
+POSTs with `pg_net` to a Supabase Edge Function, reading the function URL
+(Vault `project_url`) and a per-function cron secret from Vault. The
+function has `verify_jwt = false` and checks that secret in the
+`x-cron-secret` header itself. Nothing runs on a local machine.
+
+| Function | Concern | Cron job(s) | Secret (function / Vault) | Run log |
+|---|---|---|---|---|
+| `pickems` | Discord pick'ems bot | `pickems-tick` (every 5 min) | `CRON_SECRET` / `pickems_cron_secret` | `pickems.runs` |
+| `sync` | League data refresh + site rebuild | `ops-sync-recent` (midnight ET) | `OPS_CRON_SECRET` / `ops_cron_secret` | `ops.runs`, `ops.run_steps` |
+
+**One function per concern. Reuse the pattern, not an existing function.**
+A new scheduled task gets its own Edge Function, its own cron secret and its
+own run log. Don't add it as an action on a function that does something
+else. Specifically, never build non-bot work on top of `pickems`:
+- **Blast radius.** A bad deploy, crash or CPU-limit kill in one function
+  can't stop another. Data keeps refreshing while the bot is paused, and
+  vice versa.
+- **Separate secrets.** Rotating or leaking one cron secret doesn't touch
+  another function. Function secrets are project-wide env vars, so give
+  each a distinct name (`OPS_CRON_SECRET`, not a reused `CRON_SECRET`).
+- **No inherited state.** `pickems` carries Discord-specific machinery (the
+  run lease, `dry_run`, `pickems.weeks` step tracking) that unrelated work
+  neither needs nor should be gated by.
+- **Separate logs.** Each run log describes one system, so "what happened
+  last night" has one place to look.
+
+Before writing a new function, check whether the task fits an existing one
+**within its concern**. A new data job (e.g. scheduling `sync:player-meta`)
+is a new entry in `JOBS` in `supabase/functions/sync/jobs.ts`. That reuses
+the step chaining (one step per invocation, to stay under the Free plan's
+2 s CPU / 150 s wall-clock caps), the `ops` log and the shared sync modules.
+A new bot behaviour (posting to Discord, grading picks) is an action in
+`pickems/index.ts`. Anything else is a new function, following `sync` as
+the model: its own `supabase/functions/<name>/` with its own `deno.json`, a
+`[functions.<name>]` block in `supabase/config.toml`, a cron secret, and a
+run-log table (in `ops` for operational jobs, or its own schema if it owns
+domain state the way `pickems` does).
+
+Either way, **never call external APIs from SQL directly.** The SQL side
+only ever POSTs to our own function. That keeps credentials in function
+secrets and puts every call in a run log. Operator docs:
+`supabase/functions/pickems/README.md`, `supabase/functions/sync/README.md`.
 
 ---
 

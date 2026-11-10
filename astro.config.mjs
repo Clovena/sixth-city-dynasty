@@ -10,7 +10,7 @@ const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = loadEnv('', process.cwd(), '');
 // https://astro.build/config
 export default defineConfig({
   // Site-wide default stays static; individual routes opt into on-demand
-  // rendering with `export const prerender = false` (see src/pages/players/[id].astro).
+  // rendering with `export const prerender = false` (see src/pages/players/[id].astro, src/pages/games/[year]/[slug].astro).
   output: 'static',
   adapter: netlify(),
   vite: {

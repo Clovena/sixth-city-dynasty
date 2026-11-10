@@ -1,7 +1,7 @@
 ---
-title: "Railfans vs Mounties"
-subtitle: "2026 Inaugural Week"
+title: "Cascade Cup"
+subtitle: "Two HCC heavyweights rekindle the rivalry"
 status: "active"
 ---
 
-It's a tripleheader of Dynasty Bowl rematches in Week 1, with Choccolocco and Vancouver headlining the slate. Despite their recent woes, this matchup is a chance for each team to turn back the clock and get the season started off right.
+The Mustangs woes continue in 2026, but they'll look to right the ship against an old foe in Gold Coast, whose win in Week 7 has them hanging onto playoff hopes by a thread
