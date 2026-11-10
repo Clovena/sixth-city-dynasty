@@ -5,13 +5,13 @@ import { supabase } from '../lib/supabase';
 import {
   loadFranchises,
   franchiseForYear,
+  franchiseByAbbrForYear,
   activeFranchise,
   identityFor,
   logoPath,
   primaryColor,
-  type FranchiseRow,
 } from '../lib/franchise-identity';
-import { loadChampionshipMatchups, gameHref, isPlayablePostseasonGame } from '../lib/game-utils';
+import { loadChampionshipMatchups, buildSlug, gameHref, isPlayablePostseasonGame } from '../lib/game-utils';
 import { toRoman, formatPoints, primaryColorOnInk } from '../lib/format';
 import { loadNflState, activeWeekFor } from '../lib/nfl-state';
 
@@ -21,7 +21,7 @@ import { loadNflState, activeWeekFor } from '../lib/nfl-state';
 // seasons, the bowl-game slate, and the newest piece of writing. Nothing
 // here is decorative — every number on the page is one the league played for.
 // ─────────────────────────────────────────────────────────────────────────────
-const [franchises, champMatchups, seasonsRes, resultsRes, matchupsRes, slateRes, ledeEntries, nflState] =
+const [franchises, champMatchups, seasonsRes, resultsRes, matchupsRes, exhibitionsRes, slateRes, ledeEntries, nflState] =
   await Promise.all([
     loadFranchises(),
     loadChampionshipMatchups(),
@@ -42,6 +42,11 @@ const [franchises, champMatchups, seasonsRes, resultsRes, matchupsRes, slateRes,
       .limit(1000),
     supabase
       .schema('scdfl')
+      .from('exhibitions')
+      .select('year, week, team_a_slug, team_a_display_name, team_a_members, team_b_slug, team_b_display_name, team_b_members, exhibition_matchups(score_a, score_b)')
+      .limit(500),
+    supabase
+      .schema('scdfl')
       .from('spotlight_game_years')
       .select('slug, year, spotlight_games(slug, name, type, team_a, team_b)')
       .limit(500),
@@ -52,11 +57,13 @@ const [franchises, champMatchups, seasonsRes, resultsRes, matchupsRes, slateRes,
 if (seasonsRes.error) throw new Error(`Seasons query failed: ${seasonsRes.error.message}`);
 if (resultsRes.error) throw new Error(`Results query failed: ${resultsRes.error.message}`);
 if (matchupsRes.error) throw new Error(`Matchups query failed: ${matchupsRes.error.message}`);
+if (exhibitionsRes.error) throw new Error(`Exhibitions query failed: ${exhibitionsRes.error.message}`);
 if (slateRes.error) throw new Error(`Spotlight slate query failed: ${slateRes.error.message}`);
 
 const seasons = seasonsRes.data ?? [];
 const results = resultsRes.data ?? [];
 const matchups = matchupsRes.data ?? [];
+const exhibitions = exhibitionsRes.data ?? [];
 
 const currentYear = Math.max(...seasons.map(s => s.year));
 
@@ -92,14 +99,35 @@ const ledeWeek = ledeWeeks.includes(targetWeek)
   ? targetWeek
   : ledeWeeks.filter(w => w <= targetWeek).pop() ?? ledeWeeks[0] ?? targetWeek;
 
-// "First game of the week" is matchup_id order — the order Sleeper posts them.
-const ledeGame = matchups
-  .filter(m => m.year === ledeYear && m.week === ledeWeek && m.matchup_id)
-  .sort((a, b) => a.matchup_id - b.matchup_id)[0] ?? null;
+// An exhibition outranks the regular slate: it is the week's one-off, so when
+// the live week has one it leads the front page. Otherwise "first game of the
+// week" is matchup_id order — the order Sleeper posts them.
+const ledeExhibition = exhibitions.find(e => e.year === ledeYear && e.week === ledeWeek) ?? null;
+const ledeGame = ledeExhibition
+  ? null
+  : matchups
+      .filter(m => m.year === ledeYear && m.week === ledeWeek && m.matchup_id)
+      .sort((a, b) => a.matchup_id - b.matchup_id)[0] ?? null;
+
+// One shape for both kinds of game. A regular side is one club; an exhibition
+// side is a squad of `members` abbrs (two for a tag-team, one for either side
+// of a one-vs-all, where "WORLD" has a logo but no franchise row).
+type LedeSide = {
+  /** Era abbrs, one logo each */
+  crests: string[];
+  /** Short scorebug label */
+  label: string;
+  /** Full name for the credit line */
+  name: string;
+  /** Franchise page, or null for a composite squad */
+  href: string | null;
+  /** Keel colour, already adjusted for the ink slab */
+  keel: string;
+};
 
 type LedeGame = {
-  sideA: FranchiseRow | undefined;
-  sideB: FranchiseRow | undefined;
+  sideA: LedeSide;
+  sideB: LedeSide;
   scoreA: number;
   scoreB: number;
   aWon: boolean;
@@ -107,24 +135,67 @@ type LedeGame = {
   href: string | null;
 };
 
-let lede: LedeGame | null = null;
-if (ledeGame) {
-  const scoreA = ledeGame.score_a ?? 0;
-  const scoreB = ledeGame.score_b ?? 0;
-  lede = {
-    sideA: franchiseForYear(franchises, String(ledeGame.roster_id_a), ledeYear),
-    sideB: franchiseForYear(franchises, String(ledeGame.roster_id_b), ledeYear),
+function clubSide(rosterId: number): LedeSide {
+  const era = franchiseForYear(franchises, String(rosterId), ledeYear);
+  const active = activeFranchise(franchises, String(rosterId));
+  return {
+    crests: era ? [era.abbr] : [],
+    label: era?.abbr ?? '',
+    name: era?.name ?? '',
+    href: active ? `/franchises/${active.abbr}` : null,
+    keel: primaryColorOnInk(era?.colors),
+  };
+}
+
+// Members are stored as the abbr in use at exhibition time. A lone member that
+// resolves to a franchise links to it; a squad has no single page to link to.
+function squadSide(members: string[], displayName: string): LedeSide {
+  const clubs = members.map(abbr => franchiseByAbbrForYear(franchises, abbr, ledeYear));
+  const solo = members.length === 1 && clubs[0] ? activeFranchise(franchises, clubs[0].sleeper_id) : undefined;
+  return {
+    crests: members,
+    label: members.join('/'),
+    name: displayName,
+    href: solo ? `/franchises/${solo.abbr}` : null,
+    keel: primaryColorOnInk(clubs.find(Boolean)?.colors),
+  };
+}
+
+function ledeFrom(sideA: LedeSide, sideB: LedeSide, scoreA: number, scoreB: number, href: string | null): LedeGame {
+  return {
+    sideA,
+    sideB,
     scoreA,
     scoreB,
     aWon: weekIsFinal && scoreA > scoreB,
     bWon: weekIsFinal && scoreB > scoreA,
-    href: gameHref(
+    href,
+  };
+}
+
+let lede: LedeGame | null = null;
+if (ledeExhibition) {
+  const score = ledeExhibition.exhibition_matchups?.[0];
+  lede = ledeFrom(
+    squadSide(ledeExhibition.team_a_members ?? [], ledeExhibition.team_a_display_name),
+    squadSide(ledeExhibition.team_b_members ?? [], ledeExhibition.team_b_display_name),
+    Number(score?.score_a ?? 0),
+    Number(score?.score_b ?? 0),
+    `/games/${ledeYear}/${buildSlug(ledeExhibition.team_a_slug, ledeExhibition.team_b_slug, ledeWeek)}`,
+  );
+} else if (ledeGame) {
+  lede = ledeFrom(
+    clubSide(ledeGame.roster_id_a),
+    clubSide(ledeGame.roster_id_b),
+    ledeGame.score_a ?? 0,
+    ledeGame.score_b ?? 0,
+    gameHref(
       ledeYear,
       ledeWeek,
       identityFor(franchises, ledeGame.roster_id_a, ledeYear),
       identityFor(franchises, ledeGame.roster_id_b, ledeYear),
     ),
-  };
+  );
 }
 
 // ── The slate: latest played week, or the next set of fixtures if none ───────
@@ -374,20 +445,34 @@ const championsRoll = [...champMatchups]
         <a
           href={lede.href ?? '#'}
           class="lede-score"
-          style={`--side-a: ${primaryColorOnInk(lede.sideA?.colors)}; --side-b: ${primaryColorOnInk(lede.sideB?.colors)};`}
+          style={`--side-a: ${lede.sideA.keel}; --side-b: ${lede.sideB.keel};`}
         >
-          <span class="lede-side">
-            <img src={logoPath(lede.sideA?.abbr ?? '')} alt="" width="52" height="52" onerror="this.style.display='none'" />
-            <span class="lede-abbr">{lede.sideA?.abbr}</span>
+          <span
+            class:list={['lede-side', { 'is-squad': lede.sideA.crests.length > 1 }]}
+            style={`--n: ${lede.sideA.crests.length};`}
+          >
+            <span class="lede-crests">
+              {lede.sideA.crests.map(abbr => (
+                <img src={logoPath(abbr)} alt="" width="52" height="52" onerror="this.style.display='none'" />
+              ))}
+            </span>
+            <span class="lede-abbr">{lede.sideA.label}</span>
           </span>
           <span class="lede-figures">
             <span class:list={['lede-num', { win: lede.aWon }]}>{formatPoints(lede.scoreA)}</span>
             <span class="lede-vs">&ndash;</span>
             <span class:list={['lede-num', { win: lede.bWon }]}>{formatPoints(lede.scoreB)}</span>
           </span>
-          <span class="lede-side lede-side-right">
-            <span class="lede-abbr">{lede.sideB?.abbr}</span>
-            <img src={logoPath(lede.sideB?.abbr ?? '')} alt="" width="52" height="52" onerror="this.style.display='none'" />
+          <span
+            class:list={['lede-side lede-side-right', { 'is-squad': lede.sideB.crests.length > 1 }]}
+            style={`--n: ${lede.sideB.crests.length};`}
+          >
+            <span class="lede-abbr">{lede.sideB.label}</span>
+            <span class="lede-crests">
+              {lede.sideB.crests.map(abbr => (
+                <img src={logoPath(abbr)} alt="" width="52" height="52" onerror="this.style.display='none'" />
+              ))}
+            </span>
           </span>
         </a>
       )}
@@ -400,14 +485,12 @@ const championsRoll = [...champMatchups]
 
       {lede && (
         <p class="lede-credit">
-          <a href={`/franchises/${activeFranchise(franchises, String(lede.sideA?.sleeper_id ?? ''))?.abbr ?? lede.sideA?.abbr}`}>
-            {lede.sideA?.name}
-          </a>
-          <span class="issue-dot">&middot;</span>
-          <a href={`/franchises/${activeFranchise(franchises, String(lede.sideB?.sleeper_id ?? ''))?.abbr ?? lede.sideB?.abbr}`}>
-            {lede.sideB?.name}
-          </a>
-          <span class="issue-dot">&middot;</span>
+          {[lede.sideA, lede.sideB].map(side => (
+            <>
+              {side.href ? <a href={side.href}>{side.name}</a> : <span>{side.name}</span>}
+              <span class="issue-dot">&middot;</span>
+            </>
+          ))}
           <a href={lede.href ?? '/scores'}>{weekIsFinal ? 'Full box score' : 'Matchup detail'}</a>
         </p>
       )}
@@ -688,12 +771,42 @@ const championsRoll = [...champMatchups]
     border-left: 4px solid var(--side-a, var(--ember-500));
     border-right: 4px solid var(--side-b, var(--ember-500));
     margin-bottom: 1.5rem;
+    --crest-max: 52px;
   }
   .lede-score:hover { text-decoration: none; background-color: var(--ink-800); }
 
   .lede-side { display: flex; align-items: center; gap: 0.75rem; min-width: 0; }
   .lede-side-right { justify-content: flex-end; }
-  .lede-side img { object-fit: contain; flex-shrink: 0; }
+  .lede-crests { display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
+  .lede-side img {
+    width: var(--crest-max);
+    height: var(--crest-max);
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  /* An exhibition squad carries one crest per member, so the side stacks its
+     crests over the label and splits its own width between them. The side is
+     the size container (a grid track, so its width never depends on the crests),
+     which lets the crests shrink with the column rather than push the figures
+     off-centre. `--n` is the member count, set inline. */
+  .lede-side.is-squad {
+    container-type: inline-size;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+  }
+  /* Label comes first in the DOM on the right (abbr hugs the figures in the
+     single-club row), so the squad column reverses to keep crests on top. */
+  .lede-side-right.is-squad { flex-direction: column-reverse; align-items: flex-end; }
+  .is-squad .lede-crests { flex-wrap: wrap; flex-shrink: 1; max-width: 100%; }
+  .lede-side-right.is-squad .lede-crests { justify-content: flex-end; }
+  .lede-side.is-squad img {
+    width: min(var(--crest-max), calc((100cqi - (var(--n) - 1) * 0.3rem) / var(--n)));
+    height: auto;
+    aspect-ratio: 1;
+  }
+  .is-squad .lede-abbr { font-size: 1.15rem; overflow-wrap: anywhere; line-height: 1.05; }
 
   .lede-abbr {
     font-family: var(--font-display);
@@ -964,16 +1077,20 @@ const championsRoll = [...champMatchups]
     /* Full width is wasted on a stacked scoreline, so the games run two-up. */
     .score-rail { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1.75rem; }
     .lede-score { gap: 0.6rem; padding: 0.85rem 1rem; }
+    .lede-score { --crest-max: 38px; }
     .lede-abbr { font-size: 1.15rem; }
-    .lede-side img { width: 38px; height: 38px; }
+    .is-squad .lede-abbr { font-size: 1rem; }
     .col-drop { display: none; }
   }
 
   @media (max-width: 520px) {
     .record-row { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
     .score-rail { grid-template-columns: 1fr; }
-    .lede-side img { width: 32px; height: 32px; }
     .lede-abbr { font-size: 1rem; }
-    .lede-score { gap: 0.4rem; padding: 0.75rem 0.6rem; }
+    .is-squad .lede-abbr { font-size: 0.9rem; }
+    .lede-score { gap: 0.4rem; padding: 0.75rem 0.6rem; --crest-max: 32px; }
+    /* Tag-team totals run to three figures before the point; give the squads
+       a little more of the row. */
+    .lede-score:has(.is-squad) .lede-num { font-size: 1.1rem; }
   }
 </style>

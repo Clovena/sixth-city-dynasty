@@ -1,7 +1,7 @@
 ---
-title: "Hogs vs Trout"
-subtitle: "Dynasty Bowl IV Rematch"
+title: "Cascade Cup"
+subtitle: "Two HCC heavyweights rekindle the rivalry"
 status: "active"
 ---
 
-After a dominant Week 1 win, the Hogs (1-0) look to stay on track against their DBIV opponent. Iqaluit (0-1) hopes for a bounce-back performance after being stifled vs Sarnia last week. 
+The Mustangs woes continue in 2026, but they'll look to right the ship against an old foe in Gold Coast, whose win in Week 7 has them hanging onto playoff hopes by a thread
