@@ -1,0 +1,145 @@
+---
+import { logoPath } from '../lib/format';
+import type { BracketMatchup, BracketTeam } from '../lib/playoff-bracket';
+
+/**
+ * One matchup in `PlayoffBracket` — two stacked team slots, or one for a bye.
+ *
+ * Every filled slot carries `data-seed` and the `.slot-logo` / `.slot-seed` /
+ * `.slot-name` children, so `/sim` can re-seat teams in place as the seeding
+ * changes. Keep that contract if the markup changes.
+ */
+interface Props {
+  matchup: BracketMatchup;
+  semi?: boolean;
+}
+
+const { matchup, semi = false } = Astro.props;
+const slots: { team: BracketTeam | null; pos: 'top' | 'bottom' }[] = matchup.bye
+  ? [{ team: matchup.top, pos: 'top' }]
+  : [{ team: matchup.top, pos: 'top' }, { team: matchup.bottom, pos: 'bottom' }];
+const Wrapper = matchup.href ? 'a' : 'div';
+---
+
+<Wrapper href={matchup.href ?? undefined} class:list={['bracket-matchup', { 'bracket-matchup-link': matchup.href }]}>
+  {slots.map(({ team, pos }, i) => (
+    <>
+      {i > 0 && <div class="bracket-connector-v"></div>}
+      <div
+        class:list={['bracket-slot', pos, { 'semi-slot': semi, 'bye-slot': matchup.bye }]}
+        data-seed={team?.seed}
+      >
+        {team && (
+          <>
+            <img class="slot-logo" src={logoPath(team.abbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
+            <span class="slot-seed">{team.seed}</span>
+            <span class="slot-name">{team.abbr}</span>
+          </>
+        )}
+        {matchup.bye && <span class="bye-label">BYE</span>}
+      </div>
+    </>
+  ))}
+</Wrapper>
+
+<style>
+  .bracket-matchup {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    position: relative;
+  }
+
+  .bracket-matchup-link {
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  /* Connector line between two slots in a matchup */
+  .bracket-connector-v {
+    width: 100%;
+    height: 2px;
+    background-color: var(--color-border);
+    margin: 0;
+    position: relative;
+  }
+
+  /* Vertical bar on the right side for left-bracket slots */
+  .bracket-connector-v::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: -1.25rem;
+    border-right: 2px solid var(--color-border);
+    height: 2.5rem;
+  }
+
+  /* Vertical bar on the left side for right-bracket slots */
+  :global(.bracket-right) .bracket-connector-v::after {
+    left: -1px;
+    right: auto;
+    border-right: none;
+    border-left: 2px solid var(--color-border);
+  }
+
+  .bracket-slot {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.6rem;
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-border);
+    min-width: 110px;
+    height: 2.5rem;
+    font-size: 0.8rem;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+  }
+
+  :global(.bracket-right) .bracket-slot {
+    flex-direction: row-reverse;
+    text-align: right;
+  }
+
+  .bracket-slot img {
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .slot-seed {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    min-width: 14px;
+    text-align: center;
+  }
+
+  .slot-name {
+    font-family: var(--font-body);
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  /* Semi-round slots have a solid border when populated, dashed when empty */
+  .semi-slot {
+    min-width: 90px;
+  }
+
+  .semi-slot:not(:has(img)) {
+    background-color: color-mix(in srgb, var(--color-surface) 60%, transparent);
+    border-style: dashed;
+    color: var(--color-text-muted);
+  }
+
+  .bye-slot {
+    border-color: var(--color-gold-dim);
+  }
+
+  .bye-label {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--color-gold-dim);
+    margin-left: auto;
+  }
+</style>

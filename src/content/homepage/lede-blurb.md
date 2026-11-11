@@ -1,7 +1,5 @@
 ---
-title: "Cascade Cup"
-subtitle: "Two HCC heavyweights rekindle the rivalry"
+# Where this week stands: scheduled | active | final.
+# Only "final" turns the homepage rail's winning scores gold.
 status: "active"
 ---
-
-The Mustangs woes continue in 2026, but they'll look to right the ship against an old foe in Gold Coast, whose win in Week 7 has them hanging onto playoff hopes by a thread

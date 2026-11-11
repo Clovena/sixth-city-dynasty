@@ -2,10 +2,11 @@
 import Layout from '../../layouts/Layout.astro';
 import { supabase } from '../../lib/supabase';
 import { getEntry, render } from 'astro:content';
-import { logoPath } from '../../lib/franchise-identity';
+import { logoPath, loadFranchises } from '../../lib/franchise-identity';
 import { toRoman, draftPickLabel, playerName as sharedPlayerName, formatPoints, espnHeadshotUrl } from '../../lib/format';
 import { buildSlug as makeSlug } from '../../lib/game-utils';
-import { computePlayoffPicture, type SeedingGame, type SeedingTeam } from '../../lib/playoff-picture';
+import { loadSeasonPicture } from '../../lib/season-picture';
+import PlayoffBracket from '../../components/PlayoffBracket.astro';
 import { loadPositionLeaders, MEDAL_POSITION_ORDER, MEDAL_POSITION_COLOR, type PositionLeader } from '../../lib/hall-of-fame';
 
 // ── Fetch all season years for static paths ────────────────────────────────
@@ -21,17 +22,6 @@ export async function getStaticPaths() {
 
 const { year } = Astro.params;
 const yearNum = parseInt(year);
-
-// ── Fetch season data ──────────────────────────────────────────────────────
-
-const { data: seasonRow, error: sErr } = await supabase
-  .schema('scdfl')
-  .from('seasons')
-  .select('year, scc_champion, hcc_champion, playoff_teams')
-  .eq('year', yearNum)
-  .single();
-
-if (sErr) throw new Error(`Season query failed: ${sErr.message}`);
 
 // ── Fetch franchise identities for this year ───────────────────────────────
 
@@ -184,57 +174,17 @@ for (const r of resultRows) {
 // view of a season and the live one.
 const isActiveSeason = allRows.length > 0 && allRows.every(r => !r.finish);
 
-/** Last regular-season week with a score on it. 0 before the season starts. */
-let throughWeek = 0;
+// Seeds, bracket and how far the season has run, shared with the homepage and
+// /sim so the three can't disagree.
+const picture = await loadSeasonPicture(yearNum, await loadFranchises());
+
+/** Last regular-season week Sleeper has finalized. 0 before the season starts. */
+const throughWeek = picture.lockedThrough;
 let positionLeaders: PositionLeader[] = [];
 
 if (isActiveSeason) {
-  const { data: seasonGames, error: sgErr } = await supabase
-    .schema('scdfl')
-    .from('matchups')
-    .select('week, matchup_id, roster_id_a, roster_id_b, score_a, score_b')
-    .eq('year', yearNum)
-    .eq('game_type', 0)
-    .limit(1000);
-
-  if (sgErr) throw new Error(`Regular season matchups query failed: ${sgErr.message}`);
-
-  // Sleeper writes the whole schedule the day a league is created, so a row only
-  // counts as played once it carries a score.
-  const playedRows = (seasonGames ?? []).filter(
-    m => m.matchup_id && (Number(m.score_a ?? 0) !== 0 || Number(m.score_b ?? 0) !== 0),
-  );
-
-  const playedWeeks = [...new Set(playedRows.map(m => m.week))].sort((a, b) => a - b);
-  throughWeek = playedWeeks.length > 0 ? Math.max(...playedWeeks) : 0;
-
-  const seedingTeams: SeedingTeam[] = allRows.map(r => ({
-    rosterId: r.roster_id,
-    conf: r.conference,
-    wins: Number(r.wins),
-    // `points_for` is a Postgres numeric, which can arrive as a string.
-    pointsFor: Number(r.points_for),
-  }));
-
-  const seedingGames: SeedingGame[] = playedRows.map(m => ({
-    rosterIdA: m.roster_id_a,
-    rosterIdB: m.roster_id_b,
-    scoreA: Number(m.score_a ?? 0),
-    scoreB: Number(m.score_b ?? 0),
-  }));
-
-  // The derived seeds are written back onto the standings rows, so everything
-  // downstream reads them exactly as it reads a completed season's manual seeds.
-  for (const { seed, rosterId } of computePlayoffPicture(
-    seedingTeams,
-    seedingGames,
-    seasonRow.playoff_teams ?? 7,
-  )) {
-    const row = allRows.find(r => r.roster_id === rosterId);
-    if (row) row.seed = seed;
-  }
-
-  positionLeaders = await loadPositionLeaders(yearNum, playedWeeks);
+  const finalizedWeeks = Array.from({ length: throughWeek }, (_, i) => i + 1);
+  positionLeaders = await loadPositionLeaders(yearNum, finalizedWeeks);
 }
 
 function sortStandings(rows: StandingsRow[]): StandingsRow[] {
@@ -252,109 +202,10 @@ const sccRows = sortStandings(allRows.filter(r => r.conference === 'SCC'));
 const hccRows = sortStandings(allRows.filter(r => r.conference === 'HCC'));
 
 // ── Playoff bracket ─────────────────────────────────────────────────────────
-
-const is8Team = (seasonRow.playoff_teams ?? 7) >= 8;
-
-// The two-conference bracket keys off per-conference seeds, which only exist on
-// a season seeded by hand. The live picture is a single overall 1..N seeding, so
-// an active season always draws the overall-seed shape.
-//
-// The league has run a 7-team field since 2023, which is what that shape holds.
-// If an active season is ever configured for 8, the picture would compute an
-// 8th seed that this bracket has no slot for — the shape needs revisiting then,
-// since the seeding rules above don't define per-conference seeds.
-const conferenceBracket = is8Team && !isActiveSeason;
-
-const playoffTeams = allRows.filter(r => r.seed > 0);
-
-function getByConfSeed(conf: string, seed: number): StandingsRow | null {
-  return playoffTeams.find(r => r.conference === conf && r.seed === seed) ?? null;
-}
-function getBySeed(seed: number): StandingsRow | null {
-  return playoffTeams.find(r => r.seed === seed) ?? null;
-}
-
-// Playoff matchup data from Supabase (game_type = 1)
-const { data: playoffMatchups, error: pmErr } = await supabase
-  .schema('scdfl')
-  .from('matchups')
-  .select('week, matchup_id, roster_id_a, roster_id_b, score_a, score_b')
-  .eq('year', yearNum)
-  .eq('game_type', 1)
-  .limit(1000);
-
-if (pmErr) throw new Error(`Playoff matchups query failed: ${pmErr.message}`);
-
-// Group week 15 matchups for first-round winner resolution
-const matchupById = new Map<number, { roster_id: number; score: number }[]>();
-for (const m of (playoffMatchups ?? []).filter(m => m.week === 15)) {
-  // Each row is already a pair (roster_id_a vs roster_id_b)
-  matchupById.set(m.matchup_id, [
-    { roster_id: m.roster_id_a, score: m.score_a ?? 0 },
-    { roster_id: m.roster_id_b, score: m.score_b ?? 0 },
-  ]);
-}
-
-// Build slug for game recap link: [week]-[abbr1]-[abbr2] (alphabetized, lowercased)
-//
-// The active season's bracket is a projection — those games have no rows in
-// `matchups` and therefore no recap route, so it renders unlinked. Returning
-// null here covers all seven matchup slots from one place.
-function buildSlug(teamA: StandingsRow | null | undefined, teamB: StandingsRow | null | undefined, week: number): string | null {
-  if (isActiveSeason) return null;
-  if (!teamA || !teamB) return null;
-  return makeSlug(teamA.effectiveAbbr, teamB.effectiveAbbr, week);
-}
-
-// Return winner of a matchup between two teams; if b is null, a gets a bye
-function getMatchupWinner(a: StandingsRow | null, b: StandingsRow | null): StandingsRow | null {
-  if (!a) return null;
-  if (!b) return a; // bye
-  for (const entries of matchupById.values()) {
-    const ea = entries.find(e => e.roster_id === a.roster_id);
-    const eb = entries.find(e => e.roster_id === b.roster_id);
-    if (ea && eb) return ea.score > eb.score ? a : b;
-  }
-  return null;
-}
-
-// Bracket matchups: each is [topSlot, bottomSlot]
-// 8-team: SCC on left (1v4 top, 2v3 bottom), HCC on right (1v4 top, 2v3 bottom)
-// 7-team: left = [seed1(bye), null] + [seed4, seed5], right = [seed2, seed7] + [seed3, seed6]
-let leftTop:    [StandingsRow | null, StandingsRow | null];
-let leftBottom: [StandingsRow | null, StandingsRow | null];
-let rightTop:   [StandingsRow | null, StandingsRow | null];
-let rightBottom:[StandingsRow | null, StandingsRow | null];
-
-if (conferenceBracket) {
-  leftTop    = [getByConfSeed('SCC', 1), getByConfSeed('SCC', 4)];
-  leftBottom = [getByConfSeed('SCC', 2), getByConfSeed('SCC', 3)];
-  rightTop   = [getByConfSeed('HCC', 1), getByConfSeed('HCC', 4)];
-  rightBottom= [getByConfSeed('HCC', 2), getByConfSeed('HCC', 3)];
-} else {
-  leftTop    = [getBySeed(1), null]; // seed 1 has a bye
-  leftBottom = [getBySeed(4), getBySeed(5)];
-  rightTop   = [getBySeed(2), getBySeed(7)];
-  rightBottom= [getBySeed(3), getBySeed(6)];
-}
-
-// Semi-slot winners derived from week 15 matchup data
-const leftSemiTop    = getMatchupWinner(leftTop[0], leftTop[1]);
-const leftSemiBottom = getMatchupWinner(leftBottom[0], leftBottom[1]);
-const rightSemiTop   = getMatchupWinner(rightTop[0], rightTop[1]);
-const rightSemiBottom= getMatchupWinner(rightBottom[0], rightBottom[1]);
-
-// Derive champion/runner-up from week 17 championship matchup
-const champMatch = (playoffMatchups ?? []).find(m => m.week === 17);
-let champion: StandingsRow | undefined;
-let runnerUp: StandingsRow | undefined;
-if (champMatch) {
-  const aWins = champMatch.score_a > champMatch.score_b;
-  const winnerRosterId = aWins ? champMatch.roster_id_a : champMatch.roster_id_b;
-  const loserRosterId = aWins ? champMatch.roster_id_b : champMatch.roster_id_a;
-  champion = allRows.find(r => r.roster_id === winnerRosterId);
-  runnerUp = allRows.find(r => r.roster_id === loserRosterId);
-}
+// Resolved by `loadSeasonPicture`; only the finalists are needed up here, for
+// the "Won by X over Y" subhead.
+const champion = picture.bracket.champion;
+const runnerUp = picture.bracket.runnerUp;
 
 // ── Draft boards ────────────────────────────────────────────────────────────
 
@@ -538,8 +389,8 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
           </span>
         ) : (
           <span>
-            Won by <strong style="color: var(--color-text-primary);">{champion?.effectiveAbbr}</strong>
-            {' '}over <strong style="color: var(--color-text-primary);">{runnerUp?.effectiveAbbr}</strong>
+            Won by <strong style="color: var(--color-text-primary);">{champion?.abbr}</strong>
+            {' '}over <strong style="color: var(--color-text-primary);">{runnerUp?.abbr}</strong>
           </span>
         )}
       </p>
@@ -648,247 +499,24 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
         </div>
 
       </div>
+
+      {isActiveSeason && (
+        <a href="/sim" class="sim-link">Run the playoff simulator &rarr;</a>
+      )}
     </div>
 
-    <!-- Playoff bracket -->
-    <div class="section-rule">
-      <h2 class="sect-head">{isActiveSeason ? 'Current Playoff Picture' : 'Playoff Bracket'}</h2>
-      <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2rem;">
-        {isActiveSeason
-          ? 'Seeded on the current standings. Ties are broken by head-to-head, then by points scored.'
-          : 'Click a matchup for more details →'}
-      </p>
-
-      <div class="bracket-wrap">
-
-        <!-- LEFT SIDE: round1 → semis → center -->
-        <div class="bracket-side bracket-left">
-
-          <!-- Round 1 (left) -->
-          <div class="bracket-round">
-            <!-- Top matchup -->
-            {(() => {
-              const slug = buildSlug(leftTop[0], leftTop[1], 15);
-              const matchupContent = (
-                <div class="bracket-matchup">
-                  <div class={`bracket-slot top${!conferenceBracket && leftTop[1] === null ? ' bye-slot' : ''}`}>
-                    {leftTop[0] && (
-                      <>
-                        <img src={logoPath(leftTop[0].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{leftTop[0].seed}</span>
-                        <span class="slot-name">{leftTop[0].effectiveAbbr}</span>
-                        {!conferenceBracket && leftTop[1] === null && <span class="bye-label">BYE</span>}
-                      </>
-                    )}
-                  </div>
-                  {leftTop[1] !== null && (
-                    <>
-                      <div class="bracket-connector-v"></div>
-                      <div class="bracket-slot bottom">
-                        {leftTop[1] && (
-                          <>
-                            <img src={logoPath(leftTop[1].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                            <span class="slot-seed">{leftTop[1].seed}</span>
-                            <span class="slot-name">{leftTop[1].effectiveAbbr}</span>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
-            })()}
-            <!-- Bottom matchup -->
-            {(() => {
-              const slug = buildSlug(leftBottom[0], leftBottom[1], 15);
-              const matchupContent = (
-                <div class="bracket-matchup">
-                  <div class="bracket-slot top">
-                    {leftBottom[0] && (
-                      <>
-                        <img src={logoPath(leftBottom[0].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{leftBottom[0].seed}</span>
-                        <span class="slot-name">{leftBottom[0].effectiveAbbr}</span>
-                      </>
-                    )}
-                  </div>
-                  <div class="bracket-connector-v"></div>
-                  <div class="bracket-slot bottom">
-                    {leftBottom[1] && (
-                      <>
-                        <img src={logoPath(leftBottom[1].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{leftBottom[1].seed}</span>
-                        <span class="slot-name">{leftBottom[1].effectiveAbbr}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
-            })()}
-          </div>
-
-          <!-- Semis (left) -->
-          <div class="bracket-round bracket-round-semis">
-            {(() => {
-              const slug = buildSlug(leftSemiTop, leftSemiBottom, 16);
-              const matchupContent = (
-                <div class="bracket-matchup">
-                  <div class="bracket-slot semi-slot top">
-                    {leftSemiTop && (
-                      <>
-                        <img src={logoPath(leftSemiTop.effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{leftSemiTop.seed}</span>
-                        <span class="slot-name">{leftSemiTop.effectiveAbbr}</span>
-                      </>
-                    )}
-                  </div>
-                  <div class="bracket-connector-v"></div>
-                  <div class="bracket-slot semi-slot bottom">
-                    {leftSemiBottom && (
-                      <>
-                        <img src={logoPath(leftSemiBottom.effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{leftSemiBottom.seed}</span>
-                        <span class="slot-name">{leftSemiBottom.effectiveAbbr}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
-            })()}
-          </div>
-
-        </div><!-- end bracket-left -->
-
-        <!-- CENTER / FINAL -->
-        <div class="bracket-center">
-          <div class="bracket-final-label">
-            <p class="section-label" style="text-align: center; margin-bottom: 0.5rem;">{dynastyBowlLabel}</p>
-          </div>
-          {(() => {
-            const slug = buildSlug(champion, runnerUp, 17);
-            const finalContent = (
-              <div class="bracket-final-slot">
-                {champion ? (
-                  <div class="final-team champion-team">
-                    <img src={logoPath(champion.effectiveAbbr)} alt="" width="32" height="32" onerror="this.style.display='none'" />
-                    <span class="final-seed">{champion.seed}</span>
-                    <span class="final-name">{champion.effectiveAbbr}</span>
-                  </div>
-                ) : <div class="final-team final-team-open"></div>}
-                <div class="final-defeated">{isActiveSeason ? 'TBD' : 'defeated'}</div>
-                {runnerUp ? (
-                  <div class="final-team">
-                    <img src={logoPath(runnerUp.effectiveAbbr)} alt="" width="32" height="32" onerror="this.style.display='none'" />
-                    <span class="final-seed">{runnerUp.seed}</span>
-                    <span class="final-name">{runnerUp.effectiveAbbr}</span>
-                  </div>
-                ) : <div class="final-team final-team-open"></div>}
-              </div>
-            );
-            return slug ? <a href={`/games/${year}/${slug}`} class="bracket-final-link">{finalContent}</a> : finalContent;
-          })()}
+    <!-- Playoff bracket — archived seasons only; the live picture is on the
+         homepage and in /sim -->
+    <div>
+      {!isActiveSeason && (
+        <div class="section-rule">
+          <h2 class="sect-head">Playoff Bracket</h2>
+          <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-bottom: 2rem;">
+            Click a matchup for more details →
+          </p>
+          <PlayoffBracket bracket={picture.bracket} label={dynastyBowlLabel} />
         </div>
-
-        <!-- RIGHT SIDE: semis → round1 (DOM order matches display order with flex-direction: row) -->
-        <div class="bracket-side bracket-right">
-
-          <!-- Semis (right) -->
-          <div class="bracket-round bracket-round-semis">
-            {(() => {
-              const slug = buildSlug(rightSemiTop, rightSemiBottom, 16);
-              const matchupContent = (
-                <div class="bracket-matchup">
-                  <div class="bracket-slot semi-slot top">
-                    {rightSemiTop && (
-                      <>
-                        <img src={logoPath(rightSemiTop.effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{rightSemiTop.seed}</span>
-                        <span class="slot-name">{rightSemiTop.effectiveAbbr}</span>
-                      </>
-                    )}
-                  </div>
-                  <div class="bracket-connector-v"></div>
-                  <div class="bracket-slot semi-slot bottom">
-                    {rightSemiBottom && (
-                      <>
-                        <img src={logoPath(rightSemiBottom.effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{rightSemiBottom.seed}</span>
-                        <span class="slot-name">{rightSemiBottom.effectiveAbbr}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
-            })()}
-          </div>
-
-          <!-- Round 1 (right) -->
-          <div class="bracket-round">
-            <!-- Top matchup -->
-            {(() => {
-              const slug = buildSlug(rightTop[0], rightTop[1], 15);
-              const matchupContent = (
-                <div class="bracket-matchup">
-                  <div class="bracket-slot top">
-                    {rightTop[0] && (
-                      <>
-                        <img src={logoPath(rightTop[0].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{rightTop[0].seed}</span>
-                        <span class="slot-name">{rightTop[0].effectiveAbbr}</span>
-                      </>
-                    )}
-                  </div>
-                  <div class="bracket-connector-v"></div>
-                  <div class="bracket-slot bottom">
-                    {rightTop[1] && (
-                      <>
-                        <img src={logoPath(rightTop[1].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{rightTop[1].seed}</span>
-                        <span class="slot-name">{rightTop[1].effectiveAbbr}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
-            })()}
-            <!-- Bottom matchup -->
-            {(() => {
-              const slug = buildSlug(rightBottom[0], rightBottom[1], 15);
-              const matchupContent = (
-                <div class="bracket-matchup">
-                  <div class="bracket-slot top">
-                    {rightBottom[0] && (
-                      <>
-                        <img src={logoPath(rightBottom[0].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{rightBottom[0].seed}</span>
-                        <span class="slot-name">{rightBottom[0].effectiveAbbr}</span>
-                      </>
-                    )}
-                  </div>
-                  <div class="bracket-connector-v"></div>
-                  <div class="bracket-slot bottom">
-                    {rightBottom[1] && (
-                      <>
-                        <img src={logoPath(rightBottom[1].effectiveAbbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
-                        <span class="slot-seed">{rightBottom[1].seed}</span>
-                        <span class="slot-name">{rightBottom[1].effectiveAbbr}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-              return slug ? <a href={`/games/${year}/${slug}`} class="bracket-matchup-link">{matchupContent}</a> : matchupContent;
-            })()}
-          </div>
-
-        </div><!-- end bracket-right -->
-
-      </div><!-- end bracket-wrap -->
+      )}
 
       {isActiveSeason && medalRaceSections.length > 0 && (
         <div class="section-rule medal-race">
@@ -1075,232 +703,36 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
     border-bottom: 2px solid var(--rule-ink);
   }
 
+  /* The way into /sim. A ruled button rather than a card: display caps in an
+     ink outline, warming to ember on hover. */
+  .sim-link {
+    display: inline-block;
+    margin-top: 1.5rem;
+    padding: 0.6rem 1.1rem 0.5rem;
+    border: 2px solid var(--rule-ink);
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    line-height: 1;
+    color: var(--text-strong);
+    text-decoration: none;
+    transition: var(--transition-color);
+  }
+  .sim-link:hover {
+    color: var(--surface-page);
+    background-color: var(--brand-primary);
+    border-color: var(--brand-primary);
+    text-decoration: none;
+  }
+
   /* ── Season summary ──────────────────────────────── */
   .season-summary :global(p) {
     margin-bottom: 1rem;
   }
   .season-summary :global(p:last-child) {
     margin-bottom: 0;
-  }
-
-  /* ── Bracket layout ──────────────────────────────── */
-  .bracket-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0;
-    overflow-x: auto;
-    padding-bottom: 1rem;
-  }
-
-  .bracket-side {
-    display: flex;
-    align-items: center;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .bracket-left {
-    flex-direction: row;
-  }
-
-  /* Right side: DOM order is [semis, round1]; flex-direction row displays
-     them left-to-right so semis is near center and round1 is at the far right. */
-  .bracket-right {
-    flex-direction: row;
-    justify-content: flex-end;
-  }
-
-  /* Each round column stretches to fill its half of the bracket side */
-  .bracket-round {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-around;
-    gap: 0.5rem;
-    padding: 0.5rem;
-  }
-
-  .bracket-round-semis {
-    flex: 1;
-    padding: 0.5rem;
-  }
-
-  .bracket-matchup-link {
-    display: flex;
-    flex-direction: column;
-    cursor: pointer;
-    text-decoration: none;
-  }
-
-  .bracket-matchup {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    position: relative;
-  }
-
-  /* Connector line between two slots in a matchup */
-  .bracket-connector-v {
-    width: 100%;
-    height: 2px;
-    background-color: var(--color-border);
-    margin: 0;
-    position: relative;
-  }
-
-  /* Vertical bar on the right side for left-bracket slots */
-  .bracket-connector-v::after {
-    content: '';
-    position: absolute;
-    right: -1px;
-    top: -1.25rem;
-    border-right: 2px solid var(--color-border);
-    height: 2.5rem;
-  }
-
-  /* Vertical bar on the left side for right-bracket slots */
-  .bracket-right .bracket-connector-v::after {
-    left: -1px;
-    right: auto;
-    border-right: none;
-    border-left: 2px solid var(--color-border);
-  }
-
-  /* Individual team slot */
-  .bracket-slot {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.45rem 0.6rem;
-    background-color: var(--color-surface);
-    border: 1px solid var(--color-border);
-    min-width: 110px;
-    height: 2.5rem;
-    font-size: 0.8rem;
-    color: var(--color-text-primary);
-    white-space: nowrap;
-  }
-
-  .bracket-right .bracket-slot {
-    flex-direction: row-reverse;
-    text-align: right;
-  }
-
-  .bracket-slot img {
-    object-fit: contain;
-    flex-shrink: 0;
-  }
-
-  .slot-seed {
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: var(--color-text-muted);
-    min-width: 14px;
-    text-align: center;
-  }
-
-  .slot-name {
-    font-family: var(--font-body);
-    font-weight: 600;
-    font-size: 0.8rem;
-  }
-
-  /* Semi-round slots have a solid border when populated, dashed when empty */
-  .semi-slot {
-    min-width: 90px;
-  }
-
-  .semi-slot:not(:has(img)) {
-    background-color: color-mix(in srgb, var(--color-surface) 60%, transparent);
-    border-style: dashed;
-    color: var(--color-text-muted);
-  }
-
-  .bye-slot {
-    border-color: var(--color-gold-dim);
-  }
-
-  .bye-label {
-    font-size: 0.6rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: var(--color-gold-dim);
-    margin-left: auto;
-  }
-
-  /* ── Final / Championship ─────────────────────── */
-  .bracket-final-link {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    cursor: pointer;
-    text-decoration: none;
-  }
-
-  .bracket-center {
-    flex-shrink: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 0 1rem;
-  }
-
-  .bracket-final-label {
-    margin-bottom: 0.75rem;
-  }
-
-  .bracket-final-slot {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-    border: 1px solid var(--color-gold-glow);
-    background-color: var(--color-gold-surface);
-    padding: 1rem 1.25rem;
-    min-width: 130px;
-  }
-
-  .final-team {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.35rem 0.5rem;
-    width: 100%;
-  }
-
-  .final-team img {
-    object-fit: contain;
-    flex-shrink: 0;
-  }
-
-  .final-seed {
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: var(--color-gold-dim);
-    min-width: 14px;
-  }
-
-  .final-name {
-    font-family: var(--font-body);
-    font-size: 0.9rem;
-    font-weight: 700;
-    color: var(--color-gold);
-  }
-
-  /* Placeholder finalist on a bracket that hasn't been decided yet. */
-  .final-team-open {
-    height: 2.5rem;
-    border: 1px dashed var(--color-gold-dim);
-    opacity: 0.5;
-  }
-
-  .final-defeated {
-    font-size: 0.6rem;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-    padding: 0.15rem 0;
   }
 
   /* ── Exhibition games ─────────────────────── */
@@ -1657,18 +1089,6 @@ const { Content: SeasonSummary } = seasonEntry ? await render(seasonEntry) : { C
 
     .col-hide-mobile {
       display: none !important;
-    }
-
-    /* Bracket: vertical flow preserving internal side layouts */
-    .bracket-wrap {
-      flex-direction: column !important;
-      align-items: stretch !important;
-      overflow-x: hidden !important;
-    }
-
-    .bracket-side {
-      flex: none !important;
-      width: 100%;
     }
 
     /* Medal race: one card per row */
