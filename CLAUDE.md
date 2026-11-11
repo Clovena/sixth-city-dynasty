@@ -7,9 +7,10 @@ Astro 5 static site for the SCDFL. Commissioner: Zac. Est. 2021. 14 franchises, 
 ## Commands
 
 ```bash
-npm run dev          # dev server
+npm run dev          # dev server (sets NETLIFY_DEV=1 — see Tech Stack note on @astrojs/netlify)
 npm run build        # static build → dist/
 npm run preview      # preview built site
+npx tsx --test src/lib/*.test.ts   # unit tests for the pure libs (node:test, no deps)
 
 # --- Supabase sync scripts (see scripts/lib/CLAUDE.md for details) ---
 npm run sync              # run all routine syncs (results, matchups, rosters, transactions, drafts, exhibitions, stats)
@@ -41,6 +42,7 @@ The sync entry points live in `scripts/lib/` and write directly to Supabase (sch
 
 - **Astro 5** — static output, content collections, `import.meta.glob`
 - **`@astrojs/netlify` v6** — adapter required so individual routes can opt into on-demand (SSR) rendering. Pin to the 6.x line: 7.x needs Astro 6, 8.x needs Astro 7.
+  - **`npm run dev` sets `NETLIFY_DEV=1` on purpose.** In `astro dev` the adapter's `@netlify/vite-plugin` boots Netlify's local platform emulation, including an Edge Functions server it runs on whatever global `deno` satisfies `^2.2.4`. `@netlify/edge-functions-dev` 1.0.x (the newest the 6.x adapter allows) passes `deno eval --allow-scripts`, which Deno 2.9 rejects, so the server dies and dev crashes with *"Could not establish a connection to the Netlify Edge Functions local development server"*. `NETLIFY_DEV` makes the plugin skip the emulation entirely. Nothing is lost: the site has no edge functions, Blobs, `_redirects`/`_headers` or `astro:assets` images, and Supabase env vars reach dev through Vite's `.env` loading. Revisit if the site ever adopts one of those Netlify features.
 - **Tailwind CSS 4** — via `@tailwindcss/vite` (not PostCSS)
 - **Supabase** — PostgreSQL database (schema `scdfl`); all league data lives here
   - Build-time / request-time client: `src/lib/supabase.ts` (uses `SUPABASE_ANON_KEY` via `import.meta.env`, falling back to `process.env` for SSR routes)
@@ -74,6 +76,7 @@ Every route is pre-rendered at build time (`output: 'static'`) **except** `/play
 | `/hall-of-fame/records` | `src/pages/hall-of-fame/records.astro` |
 | `/hall-of-fame/inductees` | `src/pages/hall-of-fame/inductees.astro` |
 | `/players/[id]` | `src/pages/players/[id].astro` (SSR) |
+| `/sim` | `src/pages/sim.astro` (playoff simulator; static, client-side picks) |
 
 ---
 
@@ -199,7 +202,7 @@ Common logic used across many pages lives in three small, focused lib files. **I
 - `playerName(first, last, fallback)` — joins first/last, dropping whichever half is missing
 - `espnHeadshotUrl(espnId)` — always returns a usable `src` (the site placeholder image if there's no `espn_id`), so callers can render an `<img>` unconditionally instead of branching
 - `logoPath(abbr)` / `primaryColor(colors, fallback?)` — `/images/logos/{abbr}.png` and `colors[0]` with a `var(--border-default)` fallback
-- `readableOnInk(color, ground?)` / `primaryColorOnInk(colors, fallback?)` — a club colour adjusted to read on the dark broadcast band. **Use these for any club accent placed on an ink ground**, never raw `colors[0]`: franchise palettes are authored for light surfaces, and several primaries (VAN `#0c152d`, NFD `#192f5d`) sit within a point of `--ink-900` and vanish on it. The helper raises lightness only, and only until it clears 3:1 (the WCAG threshold for non-text UI, which is what these accents are), so the club's hue survives — 10 of the 14 current primaries come back untouched. Searching the palette for a brighter entry instead is the tempting shortcut and the wrong one: it hands Vancouver its grey tertiary and Gold Coast a pink. Currently used by the homepage lede scorebug; the `/scores` ink panels and the homepage slate band are the obvious next consumers
+- `readableOnInk(color, ground?)` / `primaryColorOnInk(colors, fallback?)` — a club colour adjusted to read on the dark broadcast band. **Use these for any club accent placed on an ink ground**, never raw `colors[0]`: franchise palettes are authored for light surfaces, and several primaries (VAN `#0c152d`, NFD `#192f5d`) sit within a point of `--ink-900` and vanish on it. The helper raises lightness only, and only until it clears 3:1 (the WCAG threshold for non-text UI, which is what these accents are), so the club's hue survives — 10 of the 14 current primaries come back untouched. Searching the palette for a brighter entry instead is the tempting shortcut and the wrong one: it hands Vancouver its grey tertiary and Gold Coast a pink. Currently used by the homepage rail's featured-game scorebug; the `/scores` ink panels and the homepage slate band are the obvious next consumers
 
 This file has **no imports of its own** — that's deliberate, not an oversight. `src/lib/remark-team-headers.ts` runs inside `astro.config.mjs`'s evaluation context, before Vite env vars exist; anything it imports must not transitively pull in `src/lib/supabase.ts`, which crashes (`supabaseUrl is required`) if constructed at that point. `logoPath`/`primaryColor` live in `format.ts` rather than the more topically-obvious `franchise-identity.ts` specifically to keep this file import-safe for that plugin — don't move them there.
 
@@ -214,13 +217,30 @@ This file has **no imports of its own** — that's deliberate, not an oversight.
 - `loadNflState()` — fetches `https://api.sleeper.app/v1/state/nfl`, returning `{ season, week, seasonType }`. **Every field is nullable**: a build with no network still has to produce a page, so callers fall back to archive-derived behaviour rather than treating this as required data.
 - `activeWeekFor(state, year)` — the week a page should lead with, or `null` if the state is unusable or is for a different season. Encodes the preseason rule: Sleeper reports week 0 in the preseason and its preseason counter doesn't track the league schedule, so both cases resolve to Week 1.
 
-**Why this exists:** `matchups` rows are created for the entire season the moment a Sleeper league is created, so "latest week with rows" runs *ahead* of the week actually being played. Any page that leads with "the current week" needs the real-world state, not the archive. Used by `index.astro` (which game leads the front page). `scores.astro` still carries its own inline copy of the fetch — converting it is a pending one-line cleanup, not a second intentional implementation.
+**Why this exists:** `matchups` rows are created for the entire season the moment a Sleeper league is created, so "latest week with rows" runs *ahead* of the week actually being played. Any page that leads with "the current week" needs the real-world state, not the archive. Used by `index.astro` (which game is featured at the top of the score rail, and which season the lede's playoff picture shows). `scores.astro` still carries its own inline copy of the fetch — converting it is a pending one-line cleanup, not a second intentional implementation.
 
 ### `src/lib/playoff-picture.ts` — live playoff seeding
 - `computePlayoffPicture(teams, games, playoffTeams)` — derives the current field, seeded 1..N, from standings plus played games. Pure; the caller supplies `SeedingTeam[]` (roster id, conference, wins, points for) and `SeedingGame[]` (the played regular-season results).
 - **Why it exists:** `results.seed` is set by hand once a bracket is known, so an in-progress season has `seed IS NULL` for all 14 teams and the bracket would render blank. This fills that gap; it is not a second source of truth for a completed season.
 - The rules, in order: each conference's leader is its win leader (ties → head-to-head among *only* the tied same-conference teams → points for); those two leaders take seeds 1–2 (record → head-to-head → points for); the rest are wild cards ranked on win total across both conferences. A tie of three or more is reduced to one representative per conference first, then those are compared — and after a spot is awarded the procedure restarts on whoever is left, the iterative shape the NFL uses.
 - A team that hasn't met anyone in its tie group scores a neutral 0.5 rather than a loss, so early-season groups fall through to points for instead of being ordered by an accident of scheduling.
+
+- `clinchStatus(teams, remaining, playoffTeams)` — conservative `z`/`x`/`e` marks (clinched conference / berth / eliminated) decided on wins alone, with every tie in wins counted against the team, so a mark is never wrong but can lag. `remaining` is each team's count of undecided games. Used by `/sim`.
+- **Keep this file import-free.** `/sim`'s bundled client script imports it; one import of anything that reaches `src/lib/supabase.ts` would drag the Supabase client into the browser bundle (and crash it — no env vars there).
+
+### `src/lib/playoff-bracket.ts` — bracket resolution (pure)
+- `buildBracket({ year, teams, games, shape, projected, slug })` → `BracketView`: the four round-one matchups, two semifinals, champion/runner-up and every recap href. `shape` is `'overall7'` (2023–: seed 1 bye, 4v5, 2v7, 3v6) or `'conference8'` (2021–22: per-conference 1v4/2v3, SCC left).
+- **A slot links only when a `game_type = 1` row actually pairs those two rosters** — a projected bracket is therefore unlinked, and a bracket mid-playoffs links the rounds that exist. Winners only advance on a *scored* row (Sleeper files 0–0 placeholders).
+- `buildSlug` is passed in as `slug` rather than imported, because `game-utils.ts` imports Supabase and this module must stay testable without it.
+
+### `src/lib/season-picture.ts` — one season's live state
+- `loadSeasonPicture(year, franchises)` — the single loader behind the homepage lede, `/history/[year]` and `/sim`, so the three can't disagree. Returns `phase` (`pre` / `regular` / `post` / `complete`), `lockedThrough`, `teams` (standings + seed), `lockedGames`, `remainingGames`, and the resolved `bracket`.
+- **`lockedThrough` = the most games any team has in `results`** — i.e. the weeks Sleeper has *finalized*. A week with live, still-moving scores is not locked: it isn't in `results.wins` yet, so it doesn't feed head-to-head either. Don't switch this to "rows with a non-zero score".
+- Seeds: computed with `computePlayoffPicture` through the regular season; afterwards the hand-entered `results.seed`, falling back to computed seeds if those haven't been entered yet. `conference8` is only used where seeds were entered by hand (per-conference seeds don't exist otherwise).
+
+### `src/components/` — Astro components
+- `PlayoffBracket.astro` (+ child `BracketMatchup.astro`) draws a `BracketView`. Used by the homepage, archived `/history/[year]` pages, and `/sim`. Its styles live in the components (the right-side connector flip reaches across via `:global(.bracket-right)`).
+- **`data-seed` contract:** every filled team slot carries `data-seed` and `.slot-logo`/`.slot-seed`/`.slot-name` children. In a projected bracket a slot's position depends only on its seed, so `/sim` re-seats teams by rewriting those nodes in place. Keep the contract if the markup changes.
 
 ### Scope: build-time only
 These are for **frontmatter / build-time use**. A client-side `<script>` can only import them if the script has no `is:inline` attribute (Astro then bundles it through Vite, so a normal `import` resolves) — `scores.astro`'s script qualifies but currently still carries local copies of this logic as a deliberately deferred cleanup. `franchises/[abbr].astro`'s scripts use `is:inline` and cannot import at all, so their local `getIdentity`/`teamRow` duplicates are intentional, not a bug. Don't "fix" either without first resolving the `is:inline` question — that's a separate, riskier piece of work than the frontmatter consolidation.
@@ -440,10 +460,10 @@ Clicking any matchup navigates to `/games/[year]/[slug]` where the slug is built
 Example: `/games/2025/15-bkb-low` (BKB vs. LOW, week 15)
 
 **Implementation details:**
-- Each matchup div is wrapped in an `<a>` tag with no visual changes
+- The bracket is `src/components/PlayoffBracket.astro`, fed by `loadSeasonPicture(...).bracket` (see "Shared Utility Libraries")
+- Each matchup is wrapped in an `<a>` only when its `game_type = 1` row exists — byes, incomplete brackets and projections render without links
 - Teams are alphabetized before building the slug
-- Matchups with missing team data (byes, incomplete brackets) gracefully render without links
-- Replaces the previous playoff format text with "Click a matchup for more details →"
+- **Archived seasons only.** The active season shows no bracket on this page; the live picture is the homepage lede, and a "Run the playoff simulator" button under Current Standings links to `/sim`
 
 ---
 

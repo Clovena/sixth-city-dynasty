@@ -1,0 +1,190 @@
+---
+import BracketMatchup from './BracketMatchup.astro';
+import { logoPath } from '../lib/format';
+import type { BracketView } from '../lib/playoff-bracket';
+
+/**
+ * The seven-slot playoff bracket: round one and a semifinal on each side, the
+ * Dynasty Bowl in the centre. Resolve the data with `buildBracket` (via
+ * `loadSeasonPicture`) — this component only draws it.
+ *
+ * A projected bracket has no results: its semifinal slots stay empty apart
+ * from the seed-1 bye, and the final reads "TBD" over two open placeholders.
+ */
+interface Props {
+  bracket: BracketView;
+  /** e.g. "Dynasty Bowl VI" */
+  label: string;
+}
+
+const { bracket, label } = Astro.props;
+const finalists = [bracket.champion, bracket.runnerUp];
+const Final = bracket.finalHref ? 'a' : 'div';
+---
+
+<div class="bracket-wrap">
+
+  <!-- LEFT SIDE: round one → semis → centre -->
+  <div class="bracket-side bracket-left">
+    <div class="bracket-round">
+      <BracketMatchup matchup={bracket.leftTop} />
+      <BracketMatchup matchup={bracket.leftBottom} />
+    </div>
+    <div class="bracket-round bracket-round-semis">
+      <BracketMatchup matchup={bracket.leftSemi} semi />
+    </div>
+  </div>
+
+  <!-- CENTRE / FINAL -->
+  <div class="bracket-center">
+    <div class="bracket-final-label">
+      <p class="section-label" style="text-align: center; margin-bottom: 0.5rem;">{label}</p>
+    </div>
+    <Final href={bracket.finalHref ?? undefined} class:list={['bracket-final-slot', { 'bracket-final-link': bracket.finalHref }]}>
+      {finalists.map((team, i) => (
+        <>
+          {i > 0 && <div class="final-defeated">{bracket.champion ? 'defeated' : 'TBD'}</div>}
+          {team ? (
+            <div class:list={['final-team', { 'champion-team': i === 0 }]}>
+              <img src={logoPath(team.abbr)} alt="" width="32" height="32" onerror="this.style.display='none'" />
+              <span class="final-seed">{team.seed}</span>
+              <span class="final-name">{team.abbr}</span>
+            </div>
+          ) : <div class="final-team final-team-open"></div>}
+        </>
+      ))}
+    </Final>
+  </div>
+
+  <!-- RIGHT SIDE: semis → round one (DOM order matches display order) -->
+  <div class="bracket-side bracket-right">
+    <div class="bracket-round bracket-round-semis">
+      <BracketMatchup matchup={bracket.rightSemi} semi />
+    </div>
+    <div class="bracket-round">
+      <BracketMatchup matchup={bracket.rightTop} />
+      <BracketMatchup matchup={bracket.rightBottom} />
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .bracket-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding-bottom: 1rem;
+  }
+
+  .bracket-side {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Right side: DOM order is [semis, round one], so it reads outward from the
+     centre the same way the left side reads inward. */
+  .bracket-right {
+    justify-content: flex-end;
+  }
+
+  /* Each round column stretches to fill its half of the bracket side */
+  .bracket-round {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  /* ── Final ─────────────────────────────────────── */
+  .bracket-center {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 1rem;
+  }
+
+  .bracket-final-label {
+    margin-bottom: 0.75rem;
+  }
+
+  .bracket-final-slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    border: 1px solid var(--color-gold-glow);
+    background-color: var(--color-gold-surface);
+    padding: 1rem 1.25rem;
+    min-width: 130px;
+  }
+
+  .bracket-final-link {
+    cursor: pointer;
+    text-decoration: none;
+  }
+
+  .final-team {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    width: 100%;
+  }
+
+  .final-team img {
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  .final-seed {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--color-gold-dim);
+    min-width: 14px;
+  }
+
+  .final-name {
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--color-gold);
+  }
+
+  /* Placeholder finalist on a bracket that hasn't been decided yet. */
+  .final-team-open {
+    height: 2.5rem;
+    border: 1px dashed var(--color-gold-dim);
+    opacity: 0.5;
+  }
+
+  .final-defeated {
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    padding: 0.15rem 0;
+  }
+
+  /* Vertical flow on narrow screens, each side keeping its internal layout. */
+  @media (max-width: 768px) {
+    .bracket-wrap {
+      flex-direction: column;
+      align-items: stretch;
+      overflow-x: hidden;
+    }
+
+    .bracket-side {
+      flex: none;
+      width: 100%;
+    }
+  }
+</style>

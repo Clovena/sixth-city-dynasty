@@ -1,0 +1,810 @@
+---
+import Layout from '../layouts/Layout.astro';
+import PlayoffBracket from '../components/PlayoffBracket.astro';
+import { supabase } from '../lib/supabase';
+import { loadFranchises } from '../lib/franchise-identity';
+import { loadSeasonPicture } from '../lib/season-picture';
+import { clinchStatus } from '../lib/playoff-picture';
+import { logoPath, toRoman } from '../lib/format';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The playoff simulator. Built nightly with everything else: the finalized
+// weeks are locked in, every game after them is the reader's to call, and the
+// client script below re-seeds the field on each pick with the same
+// `computePlayoffPicture` the homepage uses — so a simulated bracket and the
+// real one can never be seeded by different rules.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const [franchises, latestRes] = await Promise.all([
+  loadFranchises(),
+  supabase
+    .schema('scdfl')
+    .from('seasons')
+    .select('year')
+    .order('year', { ascending: false })
+    .limit(1),
+]);
+
+if (latestRes.error) throw new Error(`Seasons query failed: ${latestRes.error.message}`);
+
+const year = latestRes.data?.[0]?.year ?? null;
+const picture = year ? await loadSeasonPicture(year, franchises) : null;
+const isLive = picture?.phase === 'regular' && picture.remainingGames.length > 0;
+
+const teamById = new Map((picture?.teams ?? []).map(t => [t.rosterId, t]));
+const recordOf = (t: { wins: number; losses: number; ties: number }) =>
+  t.ties > 0 ? `${t.wins}-${t.losses}-${t.ties}` : `${t.wins}-${t.losses}`;
+
+// The remaining schedule, one group per week. A week already under way shows
+// its live score as a hint; it stays open to picks until Sleeper finalizes it.
+const weeks = [...new Set((picture?.remainingGames ?? []).map(g => g.week))].map(week => {
+  const games = picture!.remainingGames.filter(g => g.week === week);
+  return { week, live: games.some(g => g.scoreA !== 0 || g.scoreB !== 0), games };
+});
+const hasLiveWeek = weeks.some(w => w.live);
+
+// First paint: the standings with nothing picked. The script re-sorts these
+// same rows in place (keeping their scoped styles) once it restores any picks.
+const MARK_LABEL = { conference: 'z', berth: 'x', eliminated: 'e' } as const;
+const initialRemaining = new Map<number, number>();
+for (const g of picture?.remainingGames ?? []) {
+  initialRemaining.set(g.rosterIdA, (initialRemaining.get(g.rosterIdA) ?? 0) + 1);
+  initialRemaining.set(g.rosterIdB, (initialRemaining.get(g.rosterIdB) ?? 0) + 1);
+}
+const initialMarks = picture ? clinchStatus(picture.teams, initialRemaining, picture.playoffTeams) : new Map();
+
+const CONFERENCES = [
+  { code: 'SCC', name: 'Senatorial Canadian Conference' },
+  { code: 'HCC', name: 'House of Commons Conference' },
+];
+const conferenceTables = CONFERENCES.map(conf => ({
+  ...conf,
+  rows: (picture?.teams ?? [])
+    .filter(t => t.conf === conf.code)
+    .sort((a, b) => (a.seed || 99) - (b.seed || 99) || b.wins - a.wins || b.pointsFor - a.pointsFor),
+}));
+const seeds = [...(picture?.teams ?? [])].filter(t => t.seed > 0).sort((a, b) => a.seed - b.seed);
+
+// Everything the script needs, as JSON rather than `define:vars` — that would
+// force the script `is:inline`, and it couldn't import the seeding rules.
+const simData = picture && isLive ? {
+  year: picture.year,
+  playoffTeams: picture.playoffTeams,
+  teams: picture.teams.map(t => ({
+    rosterId: t.rosterId, conf: t.conf, abbr: t.abbr,
+    wins: t.wins, losses: t.losses, ties: t.ties, pointsFor: t.pointsFor,
+  })),
+  lockedGames: picture.lockedGames,
+  remaining: picture.remainingGames,
+} : null;
+---
+
+<Layout
+  title={year ? `${year} Playoff Simulator` : 'Playoff Simulator'}
+  description="Pick the rest of the SCDFL regular season and watch the playoff picture reseed as you go."
+>
+  <div class="plate">
+    <div class="wrap-wide">
+      <h1 class="plate-title">Playoff<br /><span>Simulator</span></h1>
+      {isLive && (
+        <p class="plate-note">
+          {year} &middot; through Week {picture!.lockedThrough} &middot; {picture!.remainingGames.length} games to call
+        </p>
+      )}
+    </div>
+  </div>
+
+  {!isLive ? (
+    <div class="wrap-narrow sim-closed">
+      <p class="standfirst">
+        {picture?.phase === 'pre'
+          ? `The ${year} season hasn't kicked off yet. The simulator opens once the first week is in the books.`
+          : picture?.phase === 'regular'
+            ? `Every ${year} regular-season game has been played — the field is set by the results now.`
+            : `There's no regular season in progress. The simulator returns when the next one gets under way.`}
+      </p>
+      {year && <p><a href={`/history/${year}`}>The {year} season</a></p>}
+    </div>
+  ) : (
+    <div id="sim">
+      <script is:inline type="application/json" id="sim-data" set:html={JSON.stringify(simData)} />
+
+      <!-- ══ CONTROL BAR ═══════════════════════════════════════════════════ -->
+      <div class="sim-bar">
+        <div class="wrap-wide sim-bar-inner">
+          <div class="sim-actions">
+            <span class="sim-label">Fill open games</span>
+            <button type="button" class="sim-action" data-fill="pf" title="The club with more points for wins">Higher PF</button>
+            <button type="button" class="sim-action" data-fill="coin">Coin flip</button>
+            {hasLiveWeek && (
+              <button type="button" class="sim-action" data-fill="live" title="The current leader wins each game under way">Live leaders</button>
+            )}
+          </div>
+          <div class="sim-actions">
+            <button type="button" class="sim-action" data-reset>Reset</button>
+            <button type="button" class="sim-action sim-share" data-share>Copy share link</button>
+          </div>
+
+          <!-- The field in seed order. Only shown when the bracket is out of view
+               (narrow screens), so a pick visibly reshuffles it without scrolling. -->
+          <ol class="seed-strip" aria-label="Current playoff field">
+            {seeds.map(t => (
+              <li data-strip-seed={t.seed}>
+                <span class="strip-seed">{t.seed}</span>
+                <img src={logoPath(t.abbr)} alt="" width="22" height="22" onerror="this.style.display='none'" />
+                <span class="strip-abbr">{t.abbr}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+
+      <div class="wrap-wide sim-layout">
+
+        <!-- ══ SCHEDULE: the games still to call ═══════════════════════════ -->
+        <section class="sim-schedule" aria-label="Remaining schedule">
+          <p class="standfirst sim-rules">
+            Click a club to pick the winner; click again to clear it. Simulated games count for wins
+            and head-to-head. Points for stays frozen at the real totals.
+          </p>
+
+          <nav class="week-strip" aria-label="Jump to week">
+            {weeks.map(w => (
+              <button type="button" class="week-jump" data-jump={w.week}>Wk {w.week}</button>
+            ))}
+          </nav>
+
+          <p class="filter-note" hidden>
+            Showing <strong data-filter-name></strong>'s games &middot;
+            <button type="button" class="link-button" data-filter-clear>Show all</button>
+          </p>
+
+          {weeks.map(w => (
+            <section class="sim-week" id={`sim-week-${w.week}`} data-week={w.week}>
+              <div class="almanac-head">
+                <h2>Week {w.week}</h2>
+                <span class="folio">
+                  {w.live && <span class="live-tag">In progress &middot; </span>}
+                  <button type="button" class="link-button" data-clear-week={w.week}>Clear week</button>
+                </span>
+              </div>
+              <ol class="sim-games">
+                {w.games.map(g => {
+                  const a = teamById.get(g.rosterIdA);
+                  const b = teamById.get(g.rosterIdB);
+                  return (
+                    <li class="sim-game" data-key={`${g.week}-${g.matchupId}`} data-a={g.rosterIdA} data-b={g.rosterIdB}>
+                      <button type="button" class="pick" data-side="a" aria-pressed="false">
+                        <img src={logoPath(a?.abbr ?? '')} alt="" width="28" height="28" onerror="this.style.display='none'" />
+                        <span class="pick-abbr">{a?.abbr}</span>
+                        <span class="pick-rec" data-rec={g.rosterIdA}>{a && recordOf(a)}</span>
+                      </button>
+                      <span class="sim-mid">
+                        {w.live && (g.scoreA !== 0 || g.scoreB !== 0)
+                          ? <span class="live-score">{g.scoreA.toFixed(1)}<br />{g.scoreB.toFixed(1)}</span>
+                          : 'v'}
+                      </span>
+                      <button type="button" class="pick pick-b" data-side="b" aria-pressed="false">
+                        <img src={logoPath(b?.abbr ?? '')} alt="" width="28" height="28" onerror="this.style.display='none'" />
+                        <span class="pick-abbr">{b?.abbr}</span>
+                        <span class="pick-rec" data-rec={g.rosterIdB}>{b && recordOf(b)}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          ))}
+        </section>
+
+        <!-- ══ PICTURE: bracket + conference tables, re-seeded on every pick ═ -->
+        <section class="sim-picture" aria-label="Simulated playoff picture">
+          <div class="almanac-head">
+            <h2>Playoff Picture</h2>
+            <span class="folio" data-picked-count>0 of {picture!.remainingGames.length} picked</span>
+          </div>
+
+          <PlayoffBracket bracket={picture!.bracket} label={`Dynasty Bowl ${toRoman(picture!.year - 2020)}`} />
+
+          <div class="sim-tables">
+            {conferenceTables.map(conf => (
+              <table class="ledger sim-table" data-conf={conf.code}>
+                <thead>
+                  <tr class="conf-row">
+                    <th colspan="6" class:list={['conf-name', `conf-${conf.code.toLowerCase()}`]}>{conf.name}</th>
+                  </tr>
+                  <tr>
+                    <th class="rank">Sd</th>
+                    <th>Club</th>
+                    <th class="num">W</th>
+                    <th class="num">L</th>
+                    <th class="num">PF</th>
+                    <th class="num"><span class="sr-only">Status</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {conf.rows.map((t, i) => {
+                    const mark = initialMarks.get(t.rosterId) as keyof typeof MARK_LABEL | null;
+                    return (
+                      <tr
+                        data-row={t.rosterId}
+                        class:list={{
+                          seeded: t.seed > 0,
+                          'below-cut': t.seed === 0 && (i === 0 || conf.rows[i - 1].seed > 0),
+                          out: mark === 'eliminated',
+                        }}
+                      >
+                        <td class="rank" data-cell="seed">{t.seed || ''}</td>
+                        <td>
+                          <button type="button" class="club-filter" data-filter={t.rosterId} title={`Show ${t.name}'s games`}>
+                            <img src={logoPath(t.abbr)} alt="" width="20" height="20" onerror="this.style.display='none'" />
+                            <span>{t.abbr}</span>
+                          </button>
+                        </td>
+                        <td class="num" data-cell="w">{t.wins}</td>
+                        <td class="num" data-cell="l">{t.losses}</td>
+                        <td class="num">{t.pointsFor.toFixed(1)}</td>
+                        <td class="num mark" data-cell="mark">{mark ? MARK_LABEL[mark] : ''}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ))}
+          </div>
+
+          <p class="sim-legend slugline">
+            z &middot; clinched conference &nbsp; x &middot; clinched berth &nbsp; e &middot; eliminated
+          </p>
+          <p class="sim-legend-note">
+            Marks count wins only, so a tie in wins always goes against the club. A club can be safe before it's marked.
+            Ties are otherwise broken by head-to-head, then points for. Click a club to see only its games.
+          </p>
+        </section>
+
+      </div>
+    </div>
+  )}
+</Layout>
+
+<style>
+  /* ── Plate ──────────────────────────────────────────────────────────── */
+  .plate { border-bottom: 3px solid var(--rule-ink); padding: 3rem 0 1.5rem; }
+  .plate-title {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 10vw, 7rem);
+    font-weight: 900;
+    line-height: 0.82;
+    letter-spacing: -0.035em;
+    text-transform: uppercase;
+    margin: 0;
+    color: var(--text-strong);
+  }
+  .plate-title span { color: var(--ink-300); }
+  .plate-note {
+    margin: 1rem 0 0;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+
+  .sim-closed { padding-top: 3rem; padding-bottom: 5rem; }
+  .sim-closed .standfirst { margin: 0 0 1rem; }
+
+  /* ── Control bar ────────────────────────────────────────────────────── */
+  .sim-bar {
+    position: sticky;
+    top: 34px;
+    z-index: 40;
+    background-color: var(--surface-sunken);
+    border-bottom: 1px solid var(--border-default);
+  }
+  .sim-bar-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem 2rem;
+    padding-block: 0.6rem;
+  }
+  .sim-actions { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 1.1rem; }
+  .sim-label {
+    font-family: var(--font-sans);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .sim-action {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.01em;
+    color: var(--text-strong);
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid var(--ember-500);
+    padding: 0 0 0.05rem;
+    cursor: pointer;
+    transition: var(--transition-color);
+  }
+  .sim-action:hover { color: var(--text-link); }
+
+  .seed-strip {
+    display: none;
+    flex-basis: 100%;
+    list-style: none;
+    margin: 0;
+    padding: 0.35rem 0 0;
+    border-top: 1px dotted var(--border-default);
+    gap: 0.25rem;
+  }
+  .seed-strip li {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 0.15rem 0.3rem;
+  }
+  .seed-strip img { object-fit: contain; }
+  .strip-seed { font-family: var(--font-mono); font-size: 0.62rem; color: var(--text-faint); }
+  .strip-abbr { font-family: var(--font-display); font-weight: 800; font-size: 0.9rem; color: var(--text-strong); }
+
+  /* ── Layout ─────────────────────────────────────────────────────────── */
+  .sim-layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 0.75fr) minmax(0, 1.5fr);
+    gap: 3rem;
+    padding-top: 2.25rem;
+    padding-bottom: 4.5rem;
+    align-items: start;
+  }
+
+  /* The picture holds still while the schedule scrolls past it. */
+  .sim-picture {
+    position: sticky;
+    top: calc(34px + 3.5rem);
+    max-height: calc(100vh - 34px - 4.5rem);
+    overflow-y: auto;
+    padding-right: 0.25rem;
+  }
+
+  .sim-rules { margin: 0 0 1.25rem; }
+
+  /* ── Schedule ───────────────────────────────────────────────────────── */
+  .week-strip { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 1.5rem; }
+  .week-jump {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    background: transparent;
+    border: 1px solid var(--border-default);
+    padding: 0.25rem 0.55rem;
+    cursor: pointer;
+    transition: var(--transition-color);
+  }
+  .week-jump:hover { color: var(--text-strong); border-color: var(--rule-ink); }
+
+  .filter-note { font-size: 0.82rem; color: var(--text-muted); margin: -0.5rem 0 1.25rem; }
+
+  .link-button {
+    font: inherit;
+    color: var(--text-link);
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+  .link-button:hover { color: var(--text-link-hover); text-decoration: underline; }
+
+  .sim-week { margin-bottom: 2rem; scroll-margin-top: calc(34px + 4.5rem); }
+  .sim-week .almanac-head { margin-bottom: 0.4rem; }
+  .live-tag { color: var(--ember-600); }
+
+  .sim-games { list-style: none; margin: 0; padding: 0; }
+  .sim-game {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 2.6rem minmax(0, 1fr);
+    align-items: stretch;
+    border-bottom: 1px dotted var(--border-default);
+  }
+  .sim-game[hidden] { display: none; }
+
+  .pick {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 0.5rem 0.55rem;
+    background: transparent;
+    border: 0;
+    border-left: 3px solid transparent;
+    font: inherit;
+    color: var(--text-strong);
+    text-align: left;
+    cursor: pointer;
+    transition: var(--transition-color), opacity var(--dur-fast) var(--ease-standard);
+  }
+  .pick-b { flex-direction: row-reverse; text-align: right; border-left: 0; border-right: 3px solid transparent; }
+  .pick:hover { background-color: var(--surface-sunken); }
+  .pick img { object-fit: contain; flex-shrink: 0; }
+  .pick-abbr { font-family: var(--font-display); font-size: 1.15rem; font-weight: 800; letter-spacing: 0.02em; }
+  .pick-rec {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-faint);
+  }
+
+  /* A pick is a result: pine, the light-ground win colour, keels the winner;
+     the loser recedes. */
+  .pick[aria-pressed='true'] {
+    background-color: var(--pine-100);
+    border-color: var(--status-win);
+  }
+  .pick[aria-pressed='true'] .pick-abbr { color: var(--pine-700); }
+  .sim-game.is-picked .pick[aria-pressed='false'] { opacity: 0.42; }
+
+  .sim-mid {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 0.8rem;
+    color: var(--text-faint);
+  }
+  .live-score {
+    font-family: var(--font-mono);
+    font-style: normal;
+    font-size: 0.62rem;
+    line-height: 1.3;
+    text-align: center;
+    color: var(--ember-600);
+  }
+
+  /* ── Picture ────────────────────────────────────────────────────────── */
+  .sim-tables {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-top: 1.5rem;
+  }
+
+  .sim-table .conf-name {
+    text-align: left;
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--rule-ink);
+  }
+  .sim-table .conf-scc { color: var(--slate-600); }
+  .sim-table .conf-hcc { color: var(--ember-600); }
+
+  .sim-table tr.seeded td { color: var(--text-strong); }
+  .sim-table tr.seeded .club-filter span { font-weight: 700; }
+  .sim-table tr:not(.seeded) td { color: var(--text-muted); }
+  .sim-table tr.out td { color: var(--text-disabled); }
+  /* The cut line: the last seed in the field, then everyone chasing it. */
+  .sim-table tr.below-cut td { border-top: 2px dashed var(--border-strong); }
+
+  .club-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  .club-filter:hover span { color: var(--text-link); text-decoration: underline; }
+  .club-filter img { object-fit: contain; }
+
+  .mark { font-family: var(--font-mono); font-weight: 700; color: var(--pine-600); }
+  tr.out .mark { color: var(--ember-700); }
+
+  .sim-legend { margin: 1rem 0 0.25rem; }
+  .sim-legend-note { margin: 0; font-size: 0.74rem; color: var(--text-faint); max-width: 70ch; }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* ── Responsive ─────────────────────────────────────────────────────── */
+  /* Below this the bracket can't sit beside the schedule. The schedule leads,
+     the picture follows, and the seed strip in the bar carries the field. */
+  @media (max-width: 1100px) {
+    .sim-layout { grid-template-columns: minmax(0, 1fr); gap: 2.5rem; }
+    .sim-picture { position: static; max-height: none; overflow: visible; }
+    .seed-strip { display: flex; }
+  }
+
+  @media (max-width: 640px) {
+    /* Seven seeds won't fit one phone-width row: four columns put seeds 1–4
+       on the first row and 5–7 on the second, with no sideways scroll. */
+    .seed-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .sim-tables { grid-template-columns: minmax(0, 1fr); }
+    .sim-action { font-size: 0.95rem; }
+    .pick-abbr { font-size: 1rem; }
+    .pick { gap: 0.35rem; padding-inline: 0.35rem; }
+  }
+</style>
+
+<script>
+  import { computePlayoffPicture, clinchStatus, type SeedingGame, type ClinchMark } from '../lib/playoff-picture';
+  import { logoPath } from '../lib/format';
+
+  type SimTeam = {
+    rosterId: number; conf: string; abbr: string;
+    wins: number; losses: number; ties: number; pointsFor: number;
+  };
+  type SimGame = {
+    week: number; matchupId: number;
+    rosterIdA: number; rosterIdB: number;
+    scoreA: number; scoreB: number;
+  };
+  type SimData = {
+    year: number;
+    playoffTeams: number;
+    teams: SimTeam[];
+    lockedGames: SeedingGame[];
+    remaining: SimGame[];
+  };
+  type Side = 'a' | 'b';
+
+  const MARK_LABEL: Record<Exclude<ClinchMark, null>, string> = { conference: 'z', berth: 'x', eliminated: 'e' };
+
+  const dataEl = document.getElementById('sim-data');
+  if (dataEl?.textContent) init(JSON.parse(dataEl.textContent) as SimData);
+
+  function init(data: SimData) {
+    const STORAGE_KEY = `scdfl-sim-${data.year}`;
+    const keyOf = (g: SimGame) => `${g.week}-${g.matchupId}`;
+    const teamById = new Map(data.teams.map(t => [t.rosterId, t]));
+    const weeks = [...new Set(data.remaining.map(g => g.week))];
+    const gamesInWeek = (week: number) => data.remaining.filter(g => g.week === week);
+
+    const picks = new Map<string, Side>();
+    let filter: number | null = null;
+
+    // ── Persistence ──────────────────────────────────────────────────────
+    // One character per game per week in matchup order, '-' for open:
+    // `#10=ab-ba-a&11=...`. Keyed by week, so once a nightly rebuild locks a
+    // week its stale picks are simply dropped.
+    function encode(): string {
+      const params = new URLSearchParams();
+      for (const week of weeks) {
+        const s = gamesInWeek(week).map(g => picks.get(keyOf(g)) ?? '-').join('');
+        if (/[ab]/.test(s)) params.set(String(week), s);
+      }
+      return params.toString();
+    }
+
+    function decode(encoded: string) {
+      const params = new URLSearchParams(encoded);
+      for (const week of weeks) {
+        const s = params.get(String(week));
+        if (!s) continue;
+        gamesInWeek(week).forEach((g, i) => {
+          if (s[i] === 'a' || s[i] === 'b') picks.set(keyOf(g), s[i] as Side);
+        });
+      }
+    }
+
+    function persist() {
+      const encoded = encode();
+      history.replaceState(null, '', encoded ? `#${encoded}` : location.pathname + location.search);
+      try {
+        if (encoded) localStorage.setItem(STORAGE_KEY, encoded);
+        else localStorage.removeItem(STORAGE_KEY);
+      } catch { /* storage unavailable — the hash still carries the state */ }
+    }
+
+    const fromHash = location.hash.slice(1);
+    if (fromHash) {
+      decode(fromHash);
+    } else {
+      try { decode(localStorage.getItem(STORAGE_KEY) ?? ''); } catch { /* no storage */ }
+    }
+
+    // ── The model: locked results plus picks ──────────────────────────────
+    function simulate() {
+      const teams = data.teams.map(t => ({ ...t }));
+      const byId = new Map(teams.map(t => [t.rosterId, t]));
+      const games: SeedingGame[] = [...data.lockedGames];
+      const open = new Map<number, number>(teams.map(t => [t.rosterId, 0]));
+
+      for (const g of data.remaining) {
+        const pick = picks.get(keyOf(g));
+        if (!pick) {
+          open.set(g.rosterIdA, (open.get(g.rosterIdA) ?? 0) + 1);
+          open.set(g.rosterIdB, (open.get(g.rosterIdB) ?? 0) + 1);
+          continue;
+        }
+        const winner = byId.get(pick === 'a' ? g.rosterIdA : g.rosterIdB);
+        const loser = byId.get(pick === 'a' ? g.rosterIdB : g.rosterIdA);
+        if (winner) winner.wins += 1;
+        if (loser) loser.losses += 1;
+        // A pick has no score; 1–0 is enough for head-to-head, and points for
+        // is deliberately left alone.
+        games.push({ rosterIdA: g.rosterIdA, rosterIdB: g.rosterIdB, scoreA: pick === 'a' ? 1 : 0, scoreB: pick === 'b' ? 1 : 0 });
+      }
+
+      const seeds = new Map(computePlayoffPicture(teams, games, data.playoffTeams).map(s => [s.rosterId, s.seed]));
+      const marks = clinchStatus(teams, open, data.playoffTeams);
+      return { teams, seeds, marks };
+    }
+
+    // ── Rendering: update the server-rendered nodes in place ───────────────
+    const recordOf = (t: SimTeam) => (t.ties > 0 ? `${t.wins}-${t.losses}-${t.ties}` : `${t.wins}-${t.losses}`);
+
+    function render() {
+      const { teams, seeds, marks } = simulate();
+      const bySeed = new Map([...seeds].map(([id, seed]) => [seed, teamById.get(id)!]));
+
+      // Schedule: pressed state and the running records.
+      document.querySelectorAll<HTMLElement>('.sim-game').forEach(row => {
+        const pick = picks.get(row.dataset.key!);
+        row.classList.toggle('is-picked', Boolean(pick));
+        row.querySelectorAll<HTMLButtonElement>('.pick').forEach(btn => {
+          btn.setAttribute('aria-pressed', String(btn.dataset.side === pick));
+        });
+        const a = Number(row.dataset.a);
+        const b = Number(row.dataset.b);
+        row.hidden = filter !== null && a !== filter && b !== filter;
+      });
+      for (const t of teams) {
+        document.querySelectorAll<HTMLElement>(`[data-rec="${t.rosterId}"]`).forEach(el => {
+          el.textContent = recordOf(t);
+        });
+      }
+
+      // Bracket: slot positions are fixed by seed, so only the occupant changes.
+      for (const [seed, team] of bySeed) {
+        document.querySelectorAll<HTMLElement>(`.bracket-wrap [data-seed="${seed}"], [data-strip-seed="${seed}"]`).forEach(slot => {
+          const img = slot.querySelector('img');
+          if (img) { img.src = logoPath(team.abbr); img.style.display = ''; }
+          const name = slot.querySelector('.slot-name, .strip-abbr');
+          if (name) name.textContent = team.abbr;
+        });
+      }
+
+      // Conference tables: re-sort the existing rows and restate each cell.
+      document.querySelectorAll<HTMLTableElement>('.sim-table').forEach(table => {
+        const body = table.tBodies[0];
+        const ordered = teams
+          .filter(t => t.conf === table.dataset.conf)
+          .sort((x, y) =>
+            (seeds.get(x.rosterId) ?? 99) - (seeds.get(y.rosterId) ?? 99) ||
+            y.wins - x.wins ||
+            y.pointsFor - x.pointsFor);
+
+        ordered.forEach((t, i) => {
+          const row = body.querySelector<HTMLTableRowElement>(`[data-row="${t.rosterId}"]`);
+          if (!row) return;
+          const seed = seeds.get(t.rosterId) ?? 0;
+          const prevSeeded = i > 0 && (seeds.get(ordered[i - 1].rosterId) ?? 0) > 0;
+          const mark = marks.get(t.rosterId) ?? null;
+          row.classList.toggle('seeded', seed > 0);
+          row.classList.toggle('below-cut', seed === 0 && (i === 0 || prevSeeded));
+          row.classList.toggle('out', mark === 'eliminated');
+          row.querySelector('[data-cell="seed"]')!.textContent = seed ? String(seed) : '';
+          row.querySelector('[data-cell="w"]')!.textContent = String(t.wins);
+          row.querySelector('[data-cell="l"]')!.textContent = String(t.losses);
+          row.querySelector('[data-cell="mark"]')!.textContent = mark ? MARK_LABEL[mark] : '';
+          body.appendChild(row);
+        });
+      });
+
+      const count = document.querySelector('[data-picked-count]');
+      if (count) count.textContent = `${picks.size} of ${data.remaining.length} picked`;
+
+      const note = document.querySelector<HTMLElement>('.filter-note');
+      if (note) {
+        note.hidden = filter === null;
+        const name = note.querySelector('[data-filter-name]');
+        if (name && filter !== null) name.textContent = teamById.get(filter)?.abbr ?? '';
+      }
+    }
+
+    function update() {
+      render();
+      persist();
+    }
+
+    // ── Interaction ──────────────────────────────────────────────────────
+    document.querySelectorAll<HTMLElement>('.sim-game').forEach(row => {
+      row.querySelectorAll<HTMLButtonElement>('.pick').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const key = row.dataset.key!;
+          const side = btn.dataset.side as Side;
+          if (picks.get(key) === side) picks.delete(key);
+          else picks.set(key, side);
+          update();
+        });
+      });
+    });
+
+    // Fills only touch open games, so a reader's own calls survive them.
+    function fill(choose: (g: SimGame) => Side | null) {
+      for (const g of data.remaining) {
+        if (picks.has(keyOf(g))) continue;
+        const side = choose(g);
+        if (side) picks.set(keyOf(g), side);
+      }
+      update();
+    }
+
+    const pointsFor = (id: number) => teamById.get(id)?.pointsFor ?? 0;
+    const FILLS: Record<string, (g: SimGame) => Side | null> = {
+      pf: g => (pointsFor(g.rosterIdA) >= pointsFor(g.rosterIdB) ? 'a' : 'b'),
+      coin: () => (Math.random() < 0.5 ? 'a' : 'b'),
+      live: g => (g.scoreA === g.scoreB ? null : g.scoreA > g.scoreB ? 'a' : 'b'),
+    };
+    document.querySelectorAll<HTMLButtonElement>('[data-fill]').forEach(btn => {
+      btn.addEventListener('click', () => fill(FILLS[btn.dataset.fill!]));
+    });
+
+    document.querySelector('[data-reset]')?.addEventListener('click', () => {
+      picks.clear();
+      update();
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('[data-clear-week]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        for (const g of gamesInWeek(Number(btn.dataset.clearWeek))) picks.delete(keyOf(g));
+        update();
+      });
+    });
+
+    const share = document.querySelector<HTMLButtonElement>('[data-share]');
+    share?.addEventListener('click', async () => {
+      const label = share.textContent;
+      try {
+        await navigator.clipboard.writeText(location.href);
+        share.textContent = 'Link copied';
+      } catch {
+        share.textContent = 'Copy it from the address bar';
+      }
+      setTimeout(() => { share.textContent = label; }, 1800);
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('[data-jump]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById(`sim-week-${btn.dataset.jump}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('[data-filter]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.dataset.filter);
+        filter = filter === id ? null : id;
+        render();
+        document.querySelector('.sim-schedule')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+    document.querySelector('[data-filter-clear]')?.addEventListener('click', () => {
+      filter = null;
+      render();
+    });
+
+    render();
+  }
+</script>

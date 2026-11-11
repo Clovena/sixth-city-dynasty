@@ -188,3 +188,61 @@ export function computePlayoffPicture(
     conferenceLeader: leaderIdSet.has(team.rosterId),
   }));
 }
+
+/**
+ * What is mathematically settled for a team, or null if nothing is yet.
+ *
+ * `conference` — clinched its conference (and so a top-two seed).
+ * `berth`      — clinched a place in the field.
+ * `eliminated` — cannot make the field under any remaining result.
+ */
+export type ClinchMark = 'conference' | 'berth' | 'eliminated' | null;
+
+/**
+ * Clinch and elimination marks, decided on wins alone.
+ *
+ * Every bound ignores the tiebreakers, so a tie in wins always counts against
+ * the team being judged. That makes the marks conservative — a team can be
+ * mathematically in before this says so — but never wrong, which is the only
+ * acceptable failure for a mark that reads as a fact.
+ *
+ * `remaining` is each team's count of games still undecided; a team's ceiling
+ * is its current wins plus all of them, its floor is its current wins.
+ *
+ *  - Conference: more wins than any conference rival can reach.
+ *  - Berth: at most `playoffTeams − 2` other teams can reach its win total.
+ *    Its own conference's leader is among those teams; the other conference's
+ *    leader may not be, and takes a seed regardless. That leaves the team
+ *    ranked no worse than the last wild card.
+ *  - Eliminated: a conference rival is already out of reach, so it cannot
+ *    lead the conference, and at least `playoffTeams` teams are out of reach
+ *    overall. At most two of those are leaders; the rest fill every wild card.
+ */
+export function clinchStatus(
+  teams: SeedingTeam[],
+  remaining: Map<number, number>,
+  playoffTeams = 7,
+): Map<number, ClinchMark> {
+  const ceiling = (t: SeedingTeam) => t.wins + (remaining.get(t.rosterId) ?? 0);
+  const marks = new Map<number, ClinchMark>();
+
+  for (const team of teams) {
+    const others = teams.filter(t => t.rosterId !== team.rosterId);
+    const rivals = others.filter(t => t.conf === team.conf);
+
+    if (rivals.every(r => ceiling(r) < team.wins)) {
+      marks.set(team.rosterId, 'conference');
+    } else if (others.filter(t => ceiling(t) >= team.wins).length <= playoffTeams - 2) {
+      marks.set(team.rosterId, 'berth');
+    } else if (
+      rivals.some(r => r.wins > ceiling(team)) &&
+      others.filter(t => t.wins > ceiling(team)).length >= playoffTeams
+    ) {
+      marks.set(team.rosterId, 'eliminated');
+    } else {
+      marks.set(team.rosterId, null);
+    }
+  }
+
+  return marks;
+}

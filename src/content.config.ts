@@ -30,9 +30,12 @@ const recaps = defineCollection({
 // once the game is actually final, so a live or scheduled game reads as neutral.
 const homepage = defineCollection({
   loader: glob({ pattern: '*.md', base: './src/content/homepage' }),
+  // Only `status` is read now: it gates winner marks on the homepage rail.
+  // `title`/`subtitle` and the body set the old editorial lede, which the
+  // playoff picture replaced; they stay optional for a future slot.
   schema: z.object({
-    title: z.string(),
-    subtitle: z.string(),
+    title: z.string().optional(),
+    subtitle: z.string().optional(),
     status: z.enum(['scheduled', 'active', 'final']).default('scheduled'),
   }),
 });
