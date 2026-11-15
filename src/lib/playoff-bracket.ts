@@ -148,3 +148,57 @@ export function buildBracket(input: {
     finalHref: hrefFor(champion, runnerUp, FINAL),
   };
 }
+
+// ── Simulated playoffs (/sim) ───────────────────────────────────────────────
+
+/**
+ * The six games a reader calls in a simulated `overall7` bracket, in the order
+ * they have to be decided. Keys match the `data-slot` prefixes PlayoffBracket
+ * renders (`r1lb-top`, `sfr-bottom`, `final-0`, …).
+ */
+export const PLAYOFF_PICK_KEYS = ['r1lb', 'r1rt', 'r1rb', 'sfl', 'sfr', 'final'] as const;
+export type PlayoffPickKey = typeof PLAYOFF_PICK_KEYS[number];
+
+/** Each game's two roster ids (null until both are known) and its winner. */
+export type SimulatedBracket = {
+  games: Record<PlayoffPickKey, [number | null, number | null]>;
+  winners: Record<PlayoffPickKey, number | null>;
+};
+
+/**
+ * Plays a simulated `overall7` bracket forward from the seeds and the reader's
+ * picks — the same shape `buildBracket` draws: seed 1 on a bye, 4v5 into its
+ * semifinal, 2v7 and 3v6 into the other, semifinal winners into the final.
+ * There is no reseeding.
+ *
+ * A pick only counts while its team is still in that game. Change a regular-
+ * season result and the seeds can move, so a pick for a team that is no longer
+ * there is dropped, along with everything downstream of it; `picks` is pruned
+ * in place so the caller persists only what still applies.
+ */
+export function simulateBracket(
+  rosterBySeed: Map<number, number>,
+  picks: Map<PlayoffPickKey, number>,
+): SimulatedBracket {
+  const seed = (n: number) => rosterBySeed.get(n) ?? null;
+  const games = {} as SimulatedBracket['games'];
+  const winners = {} as SimulatedBracket['winners'];
+
+  function play(key: PlayoffPickKey, a: number | null, b: number | null): number | null {
+    games[key] = [a, b];
+    const pick = picks.get(key);
+    const valid = a !== null && b !== null && (pick === a || pick === b);
+    if (!valid) picks.delete(key);
+    winners[key] = valid ? pick! : null;
+    return winners[key];
+  }
+
+  const leftQuarter = play('r1lb', seed(4), seed(5));
+  const rightTop = play('r1rt', seed(2), seed(7));
+  const rightBottom = play('r1rb', seed(3), seed(6));
+  const leftFinalist = play('sfl', seed(1), leftQuarter);
+  const rightFinalist = play('sfr', rightTop, rightBottom);
+  play('final', leftFinalist, rightFinalist);
+
+  return { games, winners };
+}

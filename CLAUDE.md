@@ -10,7 +10,7 @@ Astro 5 static site for the SCDFL. Commissioner: Zac. Est. 2021. 14 franchises, 
 npm run dev          # dev server (sets NETLIFY_DEV=1 — see Tech Stack note on @astrojs/netlify)
 npm run build        # static build → dist/
 npm run preview      # preview built site
-npx tsx --test src/lib/*.test.ts   # unit tests for the pure libs (node:test, no deps)
+npx tsx --test src/lib/*.test.ts   # unit tests for the pure libs (node:test, no deps; 13 tests)
 
 # --- Supabase sync scripts (see scripts/lib/CLAUDE.md for details) ---
 npm run sync              # run all routine syncs (results, matchups, rosters, transactions, drafts, exhibitions, stats)
@@ -232,6 +232,7 @@ This file has **no imports of its own** — that's deliberate, not an oversight.
 - `buildBracket({ year, teams, games, shape, projected, slug })` → `BracketView`: the four round-one matchups, two semifinals, champion/runner-up and every recap href. `shape` is `'overall7'` (2023–: seed 1 bye, 4v5, 2v7, 3v6) or `'conference8'` (2021–22: per-conference 1v4/2v3, SCC left).
 - **A slot links only when a `game_type = 1` row actually pairs those two rosters** — a projected bracket is therefore unlinked, and a bracket mid-playoffs links the rounds that exist. Winners only advance on a *scored* row (Sleeper files 0–0 placeholders).
 - `buildSlug` is passed in as `slug` rather than imported, because `game-utils.ts` imports Supabase and this module must stay testable without it.
+- `simulateBracket(rosterBySeed, picks)` — plays an `overall7` bracket forward from the seeds and a reader's picks (`PLAYOFF_PICK_KEYS`: `r1lb`, `r1rt`, `r1rb`, `sfl`, `sfr`, `final`, each mapped to the winner's roster id). A pick counts only while its team is still in that game; stale picks — and so everything downstream — are **pruned from `picks` in place**. Used by `/sim`'s client script, so this file is import-free for the same reason as `playoff-picture.ts`.
 
 ### `src/lib/season-picture.ts` — one season's live state
 - `loadSeasonPicture(year, franchises)` — the single loader behind the homepage lede, `/history/[year]` and `/sim`, so the three can't disagree. Returns `phase` (`pre` / `regular` / `post` / `complete`), `lockedThrough`, `teams` (standings + seed), `lockedGames`, `remainingGames`, and the resolved `bracket`.
@@ -240,7 +241,8 @@ This file has **no imports of its own** — that's deliberate, not an oversight.
 
 ### `src/components/` — Astro components
 - `PlayoffBracket.astro` (+ child `BracketMatchup.astro`) draws a `BracketView`. Used by the homepage, archived `/history/[year]` pages, and `/sim`. Its styles live in the components (the right-side connector flip reaches across via `:global(.bracket-right)`).
-- **`data-seed` contract:** every filled team slot carries `data-seed` and `.slot-logo`/`.slot-seed`/`.slot-name` children. In a projected bracket a slot's position depends only on its seed, so `/sim` re-seats teams by rewriting those nodes in place. Keep the contract if the markup changes.
+- **Slot contract:** every slot carries `data-slot="{key}-top|bottom"` (`r1lt`, `r1lb`, `r1rt`, `r1rb`, `sfl`, `sfr` — the pick keys above, plus `r1lt` for the bye), and every filled one carries `data-seed` and `.slot-logo`/`.slot-seed`/`.slot-name` children. An empty slot has `.is-empty` (the dashed semifinal placeholder keys off that class, not `:has(img)`).
+- **`fillable` (used only by `/sim`)** additionally renders those children *hidden* in empty slots, and gives the two finalists `data-slot="final-0|1"` plus the same children. A script can then fill any slot by toggling `hidden` and text without creating elements — elements created in JS would lack Astro's scope attribute and miss the components' styles. The pick-state classes (`is-pickable`, `is-winner`, `is-loser`, `is-champion`) are styled in the components for the same reason. Keep the contract if the markup changes.
 
 ### Scope: build-time only
 These are for **frontmatter / build-time use**. A client-side `<script>` can only import them if the script has no `is:inline` attribute (Astro then bundles it through Vite, so a normal `import` resolves) — `scores.astro`'s script qualifies but currently still carries local copies of this logic as a deliberately deferred cleanup. `franchises/[abbr].astro`'s scripts use `is:inline` and cannot import at all, so their local `getIdentity`/`teamRow` duplicates are intentional, not a bug. Don't "fix" either without first resolving the `is:inline` question — that's a separate, riskier piece of work than the frontmatter consolidation.
