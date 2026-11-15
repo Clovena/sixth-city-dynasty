@@ -145,7 +145,8 @@ const simData = picture && isLive ? {
         <section class="sim-schedule" aria-label="Remaining schedule">
           <p class="standfirst sim-rules">
             Click a club to pick the winner; click again to clear it. Simulated games count for wins
-            and head-to-head. Points for stays frozen at the real totals.
+            and head-to-head. Points for stays frozen at the real totals. Call every game and the
+            bracket opens for Weeks 15&ndash;17.
           </p>
 
           <nav class="week-strip" aria-label="Jump to week">
@@ -153,6 +154,11 @@ const simData = picture && isLive ? {
               <button type="button" class="week-jump" data-jump={w.week}>Wk {w.week}</button>
             ))}
           </nav>
+
+          <p class="playoffs-note" data-playoffs-note hidden>
+            Every regular-season game is called &mdash;
+            <button type="button" class="link-button" data-jump-picture>on to the playoffs</button>.
+          </p>
 
           <p class="filter-note" hidden>
             Showing <strong data-filter-name></strong>'s games &middot;
@@ -204,7 +210,11 @@ const simData = picture && isLive ? {
             <span class="folio" data-picked-count>0 of {picture!.remainingGames.length} picked</span>
           </div>
 
-          <PlayoffBracket bracket={picture!.bracket} label={`Dynasty Bowl ${toRoman(picture!.year - 2020)}`} />
+          <p class="playoffs-prompt" data-playoffs-prompt hidden>
+            Regular season set. Click a club in the bracket to send it through, round by round.
+          </p>
+
+          <PlayoffBracket bracket={picture!.bracket} label={`Dynasty Bowl ${toRoman(picture!.year - 2020)}`} fillable />
 
           <div class="sim-tables">
             {conferenceTables.map(conf => (
@@ -296,7 +306,7 @@ const simData = picture && isLive ? {
   /* ── Control bar ────────────────────────────────────────────────────── */
   .sim-bar {
     position: sticky;
-    top: 34px;
+    top: 0;
     z-index: 40;
     background-color: var(--surface-sunken);
     border-bottom: 1px solid var(--border-default);
@@ -368,8 +378,8 @@ const simData = picture && isLive ? {
   /* The picture holds still while the schedule scrolls past it. */
   .sim-picture {
     position: sticky;
-    top: calc(34px + 3.5rem);
-    max-height: calc(100vh - 34px - 4.5rem);
+    top: 3.5rem;
+    max-height: calc(100vh - 4.5rem);
     overflow-y: auto;
     padding-right: 0.25rem;
   }
@@ -394,6 +404,18 @@ const simData = picture && isLive ? {
 
   .filter-note { font-size: 0.82rem; color: var(--text-muted); margin: -0.5rem 0 1.25rem; }
 
+  /* The hand-off from the regular season to the bracket. A ruled line in pine,
+     not a box: it is a status, the same colour as the picks that earned it. */
+  .playoffs-note,
+  .playoffs-prompt {
+    margin: 0 0 1.25rem;
+    padding: 0.45rem 0 0.45rem 0.75rem;
+    border-left: 3px solid var(--status-win);
+    font-size: 0.85rem;
+    color: var(--pine-700);
+  }
+  .playoffs-prompt { margin-top: -0.5rem; }
+
   .link-button {
     font: inherit;
     color: var(--text-link);
@@ -404,7 +426,7 @@ const simData = picture && isLive ? {
   }
   .link-button:hover { color: var(--text-link-hover); text-decoration: underline; }
 
-  .sim-week { margin-bottom: 2rem; scroll-margin-top: calc(34px + 4.5rem); }
+  .sim-week { margin-bottom: 2rem; scroll-margin-top: 4.5rem; }
   .sim-week .almanac-head { margin-bottom: 0.4rem; }
   .live-tag { color: var(--ember-600); }
 
@@ -549,6 +571,7 @@ const simData = picture && isLive ? {
 
 <script>
   import { computePlayoffPicture, clinchStatus, type SeedingGame, type ClinchMark } from '../lib/playoff-picture';
+  import { simulateBracket, PLAYOFF_PICK_KEYS, type PlayoffPickKey } from '../lib/playoff-bracket';
   import { logoPath } from '../lib/format';
 
   type SimTeam = {
@@ -582,17 +605,28 @@ const simData = picture && isLive ? {
     const gamesInWeek = (week: number) => data.remaining.filter(g => g.week === week);
 
     const picks = new Map<string, Side>();
+    /** Bracket picks: the winner's roster id for each playoff game. */
+    const playoffPicks = new Map<PlayoffPickKey, number>();
     let filter: number | null = null;
+
+    // The bracket can only be played forward in the shape the league runs now.
+    const playoffsEnabled = data.playoffTeams === 7;
+    const PLAYOFF_GAMES = PLAYOFF_PICK_KEYS.length;
 
     // ── Persistence ──────────────────────────────────────────────────────
     // One character per game per week in matchup order, '-' for open:
     // `#10=ab-ba-a&11=...`. Keyed by week, so once a nightly rebuild locks a
-    // week its stale picks are simply dropped.
+    // week its stale picks are simply dropped. The bracket rides along as
+    // `po=`, the winner's roster id per game in PLAYOFF_PICK_KEYS order
+    // (`po=40.20.60.40..`); a pick that no longer fits the seeding is pruned.
     function encode(): string {
       const params = new URLSearchParams();
       for (const week of weeks) {
         const s = gamesInWeek(week).map(g => picks.get(keyOf(g)) ?? '-').join('');
         if (/[ab]/.test(s)) params.set(String(week), s);
+      }
+      if (playoffPicks.size > 0) {
+        params.set('po', PLAYOFF_PICK_KEYS.map(k => playoffPicks.get(k) ?? '').join('.'));
       }
       return params.toString();
     }
@@ -606,6 +640,10 @@ const simData = picture && isLive ? {
           if (s[i] === 'a' || s[i] === 'b') picks.set(keyOf(g), s[i] as Side);
         });
       }
+      (params.get('po') ?? '').split('.').forEach((id, i) => {
+        const key = PLAYOFF_PICK_KEYS[i];
+        if (key && teamById.has(Number(id))) playoffPicks.set(key, Number(id));
+      });
     }
 
     function persist() {
@@ -647,16 +685,106 @@ const simData = picture && isLive ? {
         games.push({ rosterIdA: g.rosterIdA, rosterIdB: g.rosterIdB, scoreA: pick === 'a' ? 1 : 0, scoreB: pick === 'b' ? 1 : 0 });
       }
 
-      const seeds = new Map(computePlayoffPicture(teams, games, data.playoffTeams).map(s => [s.rosterId, s.seed]));
+      const field = computePlayoffPicture(teams, games, data.playoffTeams);
+      const seeds = new Map(field.map(s => [s.rosterId, s.seed]));
+      const rosterBySeed = new Map(field.map(s => [s.seed, s.rosterId]));
       const marks = clinchStatus(teams, open, data.playoffTeams);
-      return { teams, seeds, marks };
+      return { teams, seeds, rosterBySeed, marks };
+    }
+
+    /** The bracket opens once every regular-season game has a pick. */
+    const regularSeasonSet = () => picks.size === data.remaining.length;
+    const playoffsOpen = () => playoffsEnabled && regularSeasonSet();
+
+    /**
+     * The simulated bracket. While the regular season is still open the
+     * reader's bracket picks are set aside rather than pruned, so clearing one
+     * game to try an alternative doesn't wipe a bracket they'll come back to.
+     */
+    function bracketFor(rosterBySeed: Map<number, number>) {
+      return simulateBracket(rosterBySeed, playoffsOpen() ? playoffPicks : new Map());
     }
 
     // ── Rendering: update the server-rendered nodes in place ───────────────
     const recordOf = (t: SimTeam) => (t.ties > 0 ? `${t.wins}-${t.losses}-${t.ties}` : `${t.wins}-${t.losses}`);
 
+    // ── Bracket slots ────────────────────────────────────────────────────
+    // `PlayoffBracket fillable` renders every slot with hidden children, so a
+    // slot is only ever filled or emptied here — never built — and keeps the
+    // component's scoped styles.
+    const bracketEl = document.querySelector<HTMLElement>('.sim-picture .bracket-wrap');
+    const slotKey = (slotId: string) => (slotId.startsWith('final') ? 'final' : slotId.split('-')[0]);
+    const isPickKey = (key: string): key is PlayoffPickKey => (PLAYOFF_PICK_KEYS as readonly string[]).includes(key);
+
+    function fillSlot(slot: HTMLElement, rosterId: number | null, seed: number | null) {
+      const team = rosterId !== null ? teamById.get(rosterId) : undefined;
+      slot.classList.toggle('is-empty', !team);
+      if (slot.classList.contains('final-team')) slot.classList.toggle('final-team-open', !team);
+      if (team) slot.dataset.roster = String(team.rosterId);
+      else delete slot.dataset.roster;
+      if (team && seed) slot.dataset.seed = String(seed);
+      else delete slot.dataset.seed;
+
+      const img = slot.querySelector<HTMLImageElement>('.slot-logo');
+      const seedEl = slot.querySelector<HTMLElement>('.slot-seed');
+      const name = slot.querySelector<HTMLElement>('.slot-name');
+      for (const el of [img, seedEl, name]) if (el) el.hidden = !team;
+      if (img && team) { img.src = logoPath(team.abbr); img.style.display = ''; }
+      if (seedEl) seedEl.textContent = team && seed ? String(seed) : '';
+      if (name) name.textContent = team?.abbr ?? '';
+    }
+
+    function renderBracket(seeds: Map<number, number>, rosterBySeed: Map<number, number>) {
+      if (!bracketEl) return;
+      const open = playoffsOpen();
+      const { games, winners } = bracketFor(rosterBySeed);
+      const champion = winners.final;
+
+      // Who sits in each slot. The champion moves to the top of the final so
+      // the block reads "A defeated B", as an archived bracket does.
+      const occupant: Record<string, number | null> = { 'r1lt-top': rosterBySeed.get(1) ?? null };
+      for (const key of PLAYOFF_PICK_KEYS) {
+        if (key === 'final') continue;
+        occupant[`${key}-top`] = games[key][0];
+        occupant[`${key}-bottom`] = games[key][1];
+      }
+      const [fa, fb] = games.final;
+      [occupant['final-0'], occupant['final-1']] = champion === null
+        ? [fa, fb]
+        : [champion, champion === fa ? fb : fa];
+
+      bracketEl.querySelectorAll<HTMLElement>('[data-slot]').forEach(slot => {
+        const id = slot.dataset.slot!;
+        const rosterId = occupant[id] ?? null;
+        fillSlot(slot, rosterId, rosterId !== null ? seeds.get(rosterId) ?? null : null);
+
+        const key = slotKey(id);
+        const game = isPickKey(key) ? games[key] : null;
+        const winner = isPickKey(key) ? winners[key] : null;
+        const pickable = open && game !== null && game[0] !== null && game[1] !== null && rosterId !== null;
+        const won = rosterId !== null && rosterId === winner;
+
+        slot.classList.toggle('is-pickable', pickable);
+        slot.classList.toggle(key === 'final' ? 'is-champion' : 'is-winner', won);
+        slot.classList.toggle('is-loser', rosterId !== null && winner !== null && !won);
+        if (pickable) {
+          slot.setAttribute('role', 'button');
+          slot.tabIndex = 0;
+          slot.setAttribute('aria-pressed', String(won));
+          slot.setAttribute('aria-label', `Advance ${teamById.get(rosterId!)?.abbr ?? ''}`);
+        } else {
+          for (const attr of ['role', 'tabindex', 'aria-pressed', 'aria-label']) slot.removeAttribute(attr);
+        }
+      });
+
+      const label = bracketEl.querySelector('[data-final-label]');
+      if (label) label.textContent = champion !== null ? 'defeated' : fa !== null && fb !== null ? 'vs' : 'TBD';
+
+      return champion;
+    }
+
     function render() {
-      const { teams, seeds, marks } = simulate();
+      const { teams, seeds, rosterBySeed, marks } = simulate();
       const bySeed = new Map([...seeds].map(([id, seed]) => [seed, teamById.get(id)!]));
 
       // Schedule: pressed state and the running records.
@@ -676,15 +804,17 @@ const simData = picture && isLive ? {
         });
       }
 
-      // Bracket: slot positions are fixed by seed, so only the occupant changes.
+      // The seed strip: positions are fixed by seed, so only the occupant changes.
       for (const [seed, team] of bySeed) {
-        document.querySelectorAll<HTMLElement>(`.bracket-wrap [data-seed="${seed}"], [data-strip-seed="${seed}"]`).forEach(slot => {
-          const img = slot.querySelector('img');
+        document.querySelectorAll<HTMLElement>(`[data-strip-seed="${seed}"]`).forEach(item => {
+          const img = item.querySelector('img');
           if (img) { img.src = logoPath(team.abbr); img.style.display = ''; }
-          const name = slot.querySelector('.slot-name, .strip-abbr');
+          const name = item.querySelector('.strip-abbr');
           if (name) name.textContent = team.abbr;
         });
       }
+
+      const champion = renderBracket(seeds, rosterBySeed);
 
       // Conference tables: re-sort the existing rows and restate each cell.
       document.querySelectorAll<HTMLTableElement>('.sim-table').forEach(table => {
@@ -713,13 +843,24 @@ const simData = picture && isLive ? {
         });
       });
 
+      const open = playoffsOpen();
       const count = document.querySelector('[data-picked-count]');
-      if (count) count.textContent = `${picks.size} of ${data.remaining.length} picked`;
+      if (count) {
+        count.textContent = !open
+          ? `${picks.size} of ${data.remaining.length} picked`
+          : champion != null
+            ? `Champion: ${teamById.get(champion)?.abbr ?? ''}`
+            : `Playoffs · ${playoffPicks.size} of ${PLAYOFF_GAMES} picked`;
+      }
+      const note = document.querySelector<HTMLElement>('[data-playoffs-note]');
+      if (note) note.hidden = !open;
+      const prompt = document.querySelector<HTMLElement>('[data-playoffs-prompt]');
+      if (prompt) prompt.hidden = !open || champion != null;
 
-      const note = document.querySelector<HTMLElement>('.filter-note');
-      if (note) {
-        note.hidden = filter === null;
-        const name = note.querySelector('[data-filter-name]');
+      const filterNote = document.querySelector<HTMLElement>('.filter-note');
+      if (filterNote) {
+        filterNote.hidden = filter === null;
+        const name = filterNote.querySelector('[data-filter-name]');
         if (name && filter !== null) name.textContent = teamById.get(filter)?.abbr ?? '';
       }
     }
@@ -742,21 +883,68 @@ const simData = picture && isLive ? {
       });
     });
 
-    // Fills only touch open games, so a reader's own calls survive them.
-    function fill(choose: (g: SimGame) => Side | null) {
+    // A click (or Enter/Space) on a pickable bracket slot advances that club;
+    // the same club again takes the pick back.
+    function pickSlot(slot: HTMLElement) {
+      if (!slot.classList.contains('is-pickable')) return;
+      const key = slotKey(slot.dataset.slot!);
+      const rosterId = Number(slot.dataset.roster);
+      if (!isPickKey(key) || !rosterId) return;
+      if (playoffPicks.get(key) === rosterId) playoffPicks.delete(key);
+      else playoffPicks.set(key, rosterId);
+      update();
+    }
+    bracketEl?.addEventListener('click', e => {
+      const slot = (e.target as Element).closest<HTMLElement>('[data-slot]');
+      if (slot) pickSlot(slot);
+    });
+    bracketEl?.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const slot = (e.target as Element).closest<HTMLElement>('[data-slot]');
+      if (!slot?.classList.contains('is-pickable')) return;
+      e.preventDefault();
+      pickSlot(slot);
+    });
+
+    // Fills only touch open games, so a reader's own calls survive them. Once
+    // the regular season is complete a fill carries on into the bracket, a
+    // round at a time, when it has a rule for a matchup without scores.
+    type Fill = {
+      game: (g: SimGame) => Side | null;
+      pair?: (a: number, b: number) => number;
+    };
+
+    function fill({ game, pair }: Fill) {
       for (const g of data.remaining) {
         if (picks.has(keyOf(g))) continue;
-        const side = choose(g);
+        const side = game(g);
         if (side) picks.set(keyOf(g), side);
+      }
+      if (pair && playoffsOpen()) {
+        const { rosterBySeed } = simulate();
+        for (const key of PLAYOFF_PICK_KEYS) {
+          const [a, b] = bracketFor(rosterBySeed).games[key];
+          if (a !== null && b !== null && !playoffPicks.has(key)) playoffPicks.set(key, pair(a, b));
+        }
       }
       update();
     }
 
     const pointsFor = (id: number) => teamById.get(id)?.pointsFor ?? 0;
-    const FILLS: Record<string, (g: SimGame) => Side | null> = {
-      pf: g => (pointsFor(g.rosterIdA) >= pointsFor(g.rosterIdB) ? 'a' : 'b'),
-      coin: () => (Math.random() < 0.5 ? 'a' : 'b'),
-      live: g => (g.scoreA === g.scoreB ? null : g.scoreA > g.scoreB ? 'a' : 'b'),
+    const coin = () => Math.random() < 0.5;
+    const FILLS: Record<string, Fill> = {
+      pf: {
+        game: g => (pointsFor(g.rosterIdA) >= pointsFor(g.rosterIdB) ? 'a' : 'b'),
+        pair: (a, b) => (pointsFor(a) >= pointsFor(b) ? a : b),
+      },
+      coin: {
+        game: () => (coin() ? 'a' : 'b'),
+        pair: (a, b) => (coin() ? a : b),
+      },
+      // Live scores exist only for the regular-season week under way.
+      live: {
+        game: g => (g.scoreA === g.scoreB ? null : g.scoreA > g.scoreB ? 'a' : 'b'),
+      },
     };
     document.querySelectorAll<HTMLButtonElement>('[data-fill]').forEach(btn => {
       btn.addEventListener('click', () => fill(FILLS[btn.dataset.fill!]));
@@ -764,7 +952,12 @@ const simData = picture && isLive ? {
 
     document.querySelector('[data-reset]')?.addEventListener('click', () => {
       picks.clear();
+      playoffPicks.clear();
       update();
+    });
+
+    document.querySelector('[data-jump-picture]')?.addEventListener('click', () => {
+      document.querySelector('.sim-picture')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
     document.querySelectorAll<HTMLButtonElement>('[data-clear-week]').forEach(btn => {

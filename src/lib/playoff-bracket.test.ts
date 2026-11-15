@@ -64,3 +64,40 @@ test('the conference shape plays 1v4 and 2v3 per side, SCC on the left', () => {
   assert.deepEqual([b.rightTop.top?.abbr, b.rightBottom.bottom?.abbr], ['HCC1', 'HCC3']);
   assert.equal(b.leftTop.bye, false);
 });
+
+import { simulateBracket, type PlayoffPickKey } from './playoff-bracket';
+
+const seedsToRoster = new Map([1, 2, 3, 4, 5, 6, 7].map(s => [s, s * 10]));
+
+test('a simulated bracket fills forward from the picks', () => {
+  const picks = new Map<PlayoffPickKey, number>([
+    ['r1lb', 50], ['r1rt', 20], ['r1rb', 60], ['sfl', 50], ['sfr', 60], ['final', 60],
+  ]);
+  const b = simulateBracket(seedsToRoster, picks);
+  assert.deepEqual(b.games.sfl, [10, 50]);
+  assert.deepEqual(b.games.sfr, [20, 60]);
+  assert.deepEqual(b.games.final, [50, 60]);
+  assert.equal(b.winners.final, 60);
+  assert.equal(picks.size, 6);
+});
+
+test('later rounds stay open until both sides are picked', () => {
+  const picks = new Map<PlayoffPickKey, number>([['r1rt', 70]]);
+  const b = simulateBracket(seedsToRoster, picks);
+  assert.deepEqual(b.games.sfl, [10, null]);
+  assert.deepEqual(b.games.sfr, [70, null]);
+  assert.deepEqual(b.games.final, [null, null]);
+  assert.equal(b.winners.sfr, null);
+});
+
+test('a pick for a team no longer in its game is dropped, with everything after it', () => {
+  const picks = new Map<PlayoffPickKey, number>([['r1lb', 40], ['sfl', 40], ['final', 40]]);
+  // Seeds 4 and 5 swap rosters 40 → 45: the 4v5 pick no longer applies.
+  const moved = new Map(seedsToRoster);
+  moved.set(4, 45);
+  const b = simulateBracket(moved, picks);
+  assert.equal(b.winners.r1lb, null);
+  assert.equal(b.winners.sfl, null);
+  assert.equal(b.winners.final, null);
+  assert.equal(picks.size, 0);
+});

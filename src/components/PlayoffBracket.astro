@@ -15,9 +15,14 @@ interface Props {
   bracket: BracketView;
   /** e.g. "Dynasty Bowl VI" */
   label: string;
+  /**
+   * `/sim` only: every slot, including the two finalists, renders with
+   * `data-slot` and its (hidden) children so a script can fill later rounds.
+   */
+  fillable?: boolean;
 }
 
-const { bracket, label } = Astro.props;
+const { bracket, label, fillable = false } = Astro.props;
 const finalists = [bracket.champion, bracket.runnerUp];
 const Final = bracket.finalHref ? 'a' : 'div';
 ---
@@ -27,11 +32,11 @@ const Final = bracket.finalHref ? 'a' : 'div';
   <!-- LEFT SIDE: round one → semis → centre -->
   <div class="bracket-side bracket-left">
     <div class="bracket-round">
-      <BracketMatchup matchup={bracket.leftTop} />
-      <BracketMatchup matchup={bracket.leftBottom} />
+      <BracketMatchup matchup={bracket.leftTop} id="r1lt" fillable={fillable} />
+      <BracketMatchup matchup={bracket.leftBottom} id="r1lb" fillable={fillable} />
     </div>
     <div class="bracket-round bracket-round-semis">
-      <BracketMatchup matchup={bracket.leftSemi} semi />
+      <BracketMatchup matchup={bracket.leftSemi} semi id="sfl" fillable={fillable} />
     </div>
   </div>
 
@@ -43,12 +48,15 @@ const Final = bracket.finalHref ? 'a' : 'div';
     <Final href={bracket.finalHref ?? undefined} class:list={['bracket-final-slot', { 'bracket-final-link': bracket.finalHref }]}>
       {finalists.map((team, i) => (
         <>
-          {i > 0 && <div class="final-defeated">{bracket.champion ? 'defeated' : 'TBD'}</div>}
-          {team ? (
-            <div class:list={['final-team', { 'champion-team': i === 0 }]}>
-              <img src={logoPath(team.abbr)} alt="" width="32" height="32" onerror="this.style.display='none'" />
-              <span class="final-seed">{team.seed}</span>
-              <span class="final-name">{team.abbr}</span>
+          {i > 0 && <div class="final-defeated" data-final-label>{bracket.champion ? 'defeated' : 'TBD'}</div>}
+          {team || fillable ? (
+            <div
+              class:list={['final-team', { 'champion-team': team && i === 0, 'final-team-open': !team }]}
+              data-slot={fillable ? `final-${i}` : undefined}
+            >
+              <img class="slot-logo" src={team ? logoPath(team.abbr) : undefined} alt="" width="32" height="32" hidden={!team} onerror="this.style.display='none'" />
+              <span class="final-seed slot-seed" hidden={!team}>{team?.seed}</span>
+              <span class="final-name slot-name" hidden={!team}>{team?.abbr}</span>
             </div>
           ) : <div class="final-team final-team-open"></div>}
         </>
@@ -59,11 +67,11 @@ const Final = bracket.finalHref ? 'a' : 'div';
   <!-- RIGHT SIDE: semis → round one (DOM order matches display order) -->
   <div class="bracket-side bracket-right">
     <div class="bracket-round bracket-round-semis">
-      <BracketMatchup matchup={bracket.rightSemi} semi />
+      <BracketMatchup matchup={bracket.rightSemi} semi id="sfr" fillable={fillable} />
     </div>
     <div class="bracket-round">
-      <BracketMatchup matchup={bracket.rightTop} />
-      <BracketMatchup matchup={bracket.rightBottom} />
+      <BracketMatchup matchup={bracket.rightTop} id="r1rt" fillable={fillable} />
+      <BracketMatchup matchup={bracket.rightBottom} id="r1rb" fillable={fillable} />
     </div>
   </div>
 
@@ -164,6 +172,16 @@ const Final = bracket.finalHref ? 'a' : 'div';
     border: 1px dashed var(--color-gold-dim);
     opacity: 0.5;
   }
+
+  /* /sim: finalists the reader can click, and the result once they have. */
+  .final-team.is-pickable { cursor: pointer; transition: var(--transition-color); }
+  .final-team.is-pickable:hover,
+  .final-team.is-pickable:focus-visible {
+    background-color: color-mix(in srgb, var(--gold-200) 60%, transparent);
+    outline: none;
+  }
+  .final-team.is-champion { box-shadow: inset 3px 0 0 var(--gold-600); }
+  .final-team.is-loser { opacity: 0.45; }
 
   .final-defeated {
     font-size: 0.6rem;
