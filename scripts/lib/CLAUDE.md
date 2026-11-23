@@ -4,7 +4,7 @@ Data sync pipeline for the SCDFL site. TypeScript syncs that fetch from the Slee
 
 ## Where the code lives (read first)
 
-The seven **routine** syncs run in two places, from one implementation:
+The nine **routine** syncs run in two places, from one implementation:
 
 | Piece | Path | Runtime |
 |---|---|---|
@@ -25,8 +25,8 @@ All scripts are run via `npx tsx` and configured as npm scripts in the root `pac
 
 ```bash
 # Routine syncs — run weekly during the NFL season
-npm run sync              # all 7 routine syncs sequentially, all seasons
-npm run sync:recent       # all 7, clamped to the most recent season (the weekly default)
+npm run sync              # all 9 routine syncs sequentially, all seasons
+npm run sync:recent       # all 9, clamped to the most recent season (the weekly default)
 npm run sync:results      # npx tsx scripts/lib/sync-results.ts
 npm run sync:matchups     # npx tsx scripts/lib/sync-matchups.ts
 npm run sync:rosters      # npx tsx scripts/lib/sync-rosters.ts
@@ -34,6 +34,8 @@ npm run sync:transactions # npx tsx scripts/lib/sync-transactions.ts
 npm run sync:drafts       # npx tsx scripts/lib/sync-drafts.ts
 npm run sync:exhibitions  # npx tsx scripts/lib/sync-exhibitions.ts
 npm run sync:stats        # npx tsx scripts/lib/sync-stats.ts
+npm run sync:schedule     # npx tsx scripts/lib/sync-schedule.ts   (nflverse games.csv → nfl_schedule)
+npm run sync:superlatives # npx tsx scripts/lib/sync-superlatives.ts (Superlatives race → superlative_leaders)
 
 # Player metadata — run sparingly (heavyweight external calls)
 npm run sync:players      # npx tsx scripts/lib/sync-players.ts
@@ -262,3 +264,10 @@ Common issues:
 - **Sleeper 429 / rate limit**: Space out calls; `sync:players` especially should be ≤ 1x/day
 - **nflverse "Not found"**: Normal for future seasons — `sync:stats` skips gracefully
 - **Supabase 1,000 row cap**: The sync scripts use the service key client, but large reads still need explicit `.limit()` or pagination
+
+---
+
+## `sync-schedule.ts` and `sync-superlatives.ts` (added Nov 2026 for the Superlatives race)
+
+- **`schedule`** downloads nflverse's `games.csv` (all seasons since 1999, ~2 MB), keeps the seasons in `scdfl.seasons`, maps the Rams from nflverse `LA` to Sleeper `LAR`, and upserts on `game_id`. It exists so the superlatives SQL knows which weeks each NFL team played (byes for start rate; missed games for Tough Break) — `nfl_stats` has no team column and `players.team` is only the current team.
+- **`superlatives`** does no computing of its own: it reads Sleeper's NFL state to pick `as_of_week`, calls `scdfl.compute_superlative_leaders(season, week, 5, 1)` over RPC, and writes `scdfl.superlative_leaders` (upsert with one `generated_at` stamp, then delete the season's older rows) plus the write-once `superlative_leaders_final` at Week 14. Must run **after** every other sync in the chain. A `permission denied for schema sandbox` error means the service role lost its grant on the two sandbox inputs (see the tables migration).

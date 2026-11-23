@@ -6,7 +6,7 @@ One Supabase Edge Function, called by `pg_cron`, running jobs defined in
 
 | Job | Steps | When |
 |---|---|---|
-| `recent` | `results → matchups → rosters → transactions → drafts → exhibitions → stats → deploy` | Daily, midnight ET |
+| `recent` | `results → matchups → rosters → transactions → drafts → exhibitions → stats → schedule → superlatives → deploy` | Daily, midnight ET |
 
 `recent` is `npm run sync:recent` followed by a Netlify rebuild (`deploy`),
 since almost every page is pre-rendered and only shows new data after a build.
@@ -19,7 +19,7 @@ pg_cron 'ops-sync-recent' (04:00 + 05:00 UTC)
    ▼
 sync (step 0: results) ── logs ops.run_steps ── net.http_post {"run_id":N,"step":1}
    ▼
-sync (step 1: matchups) ── … ── sync (step 7: deploy) ── closes ops.runs
+sync (step 1: matchups) ── … ── sync (step 9: deploy) ── closes ops.runs
 ```
 
 - **One step per invocation.** The Free plan caps each request at 2 s CPU and
@@ -119,3 +119,15 @@ select status_code, content, created from net._http_response order by created de
   `npm run sync:player-meta` runs, which isn't scheduled yet.
 - **`deploy` warning "NETLIFY_BUILD_HOOK is not set"**: the data refreshed
   but the site didn't rebuild.
+- **`superlatives` error `permission denied for schema sandbox`**: the
+  service role lost its grant on `sandbox.player_projections_2026` /
+  `sandbox.player_windows_thru_2025` (see
+  `supabase/migrations/20261116150000_superlatives.sql`). The step runs the
+  heavy SQL (`scdfl.compute_superlative_leaders`) on the database, so the
+  2 s CPU cap doesn't apply to it; only the 150 s wall clock does. The
+  function takes 60–130 s on this instance (I/O-bound), which is why
+  `service_role` carries `statement_timeout = '5min'`. A step stuck at
+  `running` means the wall clock hit first — see the root CLAUDE.md
+  "Superlatives Race" for the fallback.
+- **`superlatives` warning "Sleeper NFL state unavailable"**: the boards were
+  left as they were rather than recomputed with a guessed week.

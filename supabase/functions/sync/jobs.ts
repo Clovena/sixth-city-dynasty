@@ -23,9 +23,11 @@ export type Job = {
 export const JOBS: Record<string, Job> = {
   // `npm run sync:recent`, then a Netlify rebuild so the pre-rendered
   // pages pick the new data up. Step order matches the npm `sync` chain:
-  // matchups reads seeds from results.
+  // matchups reads seeds from results, and superlatives reads everything
+  // before it (it recomputes the /superlatives boards in SQL), so it runs
+  // last before the deploy.
   recent: {
     scope: 'latest',
-    steps: ['results', 'matchups', 'rosters', 'transactions', 'drafts', 'exhibitions', 'stats', 'deploy'],
+    steps: ['results', 'matchups', 'rosters', 'transactions', 'drafts', 'exhibitions', 'stats', 'schedule', 'superlatives', 'deploy'],
   },
 };

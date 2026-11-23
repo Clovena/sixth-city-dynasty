@@ -13,7 +13,7 @@ npm run preview      # preview built site
 npx tsx --test src/lib/*.test.ts   # unit tests for the pure libs (node:test, no deps; 13 tests)
 
 # --- Supabase sync scripts (see scripts/lib/CLAUDE.md for details) ---
-npm run sync              # run all routine syncs (results, matchups, rosters, transactions, drafts, exhibitions, stats)
+npm run sync              # run all routine syncs (results, matchups, rosters, transactions, drafts, exhibitions, stats, schedule, superlatives)
 npm run sync:recent       # same chain, clamped to the most recent season only
 SCDFL_SEASON=2023 npm run sync   # same chain, clamped to one specific season
 npm run sync:results      # sync win/loss/points per franchise per season
@@ -23,6 +23,8 @@ npm run sync:transactions # sync all transactions (waivers, trades, free agents)
 npm run sync:drafts       # sync draft pick results for all configured drafts
 npm run sync:exhibitions  # sync exhibition matchup scores
 npm run sync:stats        # sync weekly NFL player stats from nflverse
+npm run sync:schedule     # sync the NFL schedule (nflverse games.csv) → nfl_schedule (byes, missed games)
+npm run sync:superlatives # recompute the Superlatives race → superlative_leaders (reads everything above)
 
 # --- Player metadata (run sparingly — heavyweight API calls) ---
 npm run sync:players      # sync Sleeper player database (~20k+ players, ≤ 1x/day)
@@ -77,6 +79,7 @@ Every route is pre-rendered at build time (`output: 'static'`) **except** `/play
 | `/hall-of-fame/inductees` | `src/pages/hall-of-fame/inductees.astro` |
 | `/players/[id]` | `src/pages/players/[id].astro` (SSR) |
 | `/sim` | `src/pages/sim.astro` (playoff simulator; static, client-side picks) |
+| `/superlatives` | `src/pages/superlatives/index.astro` (the in-season awards race — see "Superlatives Race") |
 
 ---
 
@@ -128,6 +131,11 @@ All league data is stored in the `scdfl` schema in Supabase. See `SUPABASE_DEFIN
 | `spotlight_game_years` | Manual | Which years each spotlight game occurs |
 | `nfl_stats` | `sync:stats` | Weekly NFL player stats from nflverse (~95k rows) |
 | `accolades` | Manual | Annual league awards (MVP, trade of the year, etc.) |
+| `nfl_schedule` | `sync:schedule` | nflverse `games.csv`, Sleeper team codes; which weeks each NFL team played (byes, missed games) |
+| `superlative_leaders` | `sync:superlatives` | The Superlatives race: top five per award per season (§5 of `SUPERLATIVES.md`) |
+| `superlative_leaders_final` | `sync:superlatives` (write-once) | The frozen Week-14 boards = the ballot nominee list |
+| `injury_overrides` | Manual | Tough Break fixes: `include` / `exclude` / `adjust` a player's injury spell |
+| `trade_exclusions` | Manual | Trades left off both trade boards (joke trades, contract dumps) |
 
 ### Views
 
@@ -239,6 +247,11 @@ This file has **no imports of its own** — that's deliberate, not an oversight.
 - **`lockedThrough` = the most games any team has in `results`** — i.e. the weeks Sleeper has *finalized*. A week with live, still-moving scores is not locked: it isn't in `results.wins` yet, so it doesn't feed head-to-head either. Don't switch this to "rows with a non-zero score".
 - Seeds: computed with `computePlayoffPicture` through the regular season; afterwards the hand-entered `results.seed`, falling back to computed seeds if those haven't been entered yet. `conference8` is only used where seeds were entered by hand (per-conference seeds don't exist otherwise).
 
+### `src/lib/superlatives-awards.ts` / `src/lib/superlatives.ts` — the Superlatives race
+- `superlatives-awards.ts` is **import-free** (tested by `superlatives.test.ts`): `AWARDS` (the 14 awards in display order, with the official description, a plain-language `method` list and a `scoreLabel`), `AWARD_GROUPS` (the page's four sections), the `LeaderRow` / `TradeSide` row types, and `groupByAward` / `tradeSides` / `flagLabel` / `splitAbbrs` / `asOfLine`.
+- `superlatives.ts` loads the rows: `loadSuperlativeRace()` (latest season in `superlative_leaders`, preferring `superlative_leaders_final` once it has that season) and `loadRacePlayers(ids)` (names / positions / headshots from `v_players`).
+- Nothing in `src/` computes a board. The methodology is `scdfl.compute_superlative_leaders` — see "Superlatives Race" below.
+
 ### `src/components/` — Astro components
 - `PlayoffBracket.astro` (+ child `BracketMatchup.astro`) draws a `BracketView`. Used by the homepage, archived `/history/[year]` pages, and `/sim`. Its styles live in the components (the right-side connector flip reaches across via `:global(.bracket-right)`).
 - **Slot contract:** every slot carries `data-slot="{key}-top|bottom"` (`r1lt`, `r1lb`, `r1rt`, `r1rb`, `sfl`, `sfr` — the pick keys above, plus `r1lt` for the bye), and every filled one carries `data-seed` and `.slot-logo`/`.slot-seed`/`.slot-name` children. An empty slot has `.is-empty` (the dashed semifinal placeholder keys off that class, not `:has(img)`).
@@ -338,7 +351,7 @@ The retained legacy classes (`.data-table`, `.franchise-card`, `.bowl-card`, `.p
 
 `Layout.astro` renders an **almanac masthead**, not an app header:
 - A nameplate that scrolls away (`.masthead-plate`) flanked by publication data — "Established 2021 / Cleveland, Ohio" and "Volume {N} / Fourteen Clubs". The volume is **derived, not queried** (`toRoman(leagueYear - 2020)`, league year rolling in March) because the masthead also renders on the on-demand `/players/[id]` and `/games/[year]/[slug]` routes, where a DB round-trip would cost every pageview.
-- A sticky **section rail** (`.section-rail`, ~34px tall) set in the display face and ruled rather than boxed, with an ember underline on the active section. Pages that stick their own control bar beneath it (see `/scores`) offset by `top: 34px`.
+- A sticky **section rail** (`.section-rail`, ~34px tall) set in the display face and ruled rather than boxed, with an ember underline on the active section. Pages that stick their own control bar beneath it (see `/scores`) offset by `top: 34px`. Rail order: {year} Season · History · Franchises · Scores · Spotlight · Superlatives · Hall of Fame. (The preseason **Bets** page and its link were retired in Nov 2026; `/superlatives` took the slot.)
   - The rail opens with a **"{year} Season" link** to `/history/{ACTIVE_SEASON}` (styled like every other rail link). `ACTIVE_SEASON` is a hand-set constant in `Layout.astro` — **bump it each new season**. It's manual because `seasons` rows exist as soon as a Sleeper league is created, so `MAX(year)` can run ahead of the season actually being played. On that page the "History" link isn't highlighted.
 - A **colophon** footer — league blurb, index, and a typesetting note — rather than a nav footer.
 
@@ -427,6 +440,8 @@ Nine standalone TypeScript scripts that sync data from external APIs into Supaba
 | `sync-drafts.ts` | Sleeper draft picks API | `draft_results` | Once per draft |
 | `sync-exhibitions.ts` | Sleeper matchups API | `exhibition_matchups` | When exhibitions occur |
 | `sync-stats.ts` | nflverse GitHub CSV | `nfl_stats` | Weekly during season |
+| `sync-schedule.ts` | nflverse `games.csv` | `nfl_schedule` | Nightly (cheap; the file is small) |
+| `sync-superlatives.ts` | `scdfl.compute_superlative_leaders` (RPC) + Sleeper state | `superlative_leaders` (+ `_final`) | Nightly, last before `deploy` |
 
 **Player metadata** (run sparingly):
 | Script | Source | Target Table | Cadence |
@@ -620,6 +635,8 @@ function has `verify_jwt = false` and checks that secret in the
 | `pickems` | Discord pick'ems bot | `pickems-tick` (every 5 min) | `CRON_SECRET` / `pickems_cron_secret` | `pickems.runs` |
 | `sync` | League data refresh + site rebuild | `ops-sync-recent` (midnight ET) | `OPS_CRON_SECRET` / `ops_cron_secret` | `ops.runs`, `ops.run_steps` |
 
+The `recent` job's steps are `results → matchups → rosters → transactions → drafts → exhibitions → stats → schedule → superlatives → deploy`; the last two data steps were added for the Superlatives race and must stay after everything they read.
+
 **One function per concern. Reuse the pattern, not an existing function.**
 A new scheduled task gets its own Edge Function, its own cron secret and its
 own run log. Don't add it as an action on a function that does something
@@ -652,6 +669,26 @@ Either way, **never call external APIs from SQL directly.** The SQL side
 only ever POSTs to our own function. That keeps credentials in function
 secrets and puts every call in a run log. Operator docs:
 `supabase/functions/pickems/README.md`, `supabase/functions/sync/README.md`.
+
+---
+
+## Superlatives Race (`/superlatives`)
+
+The in-season "current top five" for each of the 14 Superlative Awards — **leaders, not winners** (the league votes after Week 14). Spec and tuning log: `SUPERLATIVES.md` at the repo root (its §18-style amendments live in the "Tuning log" at the end). It replaced the preseason Bets page in the section rail.
+
+**Where the work happens.** All methodology is one SQL function, `scdfl.compute_superlative_leaders(p_season, p_as_of_week, p_top default 5, p_pick_horizon default 1)` (`supabase/migrations/20261116150100_superlatives_compute.sql`, ~950 lines, every §6 knob a `k_*` declaration at the top). It is **pure**: it builds the spec's building blocks as `on commit drop` temp tables and returns rows in the shape of `superlative_leaders`. Call it once per transaction (`select * from scdfl.compute_superlative_leaders(2025, 14, 8, 2)` for a top-8 backtest under a 2-season pick horizon). It runs as the caller, so the service role has `usage` on `sandbox` and `select` on the two sandbox inputs (`player_projections_2026` = Sleeper ADP, `player_windows_thru_2025` = the 2021–25 baseline).
+
+**It is slow on this instance: 60–130 s per season.** The database reads at a few MB/s (nano compute), and the function has to read `players`, the 81k-row baseline table and all of `nfl_stats` once each; the plan is already single-pass (`t_ns`, indexes + `analyze` on every temp table, semi-joins instead of per-row subplans). To let the RPC finish, `service_role` has `statement_timeout = '5min'` (`alter role … set`, recorded in the tables migration; PostgREST's default would have cancelled it). The Edge Function's 150 s wall clock is the tighter limit: if `ops.run_steps` ever shows the `superlatives` step stuck at `running`, that is what hit, and the fix is to run the compute through the function's postgres.js connection (`db.ts`) instead of the REST RPC, or to precompute the baselines into a real table. Don't profile it by re-running it in a loop — repeated heavy runs throttle the instance further and make the nightly build's own 3 s queries time out.
+
+**Who writes the table.** The `superlatives` sync step (`supabase/functions/_shared/sync/superlatives.ts`, shared Node/Deno like every other sync): Sleeper `state/nfl` → `as_of_week` (regular season → `week − 1`; post season or an older year → 14; preseason → 0, which clears the season; Sleeper down → skipped with a warning) → RPC → upsert the rows with one `generated_at` stamp → delete the season's rows with an older stamp. The first run at `as_of_week = 14` copies the rows into `superlative_leaders_final` (delete that season there to re-freeze). The page prefers `_final` when it exists. The 1-season pick horizon and top-5 are constants in that file.
+
+**Manual tables.** `injury_overrides (year, player_id, action include|exclude|adjust, injury_week, return_week, note)` — any row for a player replaces the proxy's detected spell (the Week-9 case: Myles Garrett is a holdout-and-trade, not an injury; exclude him). `trade_exclusions (transaction_id, note)`. Both read on the next refresh; `note` shows on the card.
+
+**Deviations from the spec worth knowing** (all logged in `SUPERLATIVES.md`): the waiver window is derived (the day after the last trade of a current-season pick = Jul 19, 2026), not hard-coded; Tough Break prices an injury on the player's starts across the whole season (the 2025 cards did), not only pre-spell; trade sides also carry `given` (valued from the drop legs) so a three-team trade's winner is its biggest *net* gain and the balance gate is received/given per side (identical to `vmin/vmax` for two teams); for seasons without an ADP table (the backtest) an established previous season also satisfies the Tough Break big-name gate. `display_abbr` for a never-started bust falls back to the current roster.
+
+**Still to do by hand (the MCP migration tool refuses "destructive" statements):** `supabase/migrations/20261116150200_superlatives_grants.sql` — revoke `execute` on the compute function from the API roles and drop the stale two-argument overload. Until the drop, call the function with all four arguments (the sync step does).
+
+**Page.** `src/pages/superlatives/index.astro`, pre-rendered. Plate + dateline ("Through Week N" / "Final: the ballot nominees"), a ruled two-column index of the 14 boards with each leader, four sections (Player Awards · Hard Luck · Franchise Awards · Trade Awards), each award a ruled five-entry board (leader full-width, 2–5 in two columns), trade boards as side-by-side ledgers, and a `<details>` "How leaders are chosen" per award from `AWARDS[].method`. Headshots via `espnHeadshotUrl`, logos via era abbr, links via active abbr.
 
 ---
 
