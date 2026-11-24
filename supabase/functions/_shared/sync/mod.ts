@@ -3,7 +3,9 @@ import { syncExhibitions } from "./exhibitions.ts";
 import { syncMatchups } from "./matchups.ts";
 import { syncResults } from "./results.ts";
 import { syncRosters } from "./rosters.ts";
+import { syncSchedule } from "./schedule.ts";
 import { syncStats } from "./stats.ts";
+import { syncSuperlatives } from "./superlatives.ts";
 import { syncTransactions } from "./transactions.ts";
 import type { SyncFn } from "./types.ts";
 
@@ -18,6 +20,8 @@ export const SYNCS = {
   drafts: syncDrafts,
   exhibitions: syncExhibitions,
   stats: syncStats,
+  schedule: syncSchedule,
+  superlatives: syncSuperlatives,
 } satisfies Record<string, SyncFn>;
 
 export type SyncName = keyof typeof SYNCS;

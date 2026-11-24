@@ -118,6 +118,16 @@ The **editorial** register. A `.desk-plate` title, an optional `.desk-bar` "Now 
 - `.lineup-row-b` gets `flex-direction: row` on mobile (was `row-reverse` on desktop) so element order matches Team A: pos | thumb | name | score
 - Team A `border-right` removed (no adjacent column on mobile)
 
+### `superlatives/index.astro` (`/superlatives`)
+The in-season awards race, replacing the retired `bets/` page in the section rail. Reads `superlative_leaders` (or `_final`) through `loadSuperlativeRace()`; the catalogue, grouping and methodology copy come from `src/lib/superlatives-awards.ts`. Nothing is computed here.
+- `.race-plate` title with a mono dateline (`asOfLine`: "Through Week N" / "Final: the ballot nominees") and "Recomputed nightly · last {date}"
+- `.race-index` — a two-column ruled table of contents of the 14 boards with each current leader (`columns: 2`, one column under 860px; the leader name hides under 640px)
+- Four sections (`AWARD_GROUPS`) under `.almanac-head`; each award is a `.award` article with the official description as `.award-desc`, a `.board` and a `<details class="method">`
+- `.board` is a two-column grid of `.entry` rows; the **leader spans both columns** with a larger headshot and a heavy rule beneath. One column under 860px
+- Trade boards (`.board-trades`) are single-column; each entry lays its sides out with `--side-count` (like the Hall of Fame trade cards) and lists what each side received with its realized / projected / capital figure; three-team trades also print each side's `gave` and `net`
+- Flags render as `.stamp`s; anti-awards (`.award-anti`) print the award name and stamps in ember
+- Empty states: no race at all → one serif paragraph; an award with no qualifiers → "Nobody qualifies yet."
+
 ### `hall-of-fame/index.astro`
 - Hero is a `data-theme="ink"` broadcast band (dark section on the cream page) — it re-scopes the colour tokens, so any child must use semantic tokens, not hardcoded light values. It carries **no `.sc-stripe`**: the masthead already has one, and a second within ~150px reads as a repeated component
 - The five wings render as `.wing-index` — a numbered, ruled **table of contents** with each wing's own tally (`wing.note`), not five identical tiles

@@ -1,0 +1,569 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { loadFranchises, activeFranchise, franchiseForYear, logoPath } from '../../lib/franchise-identity';
+import { espnHeadshotUrl, playerName } from '../../lib/format';
+import { loadSuperlativeRace, loadRacePlayers } from '../../lib/superlatives';
+import {
+  AWARDS,
+  AWARD_GROUPS,
+  asOfLine,
+  flagLabel,
+  groupByAward,
+  splitAbbrs,
+  tradeSides,
+  type LeaderRow,
+} from '../../lib/superlatives-awards';
+
+// The race itself is computed nightly in SQL (scdfl.compute_superlative_leaders,
+// see SUPERLATIVES.md). This page only lays the rows out.
+const [race, franchises] = await Promise.all([loadSuperlativeRace(), loadFranchises()]);
+const rows = race?.rows ?? [];
+const byAward = groupByAward(rows);
+const players = await loadRacePlayers(rows.map(r => r.player_id).filter((id): id is string => !!id));
+
+const season = race?.season ?? null;
+const asOf = race ? asOfLine(race.asOfWeek, race.frozen) : null;
+const updated = race?.generatedAt
+  ? new Date(race.generatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })
+  : null;
+
+// ── Franchise lookups ─────────────────────────────────────────────────────
+// `franchise_abbr` is the identity for that season (era abbr → logo); links
+// go to the active identity, as everywhere else on the site.
+type Club = { abbr: string; activeAbbr: string; name: string; owner: string };
+
+function clubByAbbr(abbr: string): Club | null {
+  const era = franchises.find(f => f.abbr === abbr);
+  if (!era) return null;
+  const active = activeFranchise(franchises, era.sleeper_id) ?? era;
+  return { abbr: era.abbr, activeAbbr: active.abbr, name: era.name, owner: era.owner };
+}
+
+function clubByRoster(sleeperId: string): Club | null {
+  const era = (season && franchiseForYear(franchises, sleeperId, season)) || activeFranchise(franchises, sleeperId);
+  if (!era) return null;
+  const active = activeFranchise(franchises, sleeperId) ?? era;
+  return { abbr: era.abbr, activeAbbr: active.abbr, name: era.name, owner: era.owner };
+}
+
+function clubsFor(row: LeaderRow): Club[] {
+  if (row.sleeper_id) {
+    const c = clubByRoster(row.sleeper_id);
+    return c ? [c] : [];
+  }
+  return splitAbbrs(row.franchise_abbr).map(clubByAbbr).filter((c): c is Club => !!c);
+}
+
+function nameFor(row: LeaderRow): string {
+  if (row.player_id) {
+    const p = players.get(row.player_id);
+    return playerName(p?.first_name, p?.last_name, row.player_id);
+  }
+  return clubsFor(row)[0]?.name ?? row.franchise_abbr ?? '—';
+}
+
+function position(row: LeaderRow): string | null {
+  const fromPayload = typeof row.payload?.pos === 'string' ? (row.payload.pos as string) : null;
+  return fromPayload ?? players.get(row.player_id ?? '')?.position ?? null;
+}
+
+function scoreText(row: LeaderRow): string {
+  if (row.score === null || row.score === undefined) return '—';
+  const n = Number(row.score);
+  if (!Number.isFinite(n)) return '—';
+  return Math.abs(n) >= 100 ? n.toFixed(0) : Math.abs(n) >= 10 ? n.toFixed(1) : n.toFixed(2);
+}
+
+const pts = (n: number) => (Math.abs(n) >= 1000 ? n.toFixed(0) : n.toFixed(1));
+
+// Awards that produced at least one leader, in catalogue order, per section.
+const sections = AWARD_GROUPS.map(g => ({
+  ...g,
+  awards: AWARDS.filter(a => a.group === g.group).map(a => ({ ...a, leaders: byAward.get(a.code) ?? [] })),
+}));
+
+const leaderboardCount = AWARDS.filter(a => (byAward.get(a.code)?.length ?? 0) > 0).length;
+---
+
+<Layout
+  title="Superlatives"
+  description={season
+    ? `The ${season} Sixth City Dynasty Superlatives race: the current top five for every award, updated nightly.`
+    : 'The Sixth City Dynasty Superlatives race.'}
+>
+  <div class="wrap race">
+
+    <!-- Plate -->
+    <header class="race-plate">
+      <p class="sc-eyebrow">{season ? `The ${season} race` : 'The race'}</p>
+      <h1 class="race-title">Superlatives</h1>
+      <div class="race-dateline">
+        {asOf ? (
+          <Fragment>
+            <span class="race-asof">{asOf}</span>
+            {updated && !race?.frozen && <span class="race-updated">Recomputed nightly · last {updated}</span>}
+          </Fragment>
+        ) : <span class="race-asof">The race opens once Week 1 is final</span>}
+      </div>
+      <p class="race-standfirst measure">
+        The current top five for each of the fourteen Superlative Awards, read straight from
+        the box scores. These are leaders, not winners: the league votes after Week 14, and the
+        final five on each board become that award's ballot. Past winners hang in the
+        <a href="/hall-of-fame/superlatives">Hall of Fame</a>.
+      </p>
+    </header>
+    <hr class="rule-heavy" />
+
+    {race && rows.length > 0 ? (
+      <Fragment>
+        <!-- Index: the fourteen boards and who leads each -->
+        <nav class="race-index" aria-label="Awards">
+          <ol>
+            {AWARDS.map((a, i) => {
+              const lead = byAward.get(a.code)?.[0];
+              return (
+                <li>
+                  <a href={`#${a.code}`}>
+                    <span class="idx-no">{String(i + 1).padStart(2, '0')}</span>
+                    <span class="idx-name">{a.name}</span>
+                    <span class="idx-lead">{lead ? (a.entity === 'trade' ? lead.franchise_abbr : nameFor(lead)) : 'No leader yet'}</span>
+                  </a>
+                </li>
+              );
+            })}
+          </ol>
+        </nav>
+
+        {sections.map(section => (
+          <section class="race-section">
+            <div class="almanac-head">
+              <h2>{section.title}</h2>
+              <span class="folio">{section.awards.length} awards</span>
+            </div>
+            <p class="standfirst">{section.standfirst}</p>
+
+            {section.awards.map(award => (
+              <article class={`award award-${award.group}`} id={award.code}>
+                <div class="award-head">
+                  <h3 class="award-name">{award.name}</h3>
+                  <p class="award-desc">{award.description}</p>
+                </div>
+
+                {award.leaders.length === 0 ? (
+                  <p class="award-empty">Nobody qualifies yet.</p>
+                ) : award.entity === 'trade' ? (
+                  <ol class="board board-trades">
+                    {award.leaders.map(row => {
+                      const sides = tradeSides(row);
+                      return (
+                        <li class="entry entry-trade">
+                          <span class="entry-rank">{row.rank}</span>
+                          <div class="entry-body">
+                            <p class="entry-line">{row.headline}</p>
+                            <div class="trade-sides" style={`--side-count: ${Math.max(sides.length, 1)};`}>
+                              {sides.map(side => {
+                                const club = clubByAbbr(side.abbr);
+                                return (
+                                  <div class="trade-side">
+                                    <div class="trade-side-head">
+                                      <img src={logoPath(side.abbr)} alt="" width="30" height="30" class="club-logo" onerror="this.style.display='none'" />
+                                      <a class="trade-side-club" href={`/franchises/${club?.activeAbbr ?? side.active_abbr}`}>{side.abbr}</a>
+                                      <span class="trade-side-value sc-tabular">{pts(side.value)}</span>
+                                    </div>
+                                    <ul class="trade-assets">
+                                      {side.received.map(asset => (
+                                        <li>
+                                          {asset.player_id ? <a href={`/players/${asset.player_id}`}>{asset.label}</a> : asset.label}
+                                          <span class="asset-pts sc-tabular">
+                                            {asset.kind === 'capital' || asset.kind === 'flipped'
+                                              ? `${pts(asset.capital)} cap`
+                                              : asset.ros > 0 ? `${pts(asset.realized)} + ${pts(asset.ros)} proj` : pts(asset.realized)}
+                                          </span>
+                                        </li>
+                                      ))}
+                                    </ul>
+                                    {sides.length > 2 && (
+                                      <p class="trade-side-net sc-tabular">gave {pts(side.given)} · net {side.net >= 0 ? '+' : '−'}{pts(Math.abs(side.net))}</p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {row.detail_lines.map(line => <p class="entry-detail">{line}</p>)}
+                            <div class="entry-foot">
+                              <span class="entry-score sc-tabular">{scoreText(row)} <small>{award.scoreLabel}</small></span>
+                              {row.flags.map(f => <span class="stamp">{flagLabel(f)}</span>)}
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : (
+                  <ol class="board">
+                    {award.leaders.map(row => {
+                      const clubs = clubsFor(row);
+                      const player = row.player_id ? players.get(row.player_id) : null;
+                      const href = row.player_id
+                        ? `/players/${row.player_id}`
+                        : clubs[0] ? `/franchises/${clubs[0].activeAbbr}` : null;
+                      const pos = position(row);
+                      return (
+                        <li class="entry">
+                          <span class="entry-rank">{row.rank}</span>
+                          {row.player_id ? (
+                            <img
+                              src={espnHeadshotUrl(player?.espn_id)}
+                              alt=""
+                              width="56"
+                              height="56"
+                              loading="lazy"
+                              decoding="async"
+                              class="entry-head"
+                              onerror="this.src='/images/player-placeholder.png';this.onerror=null;"
+                            />
+                          ) : clubs[0] ? (
+                            <img src={logoPath(clubs[0].abbr)} alt="" width="56" height="56" class="entry-crest" onerror="this.style.display='none'" />
+                          ) : null}
+                          <div class="entry-body">
+                            {href ? <a class="entry-name" href={href}>{nameFor(row)}</a> : <span class="entry-name">{nameFor(row)}</span>}
+                            <span class="entry-meta">
+                              {row.player_id ? (
+                                <Fragment>
+                                  {pos && <span>{pos}</span>}
+                                  {clubs.map(c => (
+                                    <a href={`/franchises/${c.activeAbbr}`} class="entry-club">
+                                      <img src={logoPath(c.abbr)} alt="" width="16" height="16" onerror="this.style.display='none'" />{c.abbr}
+                                    </a>
+                                  ))}
+                                  {clubs.length === 0 && row.franchise_abbr && <span>{row.franchise_abbr}</span>}
+                                </Fragment>
+                              ) : (
+                                <span>{clubs[0]?.owner}</span>
+                              )}
+                            </span>
+                            {row.headline && <p class="entry-line">{row.headline}</p>}
+                            {row.detail_lines.map(line => <p class="entry-detail">{line}</p>)}
+                            <div class="entry-foot">
+                              <span class="entry-score sc-tabular">{scoreText(row)} <small>{award.scoreLabel}</small></span>
+                              {row.flags.map(f => <span class="stamp">{flagLabel(f)}</span>)}
+                            </div>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+
+                <details class="method">
+                  <summary>How leaders are chosen</summary>
+                  <ul>
+                    {award.method.map(m => <li>{m}</li>)}
+                  </ul>
+                </details>
+              </article>
+            ))}
+          </section>
+        ))}
+
+        <p class="page-whisper race-foot">
+          {leaderboardCount} of 14 boards have leaders. Only points scored in a starting lineup count;
+          baselines use every NFL game. Figures are recomputed each night from the archive, so a board can
+          change as players return, rest-of-season projections shrink, and the commissioner reviews injuries.
+          The full methodology is in the league's <code>SUPERLATIVES.md</code>.
+        </p>
+      </Fragment>
+    ) : (
+      <p class="race-empty measure">
+        The Superlatives race opens once the first week of the season is final. Until then, last
+        season's winners are in the <a href="/hall-of-fame/superlatives">Hall of Fame</a>.
+      </p>
+    )}
+  </div>
+</Layout>
+
+<style>
+  .race { padding-top: 3rem; padding-bottom: 5rem; }
+
+  /* ---- Plate ---- */
+  .race-plate { padding-bottom: 1.5rem; }
+  .race-title {
+    font-family: var(--font-display);
+    font-size: clamp(3rem, 8vw, 5.5rem);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+    line-height: 0.9;
+    margin: 0.35rem 0 0.75rem;
+    color: var(--text-strong);
+  }
+  .race-dateline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.25rem;
+    align-items: baseline;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .race-asof { color: var(--ember-700); font-weight: 600; }
+  .race-updated { color: var(--text-faint); }
+  .race-standfirst {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    line-height: 1.55;
+    color: var(--text-body);
+    margin: 1.25rem 0 0;
+  }
+  .race-empty {
+    font-family: var(--font-serif);
+    font-size: 1.05rem;
+    margin: 2rem 0 0;
+  }
+
+  /* ---- Index: a ruled table of contents, two columns ---- */
+  .race-index { margin: 1.75rem 0 3rem; }
+  .race-index ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    columns: 2;
+    column-gap: 3rem;
+  }
+  .race-index li { break-inside: avoid; }
+  .race-index a {
+    display: grid;
+    grid-template-columns: 2rem 1fr auto;
+    gap: 0.75rem;
+    align-items: baseline;
+    padding: 0.4rem 0;
+    border-bottom: 1px dotted var(--border-default);
+    text-decoration: none;
+    color: var(--text-strong);
+  }
+  .race-index a:hover .idx-name { color: var(--ember-700); }
+  .idx-no { font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-faint); }
+  .idx-name { font-family: var(--font-display); font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.01em; }
+  .idx-lead { font-family: var(--font-sans); font-size: 0.78rem; color: var(--text-muted); text-align: right; }
+
+  /* ---- Sections / awards ---- */
+  .race-section { margin-top: 3rem; }
+  .award { padding: 1.75rem 0 1rem; border-top: 1px solid var(--border-default); }
+  .award:first-of-type { border-top: 0; padding-top: 0.5rem; }
+  .award-head { margin-bottom: 1.1rem; }
+  .award-name {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 3vw, 2.1rem);
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: 1;
+    margin: 0;
+    color: var(--text-strong);
+  }
+  .award-anti .award-name { color: var(--ember-700); }
+  .award-desc {
+    font-family: var(--font-serif);
+    font-style: italic;
+    font-size: 0.92rem;
+    color: var(--text-muted);
+    margin: 0.35rem 0 0;
+    max-width: 62ch;
+  }
+  .award-empty {
+    font-family: var(--font-sans);
+    font-size: 0.85rem;
+    color: var(--text-faint);
+    margin: 0 0 0.5rem;
+  }
+
+  /* ---- The board: five ruled entries, the leader full width ---- */
+  .board {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 2.5rem;
+  }
+  .entry {
+    display: grid;
+    grid-template-columns: 1.6rem 56px 1fr;
+    gap: 0 0.9rem;
+    padding: 0.85rem 0;
+    border-bottom: 1px dotted var(--border-default);
+    min-width: 0;
+  }
+  .entry:first-child {
+    grid-column: 1 / -1;
+    grid-template-columns: 1.6rem 84px 1fr;
+    border-bottom: 2px solid var(--rule-ink);
+    padding: 0.5rem 0 1.1rem;
+  }
+  .entry:first-child .entry-head,
+  .entry:first-child .entry-crest { width: 84px; height: 84px; }
+  .entry:first-child .entry-name { font-size: 1.6rem; }
+  .entry:first-child .entry-rank { color: var(--ember-600); }
+  .entry-rank {
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--text-faint);
+    padding-top: 0.15rem;
+  }
+  .entry-head {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 50%;
+    background-color: var(--surface-sunken);
+    align-self: start;
+  }
+  .entry-crest { width: 56px; height: 56px; object-fit: contain; align-self: start; }
+  .entry-body { min-width: 0; }
+  .entry-name {
+    display: block;
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    font-weight: 700;
+    line-height: 1.05;
+    color: var(--text-strong);
+    text-decoration: none;
+  }
+  a.entry-name:hover { color: var(--ember-700); }
+  .entry-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    align-items: center;
+    font-family: var(--font-sans);
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0.3rem 0 0.45rem;
+  }
+  .entry-club { display: inline-flex; align-items: center; gap: 0.3rem; color: inherit; text-decoration: none; }
+  .entry-club:hover { color: var(--ember-700); }
+  .entry-club img { width: 16px; height: 16px; object-fit: contain; }
+  .entry-line {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-strong);
+    margin: 0 0 0.2rem;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .entry-detail {
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    color: var(--text-body);
+    margin: 0.1rem 0;
+    line-height: 1.4;
+  }
+  .entry-foot { display: flex; flex-wrap: wrap; gap: 0.5rem 0.9rem; align-items: baseline; margin-top: 0.45rem; }
+  .entry-score {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-faint);
+    letter-spacing: 0.04em;
+  }
+  .entry-score small { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; }
+  .stamp {
+    font-family: var(--font-sans);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--slate-700, var(--text-muted));
+    border: 1px solid var(--border-strong);
+    padding: 0.1rem 0.4rem;
+  }
+  .award-anti .stamp { color: var(--ember-700); border-color: var(--ember-500); }
+
+  /* ---- Trades: one column, sides side by side ---- */
+  .board-trades { grid-template-columns: 1fr; }
+  .entry-trade { grid-template-columns: 1.6rem 1fr; }
+  .entry-trade:first-child { grid-template-columns: 1.6rem 1fr; }
+  .trade-sides {
+    display: grid;
+    grid-template-columns: repeat(var(--side-count), minmax(0, 1fr));
+    gap: 0 1.5rem;
+    margin: 0.5rem 0 0.4rem;
+  }
+  .trade-side { border-left: 2px solid var(--border-default); padding-left: 0.85rem; min-width: 0; }
+  .trade-side-head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+  .club-logo { width: 30px; height: 30px; object-fit: contain; }
+  .trade-side-club {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--text-strong);
+    text-decoration: none;
+  }
+  .trade-side-club:hover { color: var(--ember-700); }
+  .trade-side-value {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+  .trade-assets { list-style: none; margin: 0; padding: 0; }
+  .trade-assets li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-family: var(--font-sans);
+    font-size: 0.8rem;
+    color: var(--text-body);
+    padding: 0.15rem 0;
+    border-bottom: 1px dotted var(--border-default);
+  }
+  .trade-assets li:last-child { border-bottom: 0; }
+  .trade-assets a { color: inherit; }
+  .asset-pts { font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-faint); white-space: nowrap; }
+  .trade-side-net { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); margin: 0.35rem 0 0; }
+
+  /* ---- Methodology ---- */
+  .method { margin-top: 0.9rem; }
+  .method summary {
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+  .method summary:hover { color: var(--text-strong); }
+  .method ul {
+    margin: 0.6rem 0 0;
+    padding-left: 1.1rem;
+    max-width: 70ch;
+    font-family: var(--font-serif);
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-body);
+  }
+  .method li { margin: 0.25rem 0; }
+
+  .race-foot { max-width: 70ch; margin: 3rem 0 0; font-size: 0.85rem; }
+  .race-foot code { font-family: var(--font-mono); font-size: 0.8em; }
+
+  @media (max-width: 860px) {
+    .board { grid-template-columns: 1fr; column-gap: 0; }
+    .race-index ol { columns: 1; }
+  }
+  @media (max-width: 640px) {
+    .trade-sides { grid-template-columns: 1fr !important; gap: 0.9rem 0; }
+    .entry:first-child { grid-template-columns: 1.6rem 64px 1fr; }
+    .entry:first-child .entry-head,
+    .entry:first-child .entry-crest { width: 64px; height: 64px; }
+    .entry:first-child .entry-name { font-size: 1.3rem; }
+    .idx-lead { display: none; }
+    .race-index a { grid-template-columns: 2rem 1fr; }
+  }
+</style>
